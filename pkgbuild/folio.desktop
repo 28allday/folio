@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Folio
+Comment=Browse and open your files
+Exec=folio %U
+Icon=folio
+Terminal=false
+Categories=System;FileTools;FileManager;
+MimeType=inode/directory;
+StartupWMClass=folio

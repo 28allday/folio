@@ -1,0 +1,5 @@
+{
+  "%n items": { "one": "%n item", "other": "%n items" },
+  "%n folders": { "one": "%n folder", "other": "%n folders" },
+  "Folder · %n items": { "one": "Folder · %n item", "other": "Folder · %n items" }
+}
