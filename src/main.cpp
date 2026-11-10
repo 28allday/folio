@@ -137,7 +137,7 @@ int main(int argc, char *argv[]) {
     Windows windows(&engine);
     if (!windows.open(start, select))
         return 1;
-    FileManager1::registerOn(&windows, &windows);
+    FileManager1::registerOn(&windows);
 
     return app.exec();
 }

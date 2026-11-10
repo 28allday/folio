@@ -12,11 +12,11 @@ class FileManager1 : public QDBusAbstractAdaptor {
     Q_CLASSINFO("D-Bus Interface", "org.freedesktop.FileManager1")
 
 public:
-    FileManager1(QObject *host, Windows *windows);
+    explicit FileManager1(Windows *windows);
 
-    // Claims the bus name and object path; false when another file manager
-    // already holds it, in which case folio simply runs without it.
-    static bool registerOn(QObject *host, Windows *windows);
+    // Claims the bus name and object path; when another file manager holds
+    // the name, folio runs without it.
+    static void registerOn(Windows *windows);
 
 public slots:
     void ShowFolders(const QStringList &uris, const QString &startupId);
