@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Shapes
+import QtQuick.Effects
 
 // One item in the grid: a preview on top, its name below. Folders are a
 // quiet card; files show a real thumbnail when one
@@ -26,6 +27,10 @@ Item {
     signal activated()
 
     function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
+
+    // Pictures and drawings round their corners with the theme: square on
+    // Omarchy's default, softly rounded on themes that round windows.
+    readonly property real iconRadius: Math.min(10, theme.radius)
 
     // When it changed: the time for today, the date before that.
     function when(date) {
@@ -144,7 +149,19 @@ Item {
     }
 
     // A folder's outline: a card with a tab on its top left edge, drawn as
-    // one silhouette.
+    // one silhouette, its corners rounded by `r`.
+    function folderPath(r) {
+        if (r <= 0)
+            return "M4.5 88.5V0.5H46L50 6.5H123.5V88.5Z"
+        // Corners as quadratic curves: the curve renderer draws those
+        // natively (filled arcs went missing on the GPU).
+        const t = Math.min(r, 3)
+        return "M4.5 " + (88.5 - r) + "V" + (0.5 + r) + "Q4.5 0.5 " + (4.5 + r) + " 0.5"
+             + "H" + (46 - t) + "Q46 0.5 " + (46 + t * 0.6) + " " + (0.5 + t * 0.9) + "L" + (50 - t * 0.6) + " " + (6.5 - t * 0.9)
+             + "Q50 6.5 " + (50 + t) + " 6.5H" + (123.5 - r) + "Q123.5 6.5 123.5 " + (6.5 + r)
+             + "V" + (88.5 - r) + "Q123.5 88.5 " + (123.5 - r) + " 88.5H" + (4.5 + r)
+             + "Q4.5 88.5 4.5 " + (88.5 - r) + "Z"
+    }
     component FolderShape: Shape {
         id: shape
         property color fill: theme.lighterBackground
@@ -157,8 +174,8 @@ Item {
             fillColor: shape.fill
             strokeColor: shape.stroke
             strokeWidth: shape.strokeWidth
-            joinStyle: ShapePath.MiterJoin
-            PathSvg { path: "M4.5 88.5V0.5H46L50 6.5H123.5V88.5Z" }
+            joinStyle: tile.iconRadius > 0 ? ShapePath.RoundJoin : ShapePath.MiterJoin
+            PathSvg { path: tile.folderPath(tile.iconRadius) }
         }
     }
 
@@ -179,15 +196,36 @@ Item {
         id: fileArt
 
         Item {
+            // The picture is laid out at its own shape (cropped to fill for
+            // photos and video, fitted for pages), so its corners can round.
+            readonly property bool crop: tile.kind === "image" || tile.kind === "video"
+            readonly property size natural: thumb.implicitWidth > 0 ? Qt.size(thumb.implicitWidth, thumb.implicitHeight) : Qt.size(1, 1)
+            readonly property real fit: Math.min(width / natural.width, height / natural.height)
             Image {
                 id: thumb
-                anchors.centerIn: parent
-                width: parent.width
-                height: parent.height
+                width: parent.crop ? parent.width : parent.natural.width * parent.fit
+                height: parent.crop ? parent.height : parent.natural.height * parent.fit
+                x: (parent.width - width) / 2
+                y: (parent.height - height) / 2
                 asynchronous: true
-                fillMode: tile.kind === "image" || tile.kind === "video" ? Image.PreserveAspectCrop : Image.PreserveAspectFit
+                fillMode: parent.crop ? Image.PreserveAspectCrop : Image.Stretch
                 source: tile.kind === "text" ? "" : tile.thumbUrl(tile.path, tile.mime, 256)
                 visible: status === Image.Ready
+                layer.enabled: tile.iconRadius > 0 && status === Image.Ready
+                layer.effect: MultiEffect {
+                    maskEnabled: true
+                    maskSource: thumbMask
+                    maskThresholdMin: 0.5
+                    maskSpreadAtMin: 1
+                }
+            }
+            Rectangle {
+                id: thumbMask
+                width: thumb.width
+                height: thumb.height
+                radius: tile.iconRadius
+                visible: false
+                layer.enabled: true
             }
 
             // Videos get a play mark over their frame.
@@ -212,11 +250,8 @@ Item {
             // of the others.
             readonly property rect shown: {
                 const w = width, h = height
-                if (thumb.status === Image.Ready) {
-                    const pw = thumb.fillMode === Image.PreserveAspectCrop ? w : thumb.paintedWidth
-                    const ph = thumb.fillMode === Image.PreserveAspectCrop ? h : thumb.paintedHeight
-                    return Qt.rect((w - pw) / 2, (h - ph) / 2, pw, ph)
-                }
+                if (thumb.status === Image.Ready)
+                    return Qt.rect(thumb.x, thumb.y, thumb.width, thumb.height)
                 if (tile.kind === "audio" || tile.kind === "video")
                     return Qt.rect(0, 0, w, h)
                 return Qt.rect((w - 66) / 2, 0, 66, h)
@@ -230,7 +265,7 @@ Item {
                 color: "transparent"
                 border.width: tile.current ? 2 : 1
                 border.color: tile.current ? theme.accent : tile.tint(theme.foreground, 0.2)
-                radius: Math.min(4, theme.radius)
+                radius: tile.iconRadius > 0 ? tile.iconRadius + 3 : 0
             }
         }
     }
@@ -246,7 +281,7 @@ Item {
                 color: theme.lighterBackground
                 border.width: 1
                 border.color: tile.tint(theme.foreground, 0.16)
-                radius: Math.min(2, theme.radius)
+                radius: tile.iconRadius
                 Column {
                     x: 9; y: 11
                     spacing: 6
@@ -277,7 +312,7 @@ Item {
         // file keeps its own shape. Album art replaces it when the file has some.
         Rectangle {
             color: theme.lighterBackground
-            radius: Math.min(2, theme.radius)
+            radius: tile.iconRadius
             Row {
                 anchors.centerIn: parent
                 spacing: 3
@@ -305,7 +340,7 @@ Item {
 
         Rectangle {
             color: theme.darkBackground
-            radius: Math.min(2, theme.radius)
+            radius: tile.iconRadius
             Glyph { anchors.centerIn: parent; name: "play"; size: 22; color: tile.kindColor }
         }
     }

@@ -67,8 +67,8 @@ Item {
             strokeColor: glyph.filled ? "transparent" : glyph.color
             fillColor: glyph.filled ? glyph.color : "transparent"
             strokeWidth: glyph.stroke
-            capStyle: ShapePath.SquareCap
-            joinStyle: ShapePath.MiterJoin
+            capStyle: theme.radius > 0 ? ShapePath.RoundCap : ShapePath.SquareCap
+            joinStyle: theme.radius > 0 ? ShapePath.RoundJoin : ShapePath.MiterJoin
             scale: Qt.size(glyph.size / 24, glyph.size / 24)
             PathSvg { path: glyph.paths[glyph.name] || glyph.paths["file"] }
         }

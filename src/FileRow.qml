@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Effects
 
 // One item as a row, for the list and column views: a small picture or
 // glyph, the name, and in the list the size and date beside it.
@@ -99,11 +100,26 @@ Item {
             Image {
                 id: thumb
                 anchors.fill: parent
+                layer.enabled: theme.radius > 0 && status === Image.Ready
+                layer.effect: MultiEffect {
+                    maskEnabled: true
+                    maskSource: rowMask
+                    maskThresholdMin: 0.5
+                    maskSpreadAtMin: 1
+                }
                 asynchronous: true
                 fillMode: Image.PreserveAspectCrop
                 source: row.kind === "image" || row.kind === "video"
                     ? "image://thumb/128/" + encodeURIComponent(row.mime) + "/" + encodeURIComponent(row.path) : ""
                 visible: status === Image.Ready
+            }
+            Rectangle {
+                id: rowMask
+                width: 20
+                height: 20
+                radius: Math.min(4, theme.radius)
+                visible: false
+                layer.enabled: true
             }
             Glyph {
                 anchors.centerIn: parent
