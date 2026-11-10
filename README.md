@@ -1,61 +1,39 @@
-# Folio
+# Files
 
-![Folio browsing a folder of pictures](docs/screenshot.png)
+![Files showing a folder of photos in the grid, with the details pane](docs/grid.png)
 
-Folio is Omarchy's file manager: one window for finding, previewing and opening your files. It follows the Omarchy theme and language live, works from the keyboard, and never crawls your home folder in the background. Thumbnails are made when a tile needs one and shared with other apps through the standard `~/.cache/thumbnails` cache.
+Files (`folio`) is Omarchy's file manager. It's one quiet window that follows your Omarchy theme and language, works from the keyboard, and never crawls your home folder in the background: folders are read when you open them, and thumbnails are made when a tile needs one, shared with every other app through `~/.cache/thumbnails`.
 
-- **Home**: every folder in your home, with the standard ones and Dropbox drawn with their own icons; click the Home label to go home.
-- **Views**: Recents (files you've used lately, in any app) and Trash, where items can be restored to where they came from (shown in the details, with when they were deleted) and the trash emptied.
-- **Files**: right-click for open with, rename, duplicate, copy, cut, paste, compress, share (LocalSend or Taildrop) and delete to the trash. Copy and paste work with other apps, and nothing is ever overwritten.
-- **Pinned**: any folder, pinned with Ctrl+D or by dragging it onto the sidebar. Pins are GTK's bookmarks, so they show up in file dialogs too.
-- **Devices**: physical drives, whether plugged in or extra internal disks; the system's own partitions stay out of the way.
-- **Tailnet**: the machines on your tailnet. Opening one mounts it over SFTP through GVfs and lands in the matching home folder.
-- **Previews**: folders are quiet cards; photos, videos, PDFs and anything else with an installed thumbnailer show the real thing. Space opens a large preview, like Sushi or Quick Look: pictures at full size, video and audio playing, PDFs to scroll through, text and Markdown to read, with the arrows stepping through the folder. The details pane (Ctrl+I) shows a larger look, the facts, and the first lines of text files.
-- **Show in folder**: Folio answers `org.freedesktop.FileManager1`, so other apps' "Show in folder" buttons open it with the file selected.
+- **Three views**: a grid with real previews, a list, and Finder-style columns. Ctrl+1/2/3 switches.
+- **Space previews** pictures, video, audio, PDFs, text and Markdown at full size, in their own window.
+- **The sidebar** holds everything in your home folder, pinned folders (shared with GTK file dialogs), Recents, Trash with restore, your drives, and the machines on your tailnet, which open over SFTP.
+- **Right-click** (or Alt+Enter) to open with another app, rename, duplicate, compress, share by Dropbox link, Taildrop or LocalSend, and delete. Copy and paste work with other apps, and nothing is ever overwritten.
+- **Split** the window in two with Ctrl+Alt+N to move things between folders.
 
-## Keyboard
-
-| Key | Action |
+| Columns | Preview |
 | --- | --- |
-| Arrow keys | Move the selection |
-| Enter | Open |
-| Backspace, Alt+Up | Go to the parent folder |
-| Alt+Left / Alt+Right, mouse back / forward buttons | Back / forward (in the preview: previous / next file) |
-| Alt+Home | Go home |
-| Space | Preview the selected file (Space or Esc closes, ← → step through) |
-| Ctrl+I | Show or hide the details pane |
-| Ctrl+D | Pin or unpin the folder |
-| Shift+click / Shift+arrows | Select a range |
-| Alt+click | Add or remove one from the selection |
-| Drag on empty space | Select with a rectangle (Alt adds) |
-| Ctrl+A / Esc | Select everything / back to one |
-| Ctrl+C / Ctrl+X / Ctrl+V | Copy, cut, paste files |
-| Ctrl+Shift+C | Copy the path as text |
-| F2 / Ctrl+Shift+D | Rename / duplicate |
-| Ctrl+N | New window on this folder |
+| ![The column view, four folders deep](docs/columns.png) | ![A photo in the preview window](docs/preview.png) |
+
+## Keys
+
+| Key | Does |
+| --- | --- |
+| Arrows, ⏎ | Move, open |
+| Space | Preview |
+| Backspace, Alt+← / Alt+→ | Up, back, forward |
+| Ctrl+L | Type a path |
+| Ctrl+C / X / V | Copy, cut, paste |
+| F2, Delete | Rename, move to the trash |
 | Ctrl+Shift+N | New folder |
-| Ctrl+Alt+N / Ctrl+W | Split into two panes / close the right one |
-| Delete | Move to the trash |
-| Alt+Return | The right-click menu, from the keyboard |
-| Tab | Move between the sidebar and the panes |
-| Ctrl+L | Type a path: Enter goes there, Tab completes, Esc cancels |
-| Ctrl+1 / Ctrl+2 / Ctrl+3 | Grid, list, or columns (in list and columns, → goes into a folder and ← back out) |
-| S | Sort: name, kind, newest, oldest, size |
-| Ctrl+H | Show hidden files |
-| F5 | Reload |
-| ? | Show every shortcut |
-| Q | Close the window |
+| Ctrl+D | Pin the folder |
+| Ctrl+N, Ctrl+Alt+N | New window, split |
+| Tab | Sidebar and back |
+| ? | Every other shortcut |
 
-## Build
+## Building
 
-```sh
-bin/build     # build/folio
-bin/test      # the Qt Test suite, offscreen
-bin/install   # build the package and install it with makepkg -fsi
-```
-
-Run `build/folio [folder or file]` to try it. A file opens its folder with the file selected.
+Files is C++ and Qt Quick. `bin/build` compiles it into `build/folio`, `bin/test` runs the tests, and `bin/install` builds and installs the Arch package. Omarchy installs it from [omarchy-pkgs](https://github.com/omacom/omarchy-pkgs).
 
 ## License
 
-MIT.
+Files is released under the [MIT License](LICENSE).
