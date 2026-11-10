@@ -19,7 +19,7 @@ Rectangle {
         problem = ""
         item = target
         field.text = target.name
-        const dot = target.isDir ? -1 : target.name.indexOf(".", 1)
+        const dot = fileOps.extensionStart(target.name, target.isDir)
         field.forceActiveFocus()
         field.select(0, dot > 0 ? dot : target.name.length)
     }

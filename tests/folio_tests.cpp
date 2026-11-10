@@ -237,6 +237,10 @@ private slots:
         write(dir.filePath("notes (copy).tar.gz"), "x");
         QCOMPARE(FileOps::freeName(dir.path(), "notes.tar.gz"), QString("notes (copy 2).tar.gz"));
         QCOMPARE(FileOps::freeName(dir.path(), "Photos"), QString("Photos (copy)"));
+        // The extension starts at the last dot, so dots in the name stay.
+        QCOMPARE(FileOps::extensionStart("Report v1.2.pdf", false), 11);
+        write(dir.filePath("Report v1.2.pdf"), "x");
+        QCOMPARE(FileOps::freeName(dir.path(), "Report v1.2.pdf"), QString("Report v1.2 (copy).pdf"));
     }
 
     void fileOpsCopyAndMove()

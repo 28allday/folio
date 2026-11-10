@@ -75,6 +75,10 @@ public:
     Q_INVOKABLE int trashCount() const;
     // Empty string on success, or why not.
     Q_INVOKABLE QString rename(const QString &path, const QString &name);
+    // Where a name's extension begins, for renaming and "(copy)" names:
+    // ".pdf" in "Report v1.2.pdf", ".tar.gz" kept whole. -1 for folders and
+    // dotfiles, which have none.
+    Q_INVOKABLE static int extensionStart(const QString &name, bool isDir);
     // Makes "New Folder" (or "New Folder 2"...) and returns its name.
     Q_INVOKABLE QString newFolder(const QString &folder);
 

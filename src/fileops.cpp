@@ -84,19 +84,23 @@ void FileOps::yank(const QStringList &paths) {
         QGuiApplication::clipboard()->setText(paths.join('\n'));
 }
 
+int FileOps::extensionStart(const QString &name, bool isDir) {
+    int dot = isDir ? -1 : name.lastIndexOf('.');
+    if (dot <= 0)
+        return -1;
+    if (dot > 4 && name.mid(dot - 4, 4).compare(".tar", Qt::CaseInsensitive) == 0)
+        dot -= 4;
+    return dot;
+}
+
 QString FileOps::freeName(const QString &folder, const QString &name) {
     const QDir dir(folder);
     if (!QFileInfo::exists(dir.filePath(name)))
         return name;
-    // "notes.tar.gz" keeps its whole extension; folders and dotfiles have none.
     const QFileInfo info(dir.filePath(name));
-    QString base = name;
-    QString ext;
-    const int dot = name.indexOf('.', 1);
-    if (!info.isDir() && dot > 0) {
-        base = name.left(dot);
-        ext = name.mid(dot);
-    }
+    const int dot = extensionStart(name, info.isDir());
+    const QString base = dot > 0 ? name.left(dot) : name;
+    const QString ext = dot > 0 ? name.mid(dot) : QString();
     for (int n = 1;; ++n) {
         const QString candidate = n == 1 ? QObject::tr("%1 (copy)%2").arg(base, ext)
                                          : QObject::tr("%1 (copy %2)%3").arg(base).arg(n).arg(ext);
