@@ -237,8 +237,11 @@ QStringList FileOps::localPaths(const QList<QUrl> &urls) const {
     return paths;
 }
 
-void FileOps::transferInBackground(const QStringList &paths, const QString &folder, bool move, bool releaseClipboard) {
-    setBusy(move ? tr("Moving %n items…", "", paths.size()) : tr("Copying %n items…", "", paths.size()));
+void FileOps::transferInBackground(const QStringList &paths, const QString &folder, bool move, bool releaseClipboard,
+                                   const QString &busy) {
+    setBusy(!busy.isEmpty() ? busy
+            : move          ? tr("Moving %n items…", "", paths.size())
+                            : tr("Copying %n items…", "", paths.size()));
     auto *watcher = new QFutureWatcher<QPair<QStringList, QString>>(this);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, paths, folder, releaseClipboard] {
         watcher->deleteLater();
@@ -264,23 +267,8 @@ void FileOps::transferInBackground(const QStringList &paths, const QString &fold
 void FileOps::duplicate(const QString &path) {
     if (!m_busy.isEmpty())
         return;
-    const QString folder = QFileInfo(path).absolutePath();
-    setBusy(tr("Duplicating %1…").arg(QFileInfo(path).fileName()));
-    auto *watcher = new QFutureWatcher<QPair<QStringList, QString>>(this);
-    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, folder] {
-        watcher->deleteLater();
-        const auto [made, error] = watcher->result();
-        setBusy({});
-        if (!error.isEmpty())
-            emit failed(error);
-        if (!made.isEmpty())
-            emit done(folder, made.first());
-    });
-    watcher->setFuture(QtConcurrent::run([path, folder] {
-        QString error;
-        const QStringList made = transfer({path}, folder, false, &error);
-        return qMakePair(made, error);
-    }));
+    const QFileInfo info(path);
+    transferInBackground({path}, info.absolutePath(), false, false, tr("Duplicating %1…").arg(info.fileName()));
 }
 
 QString FileOps::archiveName(const QStringList &paths, const QString &folder) {

@@ -123,7 +123,10 @@ signals:
 
 private:
     void setBusy(const QString &busy);
-    void transferInBackground(const QStringList &paths, const QString &folder, bool move, bool releaseClipboard);
+    // Copies or moves off the UI thread, showing `busy` (or how many are
+    // moving or copying) meanwhile.
+    void transferInBackground(const QStringList &paths, const QString &folder, bool move, bool releaseClipboard,
+                              const QString &busy = {});
 
     QString m_busy;
 };
