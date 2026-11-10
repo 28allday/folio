@@ -41,8 +41,6 @@ ApplicationWindow {
         property alias viewMode: win.viewMode
     }
 
-    function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
-
     // Ctrl+Alt+N: a second pane on the right, starting where the active
     // one is. Pressed again, it moves the keyboard there.
     function openSplit() {
@@ -101,7 +99,7 @@ ApplicationWindow {
             width: parent.width
             height: parent.barHeight
             color: theme.background
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: win.tint(theme.foreground, 0.12) }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Qt.alpha(theme.foreground, 0.12) }
         }
 
         RowLayout {
@@ -116,7 +114,7 @@ ApplicationWindow {
                 Layout.preferredWidth: 236
                 Layout.fillHeight: true
             }
-            Rectangle { Layout.topMargin: parent.parent.barHeight; Layout.fillHeight: true; implicitWidth: 1; color: win.tint(theme.foreground, 0.12) }
+            Rectangle { Layout.topMargin: parent.parent.barHeight; Layout.fillHeight: true; implicitWidth: 1; color: Qt.alpha(theme.foreground, 0.12) }
 
             FolderPane {
                 id: leftPane
@@ -130,7 +128,7 @@ ApplicationWindow {
             // openSplit() puts the right pane of a split here. Between the
             // panes the divider runs up through the top bar, so each path
             // reads as belonging to the files below it.
-            Rectangle { visible: win.split; Layout.fillHeight: true; implicitWidth: 1; color: win.tint(theme.foreground, 0.12) }
+            Rectangle { visible: win.split; Layout.fillHeight: true; implicitWidth: 1; color: Qt.alpha(theme.foreground, 0.12) }
             Item {
                 id: splitHost
                 visible: win.split

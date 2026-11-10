@@ -21,8 +21,6 @@ Item {
     // Every column has a menu: on an item there, or on the column's folder.
     signal contextMenu(var item, string folder)
 
-    function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
-
     readonly property var crumbs: backend.crumbs
 
     // The folders on the way here, kept as a list model that is only trimmed
@@ -53,7 +51,7 @@ Item {
     // Keeps the newest columns in view as the trail grows.
     function revealEnd() { flick.contentX = Math.max(0, flick.contentWidth - flick.width) }
 
-    component Separator: Rectangle { width: 1; height: parent ? parent.height : 0; color: view.tint(theme.foreground, 0.1) }
+    component Separator: Rectangle { width: 1; height: parent ? parent.height : 0; color: Qt.alpha(theme.foreground, 0.1) }
 
     Flickable {
         id: flick

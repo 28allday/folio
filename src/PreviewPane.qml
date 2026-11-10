@@ -24,9 +24,7 @@ Rectangle {
 
     color: theme.darkBackground
 
-    function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
-
-    Rectangle { anchors.left: parent.left; width: 1; height: parent.height; color: pane.tint(theme.foreground, 0.12) }
+    Rectangle { anchors.left: parent.left; width: 1; height: parent.height; color: Qt.alpha(theme.foreground, 0.12) }
 
     ColumnLayout {
         anchors.fill: parent
@@ -53,7 +51,7 @@ Rectangle {
                 visible: pane.hasItem && pane.item.kind === "text"
                 color: theme.background
                 border.width: 1
-                border.color: pane.tint(theme.foreground, 0.12)
+                border.color: Qt.alpha(theme.foreground, 0.12)
                 clip: true
                 Text {
                     anchors.fill: parent

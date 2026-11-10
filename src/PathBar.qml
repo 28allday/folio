@@ -61,8 +61,6 @@ Rectangle {
     color: "transparent"
     implicitHeight: 60
 
-    function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
-
     RowLayout {
         anchors.fill: parent
         anchors.leftMargin: 26
@@ -146,7 +144,7 @@ Rectangle {
                         Text {
                             visible: crumb.index > 0
                             text: "/"
-                            color: bar.tint(theme.foreground, 0.35)
+                            color: Qt.alpha(theme.foreground, 0.35)
                             font.pixelSize: 14
                         }
                         Text {
@@ -206,5 +204,5 @@ Rectangle {
         }
     }
 
-    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: bar.tint(theme.foreground, 0.12) }
+    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Qt.alpha(theme.foreground, 0.12) }
 }

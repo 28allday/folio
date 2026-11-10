@@ -12,8 +12,6 @@ Rectangle {
     // the status bar below it.
     clip: true
 
-    function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
-
     // Keyboard: Tab moves here from the files and back. ↑ ↓ move between
     // rows, ⏎ (or →) opens one and hands the keyboard back to the files.
     signal finished()
@@ -116,14 +114,10 @@ Rectangle {
         focusPolicy: Qt.NoFocus
         Accessible.name: text
 
-        // Inline components don't see the file's ids, so this keeps its own.
-        function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
-
-
         background: Rectangle {
             radius: Math.min(4, theme.radius)
-            color: row.active || row.dropHover ? row.tint(theme.accent, 0.16)
-                 : row.hovered && row.enabled ? row.tint(theme.foreground, 0.06) : "transparent"
+            color: row.active || row.dropHover ? Qt.alpha(theme.accent, 0.16)
+                 : row.hovered && row.enabled ? Qt.alpha(theme.foreground, 0.06) : "transparent"
             border.width: row.dropHover ? 2 : row.keyed ? 1 : 0
             border.color: theme.accent
         }
@@ -240,7 +234,7 @@ Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: 34
                 visible: sidebar.dragging
-                color: sidebar.tint(theme.accent, pinDrop.containsDrag ? 0.22 : 0.08)
+                color: Qt.alpha(theme.accent, pinDrop.containsDrag ? 0.22 : 0.08)
                 border.width: pinDrop.containsDrag ? 2 : 1
                 border.color: theme.accent
                 radius: Math.min(4, theme.radius)

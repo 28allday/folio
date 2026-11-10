@@ -24,12 +24,10 @@ AbstractButton {
         exit: null
     }
 
-    function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
-
     background: Rectangle {
         radius: Math.min(4, theme.radius)
-        color: button.active ? button.tint(theme.accent, 0.16)
-             : button.hovered && button.enabled ? button.tint(theme.foreground, 0.08)
+        color: button.active ? Qt.alpha(theme.accent, 0.16)
+             : button.hovered && button.enabled ? Qt.alpha(theme.foreground, 0.08)
              : "transparent"
     }
 
@@ -37,7 +35,7 @@ AbstractButton {
         Glyph {
             anchors.centerIn: parent
             name: button.glyph
-            color: !button.enabled ? button.tint(theme.foreground, 0.35)
+            color: !button.enabled ? Qt.alpha(theme.foreground, 0.35)
                  : button.active ? theme.brightForeground : theme.foreground
         }
     }

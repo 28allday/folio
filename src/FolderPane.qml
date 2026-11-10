@@ -91,8 +91,6 @@ FocusScope {
     onActiveFocusChanged: if (activeFocus && host) host.activePane = pane
     function focusView() { if (view.item) view.item.focusView() }
 
-    function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
-
     // Pins a folder to the sidebar, or unpins it when it's pinned already.
     function togglePin(target) {
         if (places.isPinned(target)) {
@@ -211,7 +209,7 @@ FocusScope {
             Layout.fillWidth: true
             implicitHeight: 40
             visible: bannerText.text.length > 0
-            color: backend.message.length > 0 || backend.folder.error.length > 0 ? pane.tint(theme.red, 0.14) : pane.tint(theme.accent, 0.10)
+            color: backend.message.length > 0 || backend.folder.error.length > 0 ? Qt.alpha(theme.red, 0.14) : Qt.alpha(theme.accent, 0.10)
             RowLayout {
                 anchors.fill: parent
                 anchors.leftMargin: 24
@@ -237,7 +235,7 @@ FocusScope {
             Layout.fillWidth: true
             implicitHeight: 48
             visible: pane.inTrash && backend.folder.count > 0
-            color: pane.tint(theme.foreground, 0.04)
+            color: Qt.alpha(theme.foreground, 0.04)
             PlainButton {
                 anchors.centerIn: parent
                 text: qsTr("Empty Trash")
@@ -274,7 +272,7 @@ FocusScope {
                     anchors.fill: parent
                     anchors.margins: 2
                     visible: viewDrop.containsDrag
-                    color: pane.tint(theme.accent, 0.05)
+                    color: Qt.alpha(theme.accent, 0.05)
                     border.width: 2
                     border.color: theme.accent
                     radius: Math.min(6, theme.radius)

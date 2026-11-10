@@ -33,8 +33,6 @@ ApplicationWindow {
     // it knows how.
     readonly property var view: external ? externalView.item : inlineView.item
 
-    function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
-
     function call(name, arg) {
         if (win.view && typeof win.view[name] === "function")
             win.view[name](arg)
@@ -109,7 +107,7 @@ ApplicationWindow {
                     IconButton { glyph: "open"; text: qsTr("Open (⏎)"); onClicked: previewer.open() }
                     IconButton { glyph: "close"; text: qsTr("Close (Space)"); onClicked: Qt.quit() }
                 }
-                Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: win.tint(theme.foreground, 0.12) }
+                Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Qt.alpha(theme.foreground, 0.12) }
             }
 
             Item {

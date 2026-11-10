@@ -36,8 +36,6 @@ Item {
     readonly property bool showDate: detailed && width >= 480
     readonly property bool showSize: detailed && width >= 380
 
-    function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
-
     readonly property string glyph: row.isDir ? "folder"
                                   : row.kind === "image" ? "pictures"
                                   : row.kind === "video" ? "videos"
@@ -62,9 +60,9 @@ Item {
         radius: Math.min(4, theme.radius)
         border.width: folderDrop.containsDrag ? 2 : 0
         border.color: theme.accent
-        color: row.current || folderDrop.containsDrag ? row.tint(theme.accent, 0.18)
-             : row.trail ? row.tint(theme.foreground, 0.08)
-             : hover.hovered ? row.tint(theme.foreground, 0.05)
+        color: row.current || folderDrop.containsDrag ? Qt.alpha(theme.accent, 0.18)
+             : row.trail ? Qt.alpha(theme.foreground, 0.08)
+             : hover.hovered ? Qt.alpha(theme.foreground, 0.05)
              : "transparent"
     }
 

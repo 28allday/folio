@@ -18,7 +18,7 @@ TextField {
         implicitHeight: 38
         color: theme.darkBackground
         border.width: 1
-        border.color: field.activeFocus ? theme.accent : Qt.rgba(theme.foreground.r, theme.foreground.g, theme.foreground.b, 0.18)
+        border.color: field.activeFocus ? theme.accent : Qt.alpha(theme.foreground, 0.18)
         radius: Math.min(4, theme.radius)
     }
 }

@@ -26,8 +26,6 @@ Item {
     signal clicked(int modifiers)
     signal activated()
 
-    function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
-
     // Pictures and drawings round their corners with the theme: square on
     // Omarchy's default, softly rounded on themes that round windows.
     readonly property real iconRadius: Math.min(10, theme.radius)
@@ -154,8 +152,8 @@ Item {
             height: 92
             preferredRendererType: Shape.CurveRenderer
             ShapePath {
-                fillColor: tile.current || folderDrop.containsDrag ? Qt.tint(theme.lighterBackground, tile.tint(theme.accent, 0.3))
-                    : hover.hovered ? Qt.tint(theme.lighterBackground, tile.tint(theme.foreground, 0.06))
+                fillColor: tile.current || folderDrop.containsDrag ? Qt.tint(theme.lighterBackground, Qt.alpha(theme.accent, 0.3))
+                    : hover.hovered ? Qt.tint(theme.lighterBackground, Qt.alpha(theme.foreground, 0.06))
                     : theme.lighterBackground
                 strokeColor: tile.current || folderDrop.containsDrag ? theme.accent : "transparent"
                 strokeWidth: folderDrop.containsDrag ? 2.5 : 1.5
@@ -207,7 +205,7 @@ Item {
                 anchors.centerIn: parent
                 width: 30; height: 30
                 radius: Math.min(4, theme.radius)
-                color: tile.tint(theme.darkBackground, 0.75)
+                color: Qt.alpha(theme.darkBackground, 0.75)
                 Glyph { anchors.centerIn: parent; name: "play"; size: 16; color: theme.brightForeground }
             }
 
@@ -237,7 +235,7 @@ Item {
                 height: parent.shown.height + 6
                 color: "transparent"
                 border.width: tile.current ? 2 : 1
-                border.color: tile.current ? theme.accent : tile.tint(theme.foreground, 0.2)
+                border.color: tile.current ? theme.accent : Qt.alpha(theme.foreground, 0.2)
                 radius: tile.iconRadius > 0 ? tile.iconRadius + 3 : 0
             }
         }
@@ -253,7 +251,7 @@ Item {
                 width: 66; height: 92
                 color: theme.lighterBackground
                 border.width: 1
-                border.color: tile.tint(theme.foreground, 0.16)
+                border.color: Qt.alpha(theme.foreground, 0.16)
                 radius: tile.iconRadius
                 Column {
                     x: 9; y: 11
@@ -261,7 +259,7 @@ Item {
                     Rectangle { width: 34; height: 4; color: tile.kindColor }
                     Repeater {
                         model: [48, 48, 40, 48, 30]
-                        Rectangle { required property int modelData; width: modelData; height: 2; color: tile.tint(theme.foreground, 0.3) }
+                        Rectangle { required property int modelData; width: modelData; height: 2; color: Qt.alpha(theme.foreground, 0.3) }
                     }
                 }
             }

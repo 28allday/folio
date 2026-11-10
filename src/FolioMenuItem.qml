@@ -25,7 +25,7 @@ MenuItem {
         x: 4
         width: parent.width - 8
         radius: Math.min(4, theme.radius)
-        color: entry.highlighted && entry.enabled ? Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.18) : "transparent"
+        color: entry.highlighted && entry.enabled ? Qt.alpha(theme.accent, 0.18) : "transparent"
     }
 
     contentItem: Item {

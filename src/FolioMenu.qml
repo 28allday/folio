@@ -25,7 +25,7 @@ Menu {
         implicitWidth: 240
         color: theme.background
         border.width: 1
-        border.color: Qt.rgba(theme.foreground.r, theme.foreground.g, theme.foreground.b, 0.16)
+        border.color: Qt.alpha(theme.foreground, 0.16)
         radius: Math.min(6, theme.radius)
     }
 }
