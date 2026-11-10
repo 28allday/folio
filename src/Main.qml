@@ -125,7 +125,9 @@ ApplicationWindow {
             }
 
             // The right pane of a split; Folio puts it here (see windows.cpp).
-            Rectangle { visible: win.split; Layout.topMargin: parent.parent.barHeight; Layout.fillHeight: true; implicitWidth: 1; color: win.tint(theme.foreground, 0.12) }
+            // Between the panes the divider runs up through the top bar, so
+            // each path reads as belonging to the files below it.
+            Rectangle { visible: win.split; Layout.fillHeight: true; implicitWidth: 1; color: win.tint(theme.foreground, 0.12) }
             Item {
                 id: splitHost
                 objectName: "splitHost"
