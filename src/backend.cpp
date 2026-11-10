@@ -1,10 +1,10 @@
 #include "backend.h"
 #include "fileops.h"
+#include "previewer.h"
 
 #include <QDesktopServices>
 #include <QCoreApplication>
 #include <QDir>
-#include <QFile>
 #include <QFileInfo>
 #include <QImageReader>
 #include <QMimeDatabase>
@@ -220,12 +220,7 @@ QVariantMap Backend::details(const QString &path, const QString &kind, const QSt
     } else if (kind == "text") {
         // Enough of the top of the file to recognize it, never the whole
         // thing: a log can be gigabytes.
-        QFile file(path);
-        if (file.open(QIODevice::ReadOnly)) {
-            const QByteArray head = file.read(6000);
-            if (!head.contains('\0'))
-                map.insert("text", QString::fromUtf8(head).section('\n', 0, 40));
-        }
+        map.insert("text", Previewer::readText(path, 6000).section('\n', 0, 40));
     }
     return map;
 }
