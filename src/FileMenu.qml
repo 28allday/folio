@@ -1,11 +1,12 @@
 import QtQuick
 
-// The right-click fileMenu. On an item: Open, Open With (each app that can),
+// The right-click menu. On an item: Open, Open With (each app that can),
 // Preview, Rename, Duplicate, Copy, Cut, Paste Into, Copy Path, Compress,
 // Share (Dropbox link, Taildrop, LocalSend: whichever are available), Pin,
-// Terminal, Delete. On empty
-// space: Paste, New Folder, Copy Path, Terminal, hidden files. Entries show
-// their keys, so the menu also teaches the shortcuts.
+// Terminal, Delete. On empty space: Paste, New Folder, Copy Path, Terminal,
+// hidden files. In the trash: Restore, Empty Trash and Delete Permanently,
+// without the entries that change files. Entries show their keys, so the
+// menu also teaches the shortcuts.
 FolioMenu {
     id: fileMenu
 
@@ -31,7 +32,6 @@ FolioMenu {
     readonly property bool onSelection: onItem && target.selected === true && backend.folder.selectedCount > 1
                                         && backend.folder.indexOf(target.name) >= 0
     readonly property var paths: !onItem ? [] : onSelection ? backend.folder.selectedPaths() : [target.path]
-
 
     // Opens at the pointer, or (from the keyboard, Alt+Return) beside the
     // item it's about.
@@ -89,13 +89,13 @@ FolioMenu {
     }
     MenuLine { shown: fileMenu.onItem }
     FolioMenuItem {
-        shown: !fileMenu.trashView && (fileMenu.onItem)
+        shown: !fileMenu.trashView && fileMenu.onItem
         text: qsTr("Rename…")
         keys: "F2"
         onTriggered: fileMenu.renameRequested(fileMenu.target)
     }
     FolioMenuItem {
-        shown: !fileMenu.trashView && (fileMenu.onItem)
+        shown: !fileMenu.trashView && fileMenu.onItem
         text: qsTr("Duplicate")
         keys: "Ctrl+Shift+D"
         onTriggered: fileOps.duplicate(fileMenu.target.path)
@@ -107,7 +107,7 @@ FolioMenu {
         onTriggered: fileOps.copy(fileMenu.paths)
     }
     FolioMenuItem {
-        shown: !fileMenu.trashView && (fileMenu.onItem)
+        shown: !fileMenu.trashView && fileMenu.onItem
         text: qsTr("Cut")
         keys: "Ctrl+X"
         onTriggered: fileOps.cut(fileMenu.paths)
@@ -132,7 +132,7 @@ FolioMenu {
     }
     MenuLine { }
     FolioMenuItem {
-        shown: !fileMenu.trashView && (fileMenu.onItem)
+        shown: !fileMenu.trashView && fileMenu.onItem
         text: qsTr("Compress")
         onTriggered: fileOps.compress(fileMenu.paths)
     }
@@ -171,7 +171,7 @@ FolioMenu {
                 model: places.peers
                 FolioMenuItem {
                     required property var modelData
-                        text: modelData.name
+                    text: modelData.name
                     onTriggered: fileOps.shareTaildrop(fileMenu.paths, modelData.host)
                 }
             }
