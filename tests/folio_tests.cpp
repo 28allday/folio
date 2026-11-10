@@ -499,8 +499,8 @@ private slots:
         trashed("clash.txt", home.filePath("Docs/clash.txt"));
         write(home.filePath("Docs/clash.txt"), "newer");
 
-        QCOMPARE(FileOps::readOriginalPath(trash + "/files/notes 1.txt"), home.filePath("Docs/notes 1.txt"));
-        QCOMPARE(FileOps::readDeletionDate(trash + "/files/notes 1.txt"), QDateTime(QDate(2026, 11, 10), QTime(12, 0)));
+        QCOMPARE(FileOps::originalPath(trash + "/files/notes 1.txt"), home.filePath("Docs/notes 1.txt"));
+        QCOMPARE(FileOps::deletedAt(trash + "/files/notes 1.txt"), QDateTime(QDate(2026, 11, 10), QTime(12, 0)));
 
         QString error;
         QCOMPARE(FileOps::restoreOne(trash + "/files/notes 1.txt", &error), home.filePath("Docs/notes 1.txt"));

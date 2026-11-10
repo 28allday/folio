@@ -65,9 +65,9 @@ public:
     // has a note in Trash/info saying where it came from.
     Q_INVOKABLE bool inTrash(const QString &path) const;
     // Where a trashed item came from, or empty if its note is missing.
-    Q_INVOKABLE QString originalPath(const QString &path) const;
+    Q_INVOKABLE static QString originalPath(const QString &trashedPath);
     // When it was trashed, from its note.
-    Q_INVOKABLE QDateTime deletedAt(const QString &path) const;
+    Q_INVOKABLE static QDateTime deletedAt(const QString &trashedPath);
     // Puts items back where they came from (recreating the folder if it's
     // gone, and never overwriting what's there now).
     Q_INVOKABLE void restore(const QStringList &paths);
@@ -104,10 +104,8 @@ public:
     static bool sameDrive(const QString &a, const QString &b);
     // The trash folders: the home one, then each mounted drive's own.
     static QStringList trashDirs();
-    // For an item in <trash>/files: its note, and the path it came from.
+    // For an item in <trash>/files: its note.
     static QString infoFileFor(const QString &trashedPath);
-    static QString readOriginalPath(const QString &trashedPath);
-    static QDateTime readDeletionDate(const QString &trashedPath);
     // Restores one item; returns where it went, or empty with `error` set.
     static QString restoreOne(const QString &trashedPath, QString *error);
     static bool deleteTrashed(const QString &trashedPath);

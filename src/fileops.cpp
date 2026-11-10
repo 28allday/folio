@@ -395,7 +395,7 @@ QString FileOps::infoFileFor(const QString &trashedPath) {
     return trashDir + "/info/" + item.fileName() + ".trashinfo";
 }
 
-QString FileOps::readOriginalPath(const QString &trashedPath) {
+QString FileOps::originalPath(const QString &trashedPath) {
     QFile info(infoFileFor(trashedPath));
     if (!info.open(QIODevice::ReadOnly))
         return {};
@@ -414,7 +414,7 @@ QString FileOps::readOriginalPath(const QString &trashedPath) {
     return {};
 }
 
-QDateTime FileOps::readDeletionDate(const QString &trashedPath) {
+QDateTime FileOps::deletedAt(const QString &trashedPath) {
     QFile info(infoFileFor(trashedPath));
     if (!info.open(QIODevice::ReadOnly))
         return {};
@@ -425,16 +425,8 @@ QDateTime FileOps::readDeletionDate(const QString &trashedPath) {
     return {};
 }
 
-QDateTime FileOps::deletedAt(const QString &path) const {
-    return readDeletionDate(path);
-}
-
-QString FileOps::originalPath(const QString &path) const {
-    return readOriginalPath(path);
-}
-
 QString FileOps::restoreOne(const QString &trashedPath, QString *error) {
-    const QString original = readOriginalPath(trashedPath);
+    const QString original = originalPath(trashedPath);
     if (original.isEmpty()) {
         *error = tr("%1 has no record of where it came from.").arg(QFileInfo(trashedPath).fileName());
         return {};
