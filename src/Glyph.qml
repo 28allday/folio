@@ -21,33 +21,59 @@ Item {
         return "M" + (cx - r) + " " + cy + "a" + r + " " + r + " 0 1 0 " + (2 * r) + " 0a" + r + " " + r + " 0 1 0 " + (-2 * r) + " 0"
     }
 
+    // On themes that round windows, the icons' boxes round too.
+    readonly property real r: theme.radius > 0 ? 2 : 0
+
+    // A rectangle as a path, its corners rounded by `rad` (quadratic curves,
+    // which the curve renderer draws natively).
+    function box(x, y, w, h, rad) {
+        if (rad <= 0)
+            return "M" + x + " " + y + "h" + w + "v" + h + "h" + (-w) + "z"
+        const x2 = x + w, y2 = y + h
+        return "M" + (x + rad) + " " + y + "H" + (x2 - rad) + "Q" + x2 + " " + y + " " + x2 + " " + (y + rad)
+             + "V" + (y2 - rad) + "Q" + x2 + " " + y2 + " " + (x2 - rad) + " " + y2
+             + "H" + (x + rad) + "Q" + x + " " + y2 + " " + x + " " + (y2 - rad)
+             + "V" + (y + rad) + "Q" + x + " " + y + " " + (x + rad) + " " + y + "Z"
+    }
+    // A page with a folded corner, rounded like the boxes.
+    function page() {
+        if (r <= 0)
+            return "M6 3h8l4 4v14H6zM14 3v4h4"
+        return "M8 3H14L18 7V19Q18 21 16 21H8Q6 21 6 19V5Q6 3 8 3ZM14 3v4h4"
+    }
+    function folderBox() {
+        if (r <= 0)
+            return "M3 6h7l2 2h9v11H3z"
+        return "M3 8Q3 6 5 6H10L12 8H19Q21 8 21 10V17Q21 19 19 19H5Q3 19 3 17Z"
+    }
+
     readonly property var paths: ({
         "home": "M4 10l8-6 8 6v10H4zM10 20v-6h4v6",
-        "documents": "M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h6",
+        "documents": page() + "M9 12h6M9 16h6",
         "downloads": "M12 4v11M7 10l5 5 5-5M4 20h16",
-        "pictures": "M3 5h18v14H3zM3 16l5-5 4 4 3-3 6 6" + circle(16, 9, 1.5),
+        "pictures": box(3, 5, 18, 14, r) + "M3 16l5-5 4 4 3-3 6 6" + circle(16, 9, 1.5),
         "music": "M9 17V5l11-2v12" + circle(6.5, 17, 2.5) + circle(17.5, 15, 2.5),
-        "videos": "M3 5h18v14H3zM10 9v6l5-3z",
+        "videos": box(3, 5, 18, 14, r) + "M10 9v6l5-3z",
         // Dropbox's own mark, five diamonds: filled, as the brand draws it.
         "dropbox": "M7 2.5L12 5.7 7 8.9 2 5.7zM17 2.5L22 5.7 17 8.9 12 5.7zM7 8.9L12 12.1 7 15.3 2 12.1zM17 8.9L22 12.1 17 15.3 12 12.1zM12 13.3L17 16.5 12 19.7 7 16.5z",
         "recent": circle(12, 12, 9) + "M12 7v5l3 2",
         "trash": "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13",
-        "drive": "M3 6h18v12H3zM7 14h2",
-        "peer": "M4 4h16v11H4zM9 20h6M12 15v5",
-        "folder": "M3 6h7l2 2h9v11H3z",
-        "file": "M6 3h8l4 4v14H6zM14 3v4h4",
+        "drive": box(3, 6, 18, 12, r) + "M7 14h2",
+        "peer": box(4, 4, 16, 11, r) + "M9 20h6M12 15v5",
+        "folder": folderBox(),
+        "file": page(),
         "back": "M15 6l-6 6 6 6",
         "forward": "M9 6l6 6-6 6",
         "up": "M6 15l6-6 6 6",
-        "grid": "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
+        "grid": box(4, 4, 7, 7, r / 2) + box(13, 4, 7, 7, r / 2) + box(4, 13, 7, 7, r / 2) + box(13, 13, 7, 7, r / 2),
         "list": "M4 6h16M4 12h16M4 18h16",
-        "columns": "M3 4h18v16H3zM9 4v16M15 4v16",
-        "preview": "M3 5h18v14H3zM14 5v14",
+        "columns": box(3, 4, 18, 16, r) + "M9 4v16M15 4v16",
+        "preview": box(3, 5, 18, 14, r) + "M14 5v14",
         "hidden": "M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" + circle(12, 12, 3),
         // One per sort order, an arrow beside what it sorts by.
         "sort": "M7 4v16M3 16l4 4 4-4M14 6h7M14 12h5M14 18h3",
         "sort-name": "M7 4v16M3 16l4 4 4-4M14 11l2.5-7 2.5 7M14.8 8.6h3.4M14 14h5l-5 6h5",
-        "sort-kind": "M7 4v16M3 16l4 4 4-4M14.5 14h5v5h-5z" + circle(17, 7.5, 2.5),
+        "sort-kind": "M7 4v16M3 16l4 4 4-4" + box(14.5, 14, 5, 5, r / 2) + circle(17, 7.5, 2.5),
         "sort-newest": "M7 4v16M3 16l4 4 4-4" + circle(17, 12, 4.5) + "M17 9.5v2.5l1.8 1.2",
         "sort-oldest": "M7 20V4M3 8l4-4 4 4" + circle(17, 12, 4.5) + "M17 9.5v2.5l1.8 1.2",
         "sort-size": "M7 4v16M3 16l4 4 4-4M14 6h7M14 12h5M14 18h3",
