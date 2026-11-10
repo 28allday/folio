@@ -11,6 +11,9 @@ MenuItem {
     // Hidden entries take no room.
     property bool shown: true
 
+    // Hover is off by default here; with it, the pointer highlights an
+    // entry and opens a submenu on its own, as menus elsewhere do.
+    hoverEnabled: true
     visible: shown
     height: shown ? implicitHeight : 0
     implicitHeight: 32
