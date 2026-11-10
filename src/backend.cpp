@@ -13,6 +13,12 @@
 
 Backend::Backend(const QString &home, QObject *parent)
     : QObject(parent), m_home(home.isEmpty() ? QDir::homePath() : home) {
+    m_noticeTimer.setSingleShot(true);
+    m_noticeTimer.setInterval(4000);
+    connect(&m_noticeTimer, &QTimer::timeout, this, [this] {
+        m_notice.clear();
+        emit noticeChanged();
+    });
     connect(&m_mounter, &Mounter::mounted, this, [this](const QString &, const QString &root) {
         setBusy({});
         // Land in the matching home folder when the other machine has one,
@@ -172,6 +178,12 @@ void Backend::openPeer(const QString &host) {
     // already authenticated, so the SSH "first time seeing this host" check
     // adds nothing but a prompt; it's accepted for them, and only them.
     m_mounter.mount("sftp://" + host + "/", true);
+}
+
+void Backend::showNotice(const QString &notice) {
+    m_notice = notice;
+    emit noticeChanged();
+    m_noticeTimer.start();
 }
 
 void Backend::dismissMessage() {

@@ -138,6 +138,7 @@ ApplicationWindow {
         target: fileOps
         function onDone(folder, name) { if (folder === backend.path) backend.expectSelection(name) }
         function onFailed(message) { backend.showMessage(message) }
+        function onNotice(notice) { backend.showNotice(notice) }
     }
 
     Connections {
@@ -180,7 +181,7 @@ ApplicationWindow {
             Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: 40
-                visible: backend.message.length > 0 || backend.busy.length > 0 || fileOps.busy.length > 0 || backend.folder.error.length > 0
+                visible: backend.message.length > 0 || backend.busy.length > 0 || fileOps.busy.length > 0 || backend.folder.error.length > 0 || backend.notice.length > 0
                 color: backend.message.length > 0 || backend.folder.error.length > 0 ? win.tint(theme.red, 0.14) : win.tint(theme.accent, 0.10)
                 RowLayout {
                     anchors.fill: parent
@@ -188,7 +189,7 @@ ApplicationWindow {
                     anchors.rightMargin: 12
                     Text {
                         Layout.fillWidth: true
-                        text: backend.message || backend.folder.error || backend.busy || fileOps.busy
+                        text: backend.message || backend.folder.error || backend.busy || fileOps.busy || backend.notice
                         color: theme.brightForeground
                         elide: Text.ElideRight
                     }

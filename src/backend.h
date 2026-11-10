@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QProcess>
 #include <QStringList>
+#include <QTimer>
 #include <QVariantList>
 
 #include "foldermodel.h"
@@ -21,6 +22,7 @@ class Backend : public QObject {
     Q_PROPERTY(bool canBack READ canBack NOTIFY pathChanged)
     Q_PROPERTY(bool canForward READ canForward NOTIFY pathChanged)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
+    Q_PROPERTY(QString notice READ notice NOTIFY noticeChanged)
     Q_PROPERTY(QString busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(bool previewing READ previewing NOTIFY previewingChanged)
 
@@ -36,6 +38,7 @@ public:
     bool canBack() const { return m_index > 0; }
     bool canForward() const { return m_index + 1 < m_history.size(); }
     QString message() const { return m_message; }
+    QString notice() const { return m_notice; }
     QString busy() const { return m_busy; }
     bool previewing() const { return m_preview.state() != QProcess::NotRunning; }
 
@@ -47,6 +50,9 @@ public:
     Q_INVOKABLE void openPeer(const QString &host);
     Q_INVOKABLE void dismissMessage();
     Q_INVOKABLE void showMessage(const QString &message) { setMessage(message); }
+    // Good news that needs no answer ("Link copied"): shown for a few
+    // seconds in the accent, unlike problems, which wait to be dismissed.
+    Q_INVOKABLE void showNotice(const QString &notice);
     // Selects `name` the next time the folder loads (after file work).
     Q_INVOKABLE void expectSelection(const QString &name) { m_pendingSelection = name; }
     Q_INVOKABLE QVariantMap details(const QString &path, const QString &kind, const QString &mime) const;
@@ -77,6 +83,7 @@ public:
 signals:
     void pathChanged();
     void messageChanged();
+    void noticeChanged();
     void busyChanged();
     void previewingChanged();
     void selectRequested(const QString &name);
@@ -92,6 +99,8 @@ private:
     QStringList m_history;
     int m_index = -1;
     QString m_message;
+    QString m_notice;
+    QTimer m_noticeTimer;
     QString m_busy;
     QString m_pendingSelection;
     Mounter m_mounter;
