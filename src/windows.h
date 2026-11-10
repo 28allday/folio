@@ -28,17 +28,32 @@ public:
     // The window used most recently, for "Show in folder" from other apps.
     Backend *latest() const;
 
+    // Splits a window: a second folder pane on the right, with its own
+    // folder, history and selection, starting at `folder`. Returns the pane.
+    Q_INVOKABLE QObject *openSplit(QObject *window, const QString &folder);
+    Q_INVOKABLE void closeSplit(QObject *window);
+
 private:
+    struct Pane {
+        QObject *item = nullptr;
+        Backend *backend = nullptr;
+        FileOps *fileOps = nullptr;
+        QQmlContext *context = nullptr;
+    };
     struct Window {
         QQuickWindow *window;
         Backend *backend;
         FileOps *fileOps;
         QQmlContext *context;
+        Pane split;
     };
+    Window *find(QObject *window);
+    static void release(Pane &pane);
     void close(QQuickWindow *window);
 
     QQmlEngine *m_engine;
     QQmlComponent m_component;
+    QQmlComponent m_pane;
     // Most recently used first.
     QList<Window> m_windows;
 };

@@ -1,6 +1,7 @@
 <RCC>
     <qresource prefix="/">
         <file alias="Main.qml">Main.qml</file>
+        <file alias="FolderPane.qml">FolderPane.qml</file>
         <file alias="Glyph.qml">Glyph.qml</file>
         <file alias="IconButton.qml">IconButton.qml</file>
         <file alias="FileTile.qml">FileTile.qml</file>

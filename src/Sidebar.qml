@@ -18,6 +18,8 @@ Rectangle {
     // rows, ⏎ (or →) opens one and hands the keyboard back to the files.
     signal finished()
     property int cursor: 0
+    // The pane the sidebar acts on: the one used last.
+    property var target: backend
 
     // Something is being dragged over the sidebar (anywhere on it, rows
     // included), so the pin box shows.
@@ -48,9 +50,9 @@ Rectangle {
         if (!row)
             return
         if (row.host !== undefined)
-            backend.openPeer(row.host)
+            sidebar.target.openPeer(row.host)
         else
-            backend.navigate(row.path)
+            sidebar.target.navigate(row.path)
         finished()
     }
     function reveal(item) {
@@ -71,7 +73,7 @@ Rectangle {
     // The deepest place the current folder sits under.
     readonly property string activePath: {
         let best = ""
-        const here = backend.path
+        const here = sidebar.target.path
         for (const list of [places.places, places.pinned, places.views, places.devices]) {
             for (const p of list) {
                 if ((here === p.path || here.startsWith(p.path === "/" ? "/" : p.path + "/")) && p.path.length > best.length && p.path !== "/")
@@ -120,59 +122,6 @@ Rectangle {
         // Inline components don't see the file's ids, so this keeps its own.
         function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
 
-    // Keyboard: Tab moves here from the files and back. ↑ ↓ move between
-    // rows, ⏎ (or →) opens one and hands the keyboard back to the files.
-    signal finished()
-    property int cursor: 0
-
-    // Something is being dragged over the sidebar (anywhere on it, rows
-    // included), so the pin box shows.
-    property int dropHovers: 0
-    readonly property bool dragging: drop.containsDrag || dropHovers > 0 || pinDrop.containsDrag
-    readonly property var rows: [].concat(
-        places.places.map(p => ({ path: p.path })),
-        places.pinned.map(p => ({ path: p.path })),
-        places.views.map(p => ({ path: p.path })),
-        places.devices.map(p => ({ path: p.path })),
-        places.peers.map(p => ({ host: p.host })))
-    readonly property int pinnedAt: places.places.length
-    readonly property int viewsAt: pinnedAt + places.pinned.length
-    readonly property int devicesAt: viewsAt + places.views.length
-    readonly property int peersAt: devicesAt + places.devices.length
-
-    function focusSidebar() {
-        // Start on the row for where we are, or the top.
-        let at = 0
-        for (let i = 0; i < rows.length; ++i)
-            if (rows[i].path !== undefined && rows[i].path === activePath)
-                at = i
-        cursor = at
-        forceActiveFocus()
-    }
-    function activate(i) {
-        const row = rows[i]
-        if (!row)
-            return
-        if (row.host !== undefined)
-            backend.openPeer(row.host)
-        else
-            backend.navigate(row.path)
-        finished()
-    }
-    function reveal(item) {
-        const y = item.mapToItem(column, 0, 0).y
-        if (y < flick.contentY)
-            flick.contentY = Math.max(0, y - 20)
-        else if (y + item.height > flick.contentY + flick.height)
-            flick.contentY = y + item.height - flick.height + 20
-    }
-
-    Keys.onUpPressed: cursor = Math.max(0, cursor - 1)
-    Keys.onDownPressed: cursor = Math.min(rows.length - 1, cursor + 1)
-    Keys.onReturnPressed: activate(cursor)
-    Keys.onEnterPressed: activate(cursor)
-    Keys.onRightPressed: activate(cursor)
-    Keys.onEscapePressed: finished()
 
         background: Rectangle {
             radius: Math.min(4, theme.radius)
@@ -237,11 +186,11 @@ Rectangle {
             // The section's label is home itself: click it to go there.
             SectionLabel {
                 text: qsTr("Home")
-                color: backend.path === places.home ? theme.accent
+                color: sidebar.target.path === places.home ? theme.accent
                      : homeHover.hovered ? theme.foreground : theme.secondaryForeground
                 Accessible.role: Accessible.Button
                 HoverHandler { id: homeHover; cursorShape: Qt.PointingHandCursor }
-                TapHandler { onTapped: backend.navigate(places.home) }
+                TapHandler { onTapped: sidebar.target.navigate(places.home) }
             }
             Repeater {
                 model: places.places
@@ -257,7 +206,7 @@ Rectangle {
                     active: sidebar.activePath === modelData.path
                     status: sidebar.statusText(modelData.status)
                     statusColor: modelData.status === "stopped" ? theme.red : modelData.status === "syncing" ? theme.yellow : theme.green
-                    onClicked: backend.navigate(modelData.path)
+                    onClicked: sidebar.target.navigate(modelData.path)
                 }
             }
 
@@ -279,7 +228,7 @@ Rectangle {
                     text: modelData.name
                     glyph: "folder"
                     active: sidebar.activePath === modelData.path
-                    onClicked: backend.navigate(modelData.path)
+                    onClicked: sidebar.target.navigate(modelData.path)
                     IconButton {
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
@@ -315,7 +264,7 @@ Rectangle {
                             const path = decodeURIComponent(url.toString().replace(/^file:\/\//, ""))
                             const problem = places.pin(path)
                             if (problem.length > 0)
-                                backend.showMessage(problem)
+                                sidebar.target.showMessage(problem)
                         }
                         drop.accept(Qt.LinkAction)
                     }
@@ -335,7 +284,7 @@ Rectangle {
                     text: modelData.name
                     glyph: modelData.icon
                     active: sidebar.activePath === modelData.path
-                    onClicked: backend.navigate(modelData.path)
+                    onClicked: sidebar.target.navigate(modelData.path)
                     keyed: sidebar.activeFocus && sidebar.cursor === sidebar.viewsAt + index
                     onKeyedChanged: if (keyed) sidebar.reveal(this)
                 }
@@ -355,7 +304,7 @@ Rectangle {
                     text: modelData.name
                     glyph: "drive"
                     active: sidebar.activePath === modelData.path
-                    onClicked: backend.navigate(modelData.path)
+                    onClicked: sidebar.target.navigate(modelData.path)
                 }
             }
 
@@ -370,8 +319,8 @@ Rectangle {
                     onKeyedChanged: if (keyed) sidebar.reveal(this)
                     text: modelData.name
                     glyph: "peer"
-                    active: backend.path.indexOf("/sftp:host=" + modelData.host) >= 0
-                    onClicked: backend.openPeer(modelData.host)
+                    active: sidebar.target.path.indexOf("/sftp:host=" + modelData.host) >= 0
+                    onClicked: sidebar.target.openPeer(modelData.host)
                 }
             }
         }

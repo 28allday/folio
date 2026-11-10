@@ -12,6 +12,9 @@ Rectangle {
     // Ctrl+L: the path as text to edit. Enter goes there, Escape cancels,
     // Tab completes a folder name.
     property bool editing: false
+    // The right pane of a split has a close button (Ctrl+W).
+    property bool closable: false
+    signal closeRequested()
     signal togglePreview()
     signal cycleView()
     signal editDone()
@@ -79,6 +82,7 @@ Rectangle {
             boundsBehavior: Flickable.StopAtBounds
             // Long paths keep their end in view; that's where you are.
             onContentWidthChanged: contentX = Math.max(0, contentWidth - width)
+            onWidthChanged: contentX = Math.max(0, contentWidth - width)
 
             Row {
                 id: crumbs
@@ -149,6 +153,12 @@ Rectangle {
             text: qsTr("Details (Ctrl+I)")
             active: bar.previewVisible
             onClicked: bar.togglePreview()
+        }
+        IconButton {
+            visible: bar.closable
+            glyph: "close"
+            text: qsTr("Close this pane (Ctrl+W)")
+            onClicked: bar.closeRequested()
         }
     }
 
