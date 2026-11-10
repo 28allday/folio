@@ -23,6 +23,7 @@
         <file alias="PlainField.qml">PlainField.qml</file>
         <file alias="SortMenu.qml">SortMenu.qml</file>
         <file alias="FileMenu.qml">FileMenu.qml</file>
+        <file alias="FolioDialog.qml">FolioDialog.qml</file>
         <file alias="ConfirmDialog.qml">ConfirmDialog.qml</file>
         <file alias="RenameDialog.qml">RenameDialog.qml</file>
         <file alias="MountPrompt.qml">MountPrompt.qml</file>
