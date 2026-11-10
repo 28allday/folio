@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Pdf
 
 // Every page, scrolling, fitted to a comfortable reading width. Loaded on

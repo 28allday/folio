@@ -1,7 +1,5 @@
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Layouts
-import QtQuick.Controls.Material
 
 // The breadcrumb path from the left edge; view buttons on the right. Back and
 // forward are keys (Alt+← / Alt+→) and the mouse's thumb buttons.

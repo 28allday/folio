@@ -1,6 +1,4 @@
 import QtQuick
-import QtQuick.Controls
-import QtQuick.Controls.Material
 
 // The right-click fileMenu. On an item: Open, Open With (each app that can),
 // Preview, Rename, Duplicate, Copy, Cut, Paste Into, Copy Path, Compress,

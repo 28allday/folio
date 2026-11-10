@@ -1,6 +1,4 @@
 import QtQuick
-import QtQuick.Controls
-import QtQuick.Controls.Material
 
 // The orders a folder can be in. Folders stay first in each; S steps
 // through them from the keyboard.

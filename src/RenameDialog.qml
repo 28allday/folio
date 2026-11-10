@@ -1,6 +1,4 @@
 import QtQuick
-import QtQuick.Controls
-import QtQuick.Controls.Material
 import QtQuick.Layouts
 
 // Renaming (F2): the name with everything but its extension selected, so
