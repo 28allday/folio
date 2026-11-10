@@ -65,7 +65,7 @@ GridView {
     Text {
         anchors.centerIn: parent
         visible: grid.count === 0 && !backend.folder.loading && backend.folder.error.length === 0
-        text: qsTr("This folder is empty")
+        text: backend.folder.query ? qsTr("Nothing matches “%1”").arg(backend.folder.query) : qsTr("This folder is empty")
         color: theme.secondaryForeground
     }
 }

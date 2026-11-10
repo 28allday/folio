@@ -80,6 +80,48 @@ private slots:
         QCOMPARE(model.indexOf("one.txt"), 0);
     }
 
+    void folderSearchesEveryFolderBelow()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("Photos/2024");
+        QDir(dir.path()).mkpath(".cache");
+        write(dir.filePath("beach notes.txt"), "x");
+        write(dir.filePath("Photos/2024/Beach.jpg"), "x");
+        write(dir.filePath("Photos/city.jpg"), "x");
+        write(dir.filePath(".cache/beach.tmp"), "x");
+
+        auto names = [&](bool hidden) {
+            QStringList out;
+            for (const auto &e : FolderModel::search(dir.path(), "beach", hidden, "name"))
+                out << e.name;
+            return out.join(", ");
+        };
+        // Named by where they are, ignoring case, hidden ones only when shown.
+        QCOMPARE(names(false), QString("beach notes.txt, Photos/2024/Beach.jpg"));
+        QCOMPARE(names(true), QString(".cache/beach.tmp, beach notes.txt, Photos/2024/Beach.jpg"));
+        // Stopped, it gives nothing rather than half an answer.
+        QVERIFY(FolderModel::search(dir.path(), "beach", false, "name", [] { return true; }).isEmpty());
+
+        // In the model, a query swaps the folder for its matches; clearing
+        // it, or going elsewhere, brings the folder back.
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 2);
+        model.setQuery("BEACH");
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 2);
+        QCOMPARE(model.get(1).value("path").toString(), dir.filePath("Photos/2024/Beach.jpg"));
+        model.setQuery("");
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.indexOf("Photos"), 0);
+        model.setQuery("city");
+        QVERIFY(loaded.wait(3000));
+        model.setPath(dir.filePath("Photos"));
+        QVERIFY(model.query().isEmpty());
+    }
+
     void folderModelSwapsFoldersWithoutAnEmptyFrame()
     {
         QTemporaryDir a, b;

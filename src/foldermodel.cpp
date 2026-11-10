@@ -13,6 +13,7 @@
 #include <QPointer>
 #include <QtConcurrent>
 #include <algorithm>
+#include <sys/stat.h>
 
 FolderModel::FolderModel(QObject *parent) : QAbstractListModel(parent) {
     // Copies, saves and downloads change a folder in bursts; wait for the
@@ -47,6 +48,9 @@ QString FolderModel::cacheKey() const {
 }
 
 void FolderModel::remember() {
+    // Search results are a moment's question, not a folder to come back to.
+    if (!m_query.isEmpty())
+        return;
     recentListings().insert(cacheKey(), new QVector<Entry>(m_entries));
 }
 
@@ -124,6 +128,27 @@ void FolderModel::setSortMode(const QString &sort) {
     reload();
 }
 
+void FolderModel::setQuery(const QString &query) {
+    if (query == m_query)
+        return;
+    m_query = query;
+    emit queryChanged();
+    if (!m_selected.isEmpty()) {
+        m_selected.clear();
+        emit selectionChanged();
+    }
+    // Back to the folder: its remembered listing shows at once.
+    if (m_query.isEmpty()) {
+        if (const auto *cached = recentListings().object(cacheKey())) {
+            beginResetModel();
+            m_entries = *cached;
+            endResetModel();
+            emit countChanged();
+        }
+    }
+    reload();
+}
+
 void FolderModel::setPath(const QString &path) {
     const QString clean = path.isEmpty() || path == recentPath() ? path : QDir::cleanPath(path);
     if (clean == m_path)
@@ -134,6 +159,11 @@ void FolderModel::setPath(const QString &path) {
         m_watcher.removePaths(m_watcher.files());
     m_path = clean;
     emit pathChanged();
+    // A search is of one folder; going elsewhere ends it.
+    if (!m_query.isEmpty()) {
+        m_query.clear();
+        emit queryChanged();
+    }
     if (!m_selected.isEmpty()) {
         m_selected.clear();
         emit selectionChanged();
@@ -207,20 +237,63 @@ QVector<FolderModel::Entry> FolderModel::list(const QString &path, bool showHidd
     QMimeDatabase mimes;
     const auto infos = dir.entryInfoList(filters, QDir::NoSort);
     entries.reserve(infos.size());
-    for (const QFileInfo &info : infos) {
-        Entry e;
-        e.name = info.fileName();
-        e.path = info.absoluteFilePath();
-        e.isDir = info.isDir();
-        e.size = e.isDir ? 0 : info.size();
-        e.modified = info.lastModified();
-        e.mime = e.isDir ? QStringLiteral("inode/directory")
-                         : mimes.mimeTypeForFile(info, QMimeDatabase::MatchExtension).name();
-        e.kind = kindForMime(e.mime);
-        e.extension = e.isDir ? QString() : info.suffix().toUpper();
-        entries.push_back(e);
-    }
+    for (const QFileInfo &info : infos)
+        entries.push_back(entryFor(info, mimes));
 
+    sortEntries(entries, sort);
+    return entries;
+}
+
+FolderModel::Entry FolderModel::entryFor(const QFileInfo &info, const QMimeDatabase &mimes) {
+    Entry e;
+    e.name = info.fileName();
+    e.path = info.absoluteFilePath();
+    e.isDir = info.isDir();
+    e.size = e.isDir ? 0 : info.size();
+    e.modified = info.lastModified();
+    e.mime = e.isDir ? QStringLiteral("inode/directory")
+                     : mimes.mimeTypeForFile(info, QMimeDatabase::MatchExtension).name();
+    e.kind = kindForMime(e.mime);
+    e.extension = e.isDir ? QString() : info.suffix().toUpper();
+    return e;
+}
+
+QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QString &query, bool showHidden,
+                                                const QString &sort, const std::function<bool()> &stop,
+                                                int limit) {
+    QVector<Entry> entries;
+    struct stat top;
+    if (::stat(QFile::encodeName(root).constData(), &top) != 0)
+        return entries;
+    QDir::Filters filters = QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System;
+    if (showHidden)
+        filters |= QDir::Hidden;
+
+    // Breadth first, so what's near comes before what's deep when there are
+    // more matches than the limit.
+    QMimeDatabase mimes;
+    const QDir base(root);
+    QStringList folders{root};
+    while (!folders.isEmpty() && entries.size() < limit) {
+        if (stop && stop())
+            return {};
+        const QString folder = folders.takeFirst();
+        const auto infos = QDir(folder).entryInfoList(filters, QDir::NoSort);
+        for (const QFileInfo &info : infos) {
+            if (info.fileName().contains(query, Qt::CaseInsensitive) && entries.size() < limit) {
+                Entry e = entryFor(info, mimes);
+                e.name = base.relativeFilePath(e.path);
+                entries.push_back(e);
+            }
+            // Other filesystems (a mounted drive, a tailnet machine, /proc
+            // from /) and symlinked folders aren't walked into.
+            struct stat st;
+            if (info.isDir() && !info.isSymLink()
+                && ::lstat(QFile::encodeName(info.absoluteFilePath()).constData(), &st) == 0
+                && st.st_dev == top.st_dev)
+                folders << info.absoluteFilePath();
+        }
+    }
     sortEntries(entries, sort);
     return entries;
 }
@@ -290,17 +363,7 @@ QVector<FolderModel::Entry> FolderModel::listRecent(const QString &xbel, bool sh
         if (seen.contains(u.path) || !info.exists() || (!showHidden && info.fileName().startsWith('.')))
             continue;
         seen << u.path;
-        Entry e;
-        e.name = info.fileName();
-        e.path = info.absoluteFilePath();
-        e.isDir = info.isDir();
-        e.size = e.isDir ? 0 : info.size();
-        e.modified = info.lastModified();
-        e.mime = e.isDir ? QStringLiteral("inode/directory")
-                         : mimes.mimeTypeForFile(info, QMimeDatabase::MatchExtension).name();
-        e.kind = kindForMime(e.mime);
-        e.extension = e.isDir ? QString() : info.suffix().toUpper();
-        entries.push_back(e);
+        entries.push_back(entryFor(info, mimes));
         if (entries.size() == limit)
             break;
     }
@@ -338,6 +401,9 @@ void FolderModel::reload() {
     const QString path = m_path;
     const bool showHidden = m_showHidden;
     const QString sort = m_sort;
+    const QString query = m_query;
+    *m_latest = generation;
+    const auto latest = m_latest;
     auto *watcher = new QFutureWatcher<QPair<QVector<Entry>, QString>>(this);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation] {
         watcher->deleteLater();
@@ -372,9 +438,11 @@ void FolderModel::reload() {
         if (!same)
             summarizeFolders(generation);
     });
-    watcher->setFuture(QtConcurrent::run([path, showHidden, sort] {
+    watcher->setFuture(QtConcurrent::run([path, showHidden, sort, query, latest, generation] {
         QString error;
-        auto entries = list(path, showHidden, sort, &error);
+        auto entries = query.isEmpty() || path == recentPath()
+            ? list(path, showHidden, sort, &error)
+            : search(path, query, showHidden, sort, [&] { return *latest != generation; });
         return qMakePair(entries, error);
     }));
 }

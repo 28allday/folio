@@ -1,17 +1,23 @@
 #pragma once
 
 #include <QAbstractListModel>
+#include <functional>
 #include <QDateTime>
 #include <QFileSystemWatcher>
 #include <QStringList>
 #include <QTimer>
 #include <QSet>
 #include <QVector>
+#include <atomic>
+#include <memory>
 
 // One folder's contents, listed off the UI thread so a slow mount (an SFTP
 // share over the tailnet, say) never freezes the window. Listing happens in
 // two passes: the entries first, then each subfolder's item count and the
 // first images inside it, which the folder tiles show peeking out.
+class QFileInfo;
+class QMimeDatabase;
+
 class FolderModel : public QAbstractListModel {
     Q_OBJECT
     Q_PROPERTY(QString path READ path WRITE setPath NOTIFY pathChanged)
@@ -22,6 +28,8 @@ class FolderModel : public QAbstractListModel {
     Q_PROPERTY(bool showHidden READ showHidden WRITE setShowHidden NOTIFY showHiddenChanged)
     Q_PROPERTY(QString sortMode READ sortMode WRITE setSortMode NOTIFY sortModeChanged)
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY selectionChanged)
+    // Set, the folder lists what matches it here and in every folder below.
+    Q_PROPERTY(QString query READ query WRITE setQuery NOTIFY queryChanged)
 
 public:
     enum Role {
@@ -66,6 +74,8 @@ public:
     void setShowHidden(bool show);
     QString sortMode() const { return m_sort; }
     void setSortMode(const QString &sort);
+    QString query() const { return m_query; }
+    void setQuery(const QString &query);
 
     void setPath(const QString &path);
     Q_INVOKABLE void reload();
@@ -86,6 +96,7 @@ public:
 
     // Synchronous building blocks, used by the background passes and tests.
     static QVector<Entry> list(const QString &path, bool showHidden, const QString &sort, QString *error);
+    static Entry entryFor(const QFileInfo &info, const QMimeDatabase &mimes);
     static void summarize(Entry &entry, bool showHidden);
     static QStringList sortModes();
     static void sortEntries(QVector<Entry> &entries, const QString &sort);
@@ -94,6 +105,11 @@ public:
     static QString recentFile();
     static QVector<Entry> listRecent(const QString &xbel, bool showHidden, int limit = 200);
     static QString kindForMime(const QString &mime);
+    // Everything under `root` whose name contains `query` (ignoring case),
+    // named by its path from `root`. Stops at `limit` matches, at other
+    // filesystems and at symlinks, and as soon as `stop` returns true.
+    static QVector<Entry> search(const QString &root, const QString &query, bool showHidden, const QString &sort,
+                                 const std::function<bool()> &stop = {}, int limit = 1000);
 
 signals:
     void pathChanged();
@@ -102,6 +118,7 @@ signals:
     void errorChanged();
     void showHiddenChanged();
     void sortModeChanged();
+    void queryChanged();
     void selectionChanged();
     void loaded();
 
@@ -122,7 +139,11 @@ private:
     QString m_error;
     bool m_showHidden = false;
     QString m_sort = "name";
+    QString m_query;
     quint64 m_generation = 0;
+    // The newest listing's generation, shared with the background searches
+    // so one that's been overtaken by more typing stops walking.
+    std::shared_ptr<std::atomic<quint64>> m_latest = std::make_shared<std::atomic<quint64>>(0);
     QFileSystemWatcher m_watcher;
     QTimer m_debounce;
     QTimer m_staleClear;

@@ -33,7 +33,7 @@ FocusScope {
     property string loadedPath: ""
     // While a text field has the keyboard (renaming, a password), single-key
     // and clipboard shortcuts stand aside so typing works.
-    readonly property bool typing: rename.visible || confirm.visible || backend.mounter.asking || pathBar.editing || (!!host && host.helpVisible)
+    readonly property bool typing: rename.visible || confirm.visible || backend.mounter.asking || pathBar.editing || pathBar.searchFocused || (!!host && host.helpVisible)
     readonly property bool keys: active && !typing
     // What file actions act on: everything selected, or the item under
     // the cursor when nothing is.
@@ -115,12 +115,19 @@ FocusScope {
     Shortcut { sequence: "Delete"; enabled: pane.keys; onActivated: pane.deleteSelected() }
     Shortcut { sequence: "F2"; enabled: pane.keys; onActivated: if (pane.current.path) rename.open(pane.current) }
     Shortcut { sequences: [StandardKey.SelectAll]; enabled: pane.keys; onActivated: backend.folder.selectAll() }
-    // Escape narrows a selection of several back to the cursor.
+    // Escape narrows a selection of several back to the cursor, then ends
+    // a search.
     Shortcut {
         sequence: "Escape"
-        enabled: pane.keys && backend.folder.selectedCount > 1
-        onActivated: backend.folder.selectOnly(view.item ? view.item.currentIndex : -1)
+        enabled: pane.keys && (backend.folder.selectedCount > 1 || backend.folder.query.length > 0)
+        onActivated: {
+            if (backend.folder.selectedCount > 1)
+                backend.folder.selectOnly(view.item ? view.item.currentIndex : -1)
+            else
+                pathBar.endSearch()
+        }
     }
+    Shortcut { sequence: "/"; enabled: pane.keys && backend.path !== "recent:"; onActivated: pathBar.search() }
     // The right-click menu from the keyboard, beside the selected item.
     Shortcut {
         sequences: ["Alt+Return", "Alt+Enter", "Menu", "Shift+F10"]

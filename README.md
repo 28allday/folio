@@ -22,6 +22,7 @@ Files (`folio`) is Omarchy's file manager. It's one quiet window that follows yo
 | Space | Preview |
 | Backspace, Alt+← / Alt+→ | Up, back, forward |
 | Ctrl+L | Type a path |
+| / | Search here and below |
 | Ctrl+C / X / V | Copy, cut, paste |
 | F2, Delete | Rename, move to the trash |
 | Ctrl+Shift+N | New folder |

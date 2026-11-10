@@ -22,6 +22,7 @@ Rectangle {
         ["Alt+← / Alt+→", qsTr("Back / forward (or the mouse's thumb buttons)")],
         ["Alt+Home", qsTr("Go home")],
         ["Ctrl+L", qsTr("Type a path (Tab completes)")],
+        ["/", qsTr("Search this folder and below")],
         ["Ctrl+1 / 2 / 3", qsTr("Grid, list or columns")],
         ["Space", qsTr("Preview the selected file")],
         ["Ctrl+I", qsTr("Show or hide the details pane")],

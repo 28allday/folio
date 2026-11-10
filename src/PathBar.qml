@@ -31,6 +31,31 @@ Rectangle {
         editDone()
     }
 
+    // /: search this folder and every folder below it, as you type. The
+    // results replace the folder until Escape, or until going elsewhere.
+    readonly property bool searching: backend.folder.query.length > 0 || searchField.activeFocus
+    readonly property bool searchFocused: searchField.activeFocus
+    function search() {
+        searchField.forceActiveFocus()
+        searchField.selectAll()
+    }
+    function endSearch() {
+        searchDelay.stop()
+        searchField.text = ""
+        backend.folder.query = ""
+        editDone()
+    }
+    Timer {
+        id: searchDelay
+        interval: 150
+        onTriggered: backend.folder.query = searchField.text.trim()
+    }
+    // Going to another folder ends the search there.
+    Connections {
+        target: backend.folder
+        function onQueryChanged() { if (backend.folder.query === "" && !searchField.activeFocus) searchField.text = "" }
+    }
+
     // Transparent: the window draws one bar across the whole top, so the
     // path bars of one or two panes read as part of it.
     color: "transparent"
@@ -62,8 +87,40 @@ Rectangle {
             onActiveFocusChanged: if (!activeFocus && bar.editing) bar.stopEditing()
         }
 
+        PlainField {
+            id: searchField
+            Layout.fillWidth: true
+            visible: bar.searching && !bar.editing
+            font.pixelSize: 14
+            rightPadding: scope.implicitWidth + 24
+            // Where it searches, at the end of the field. (A placeholder
+            // would float up as a label.)
+            Text {
+                id: scope
+                anchors.right: parent.right
+                anchors.rightMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("Search %1 and below").arg(backend.crumbs.length > 0 ? backend.crumbs[backend.crumbs.length - 1].name : "")
+                color: theme.secondaryForeground
+                font.pixelSize: 12
+            }
+            onTextEdited: searchDelay.restart()
+            // Enter or ↓ goes to the results, leaving the search up.
+            function toResults() {
+                searchDelay.stop()
+                backend.folder.query = text.trim()
+                if (backend.folder.query === "")
+                    bar.endSearch()
+                else
+                    bar.editDone()
+            }
+            onAccepted: toResults()
+            Keys.onDownPressed: toResults()
+            Keys.onEscapePressed: bar.endSearch()
+        }
+
         Flickable {
-            visible: !bar.editing
+            visible: !bar.editing && !bar.searching
             Layout.fillWidth: true
             Layout.fillHeight: true
             contentWidth: crumbs.implicitWidth

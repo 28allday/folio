@@ -168,7 +168,7 @@ Item {
                     x: 14 + 20 + 12
                     y: 8
                     visible: here.count === 0 && !backend.folder.loading && backend.folder.error.length === 0
-                    text: qsTr("Empty")
+                    text: backend.folder.query ? qsTr("No matches") : qsTr("Empty")
                     color: theme.secondaryForeground
                 }
             }
