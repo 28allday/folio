@@ -126,8 +126,11 @@ Rectangle {
             Text {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignRight
-                text: !pane.hasItem ? ""
-                    : (pane.trashed ? fileOps.deletedAt(pane.item.path) : pane.item.modified).toLocaleString(Qt.locale(translator.language), Locale.ShortFormat)
+                text: {
+                    translator.language // Re-read when the language (and so the default locale) changes.
+                    return !pane.hasItem ? ""
+                        : (pane.trashed ? fileOps.deletedAt(pane.item.path) : pane.item.modified).toLocaleString(Qt.locale(), Locale.ShortFormat)
+                }
                 color: theme.foreground
                 font.pixelSize: 12
             }

@@ -35,7 +35,8 @@ Item {
     function when(date) {
         if (!date)
             return ""
-        const locale = Qt.locale(translator.language)
+        translator.language // Re-read when the language (and so the default locale) changes.
+        const locale = Qt.locale()
         const now = new Date()
         const today = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate()
         return today ? date.toLocaleTimeString(locale, Locale.ShortFormat) : date.toLocaleDateString(locale, Locale.ShortFormat)
