@@ -157,6 +157,23 @@ private slots:
         QCOMPARE(model.count(), 1);
     }
 
+    void folderModelCountsFoldersAfterAQuickReread()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("Photos");
+        QDir(dir.path()).mkpath("Music");
+        write(dir.filePath("Photos/a.jpg"), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+        // A re-read before the counts came in still ends with them.
+        model.reload();
+        QVERIFY(loaded.wait(3000));
+        QTRY_COMPARE(model.get(0).value("itemCount").toInt(), 0);
+        QTRY_COMPARE(model.get(1).value("itemCount").toInt(), 1);
+    }
+
     void folderModelTellsCopiedFoldersApart()
     {
         // A copy (cp -a, rsync -a) lists exactly like its original, but its

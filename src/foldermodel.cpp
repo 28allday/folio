@@ -414,7 +414,7 @@ void FolderModel::reload() {
         m_staleClear.stop();
         const auto [entries, error] = watcher->result();
         // Unchanged (the usual case after showing a remembered listing):
-        // leave the items, and their folder summaries, alone.
+        // leave the items alone, and only fill in folder counts still missing.
         const bool same = error == m_error && !m_entries.isEmpty() && sameListing(m_entries, entries);
         if (!same) {
             beginResetModel();
@@ -437,8 +437,7 @@ void FolderModel::reload() {
         emit loaded();
         if (error.isEmpty())
             remember();
-        if (!same)
-            summarizeFolders(generation);
+        summarizeFolders(generation);
     });
     watcher->setFuture(QtConcurrent::run([path, showHidden, sort, query, latest, generation] {
         QString error;
@@ -450,9 +449,11 @@ void FolderModel::reload() {
 }
 
 void FolderModel::summarizeFolders(quint64 generation) {
+    // Only the folders not counted yet: a listing just read, or one whose
+    // counting was overtaken by a re-read (and so remembered without them).
     QVector<QPair<int, Entry>> folders;
     for (int row = 0; row < m_entries.size(); ++row)
-        if (m_entries[row].isDir)
+        if (m_entries[row].isDir && m_entries[row].itemCount < 0)
             folders.push_back({row, m_entries[row]});
     if (folders.isEmpty())
         return;
