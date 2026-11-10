@@ -25,6 +25,8 @@ FolioMenu {
     readonly property bool onItem: !!target && target.path !== undefined
     readonly property bool onFolder: onItem && target.isDir === true
     readonly property var apps: onItem ? fileOps.appsFor(target.path) : []
+    // Open With only when there's something besides what Open already does.
+    readonly property bool canOpenWith: apps.length > 1
     // A selected item in the folder being shown stands for the whole
     // selection, so Copy, Compress or Delete act on all of it.
     readonly property bool onSelection: onItem && target.selected === true && backend.folder.selectedCount > 1
@@ -42,7 +44,7 @@ FolioMenu {
         for (let i = 0; i < count; ++i) {
             const entry = itemAt(i)
             if (entry && entry.subMenu) {
-                const shown = entry.subMenu === shareMenu ? canShare : onItem
+                const shown = entry.subMenu === shareMenu ? canShare : entry.subMenu === openWith ? canOpenWith : onItem
                 entry.visible = shown
                 entry.height = shown ? entry.implicitHeight : 0
             }
@@ -73,7 +75,6 @@ FolioMenu {
     FolioMenu {
         id: openWith
         title: qsTr("Open With")
-        enabled: fileMenu.apps.length > 0
         Repeater {
             model: fileMenu.apps
             FolioMenuItem {
