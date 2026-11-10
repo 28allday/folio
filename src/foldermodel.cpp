@@ -464,6 +464,7 @@ void FolderModel::summarizeFolders(quint64 generation) {
         watcher->deleteLater();
         if (generation != m_generation)
             return;
+        bool updated = false;
         for (const auto &[row, summary] : watcher->result()) {
             if (row >= m_entries.size() || m_entries[row].path != summary.path)
                 continue;
@@ -471,7 +472,13 @@ void FolderModel::summarizeFolders(quint64 generation) {
             m_entries[row].peek = summary.peek;
             const QModelIndex at = index(row);
             emit dataChanged(at, at, {ItemCountRole, PeekRole});
+            updated = true;
         }
+        // QML re-reads its get() snapshots (the current item, which the
+        // details pane shows) on countChanged, and the counts they show
+        // just arrived.
+        if (updated)
+            emit countChanged();
         remember();
     });
     watcher->setFuture(QtConcurrent::run([folders, showHidden]() mutable {
