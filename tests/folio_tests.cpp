@@ -597,6 +597,23 @@ private slots:
         QCOMPARE(backend.takeSelection(), QString("report.pdf"));
     }
 
+    void trashFollowsXdgDataHome()
+    {
+        // g_file_trash puts things in $XDG_DATA_HOME/Trash, wherever that
+        // is, so the sidebar's Trash opens there and is called "Trash".
+        QTemporaryDir home, data;
+        const QByteArray was = qgetenv("XDG_DATA_HOME");
+        const auto restore = qScopeGuard([&] { was.isNull() ? qunsetenv("XDG_DATA_HOME") : qputenv("XDG_DATA_HOME", was); });
+        qputenv("XDG_DATA_HOME", data.path().toUtf8());
+        const QString trash = data.filePath("Trash/files");
+        Places places(home.path());
+        QCOMPARE(places.views().last().toMap().value("path").toString(), trash);
+        Backend backend(home.path());
+        backend.navigate(trash);
+        QCOMPARE(backend.path(), trash);
+        QCOMPARE(backend.title(), QString("Trash"));
+    }
+
     void placesListEveryFolderInHome()
     {
         QTemporaryDir home;

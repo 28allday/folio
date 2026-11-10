@@ -1,4 +1,5 @@
 #include "backend.h"
+#include "fileops.h"
 
 #include <QDesktopServices>
 #include <QCoreApplication>
@@ -233,7 +234,7 @@ Backend::~Backend() {
 }
 
 QString Backend::trashPath() const {
-    return QDir::cleanPath(m_home + "/.local/share/Trash/files");
+    return QDir::cleanPath(FileOps::homeTrash() + "/files");
 }
 
 QString Backend::typedPath() const {

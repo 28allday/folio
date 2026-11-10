@@ -369,8 +369,12 @@ void FileOps::trash(const QStringList &paths) {
         emit failed(tr("Couldn't move to the trash: %1").arg(failedNames.join(", ")));
 }
 
+QString FileOps::homeTrash() {
+    return QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/Trash";
+}
+
 QStringList FileOps::trashDirs() {
-    QStringList dirs{QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/Trash"};
+    QStringList dirs{homeTrash()};
     // Drives keep their own trash at the top, so deleting never copies
     // across disks: .Trash-<uid> (or .Trash/<uid>).
     const QString uid = QString::number(getuid());

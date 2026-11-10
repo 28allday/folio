@@ -1,4 +1,5 @@
 #include "places.h"
+#include "fileops.h"
 #include "foldermodel.h"
 
 #include <QCollator>
@@ -96,7 +97,7 @@ void Places::refreshPlaces() {
 
     // Views: lists that aren't a folder of their own.
     m_views = {QVariantMap{{"name", tr("Recents")}, {"path", FolderModel::recentPath()}, {"icon", "recent"}},
-               QVariantMap{{"name", tr("Trash")}, {"path", m_home + "/.local/share/Trash/files"}, {"icon", "trash"}}};
+               QVariantMap{{"name", tr("Trash")}, {"path", QDir::cleanPath(FileOps::homeTrash() + "/files")}, {"icon", "trash"}}};
 }
 
 // Omarchy's own folder reads as the name it goes by.

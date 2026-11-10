@@ -102,6 +102,8 @@ public:
     // one item, "Archive.zip" for several; never one that exists.
     static QString archiveName(const QStringList &paths, const QString &folder);
     static bool sameDrive(const QString &a, const QString &b);
+    // The home trash, where g_file_trash puts things: $XDG_DATA_HOME/Trash.
+    static QString homeTrash();
     // The trash folders: the home one, then each mounted drive's own.
     static QStringList trashDirs();
     // For an item in <trash>/files: its note.
