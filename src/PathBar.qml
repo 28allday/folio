@@ -3,7 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Controls.Material
 
-// History buttons, the breadcrumb path, and the view toggles.
+// The breadcrumb path from the left edge; history and view buttons on the right.
 Rectangle {
     id: bar
 
@@ -34,13 +34,10 @@ Rectangle {
 
     RowLayout {
         anchors.fill: parent
-        anchors.leftMargin: 20
+        anchors.leftMargin: 26
         anchors.rightMargin: 20
         spacing: 4
 
-        IconButton { glyph: "back"; text: qsTr("Back"); enabled: backend.canBack; onClicked: backend.back() }
-        IconButton { glyph: "forward"; text: qsTr("Forward"); enabled: backend.canForward; onClicked: backend.forward() }
-        Item { implicitWidth: 16 }
 
         TextField {
             id: pathField
@@ -122,6 +119,9 @@ Rectangle {
         }
 
         Item { implicitWidth: 16 }
+        IconButton { glyph: "back"; text: qsTr("Back (Alt+←)"); enabled: backend.canBack; onClicked: backend.back() }
+        IconButton { glyph: "forward"; text: qsTr("Forward (Alt+→)"); enabled: backend.canForward; onClicked: backend.forward() }
+        Item { implicitWidth: 8 }
         // Shows the current view; clicking moves to the next one.
         IconButton {
             glyph: bar.viewMode
