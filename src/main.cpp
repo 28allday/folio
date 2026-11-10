@@ -132,7 +132,6 @@ int main(int argc, char *argv[]) {
     engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
     // Creatable too: the column view lists each folder on the way here.
     qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
-    qmlRegisterUncreatableType<Mounter>("Folio", 1, 0, "Mounter", "Owned by the backend");
     engine.rootContext()->setContextProperty("translator", &translator);
     engine.rootContext()->setContextProperty("theme", &theme);
     engine.rootContext()->setContextProperty("places", &places);
