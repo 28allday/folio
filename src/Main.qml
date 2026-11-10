@@ -26,6 +26,10 @@ ApplicationWindow {
     // The selected name, carried across a switch of view.
     property string lastName: ""
     property string loadedPath: ""
+    // While a text field has the keyboard (renaming, a password), single-key
+    // and clipboard shortcuts stand aside so typing works.
+    readonly property bool typing: rename.visible || backend.mounter.asking
+    readonly property var selectedPaths: current.path ? [current.path] : []
     onCurrentChanged: {
         if (current.name)
             lastName = current.name
@@ -36,6 +40,12 @@ ApplicationWindow {
 
     function cycleView() {
         viewMode = viewMode === "grid" ? "list" : viewMode === "list" ? "columns" : "grid"
+    }
+
+    FileMenu {
+        id: fileMenu
+        objectName: "fileMenu"
+        onRenameRequested: (target) => rename.open(target)
     }
 
     // Remembers the view between launches (~/.config/folio/folio.conf).
@@ -60,10 +70,10 @@ ApplicationWindow {
         return index >= 0 ? backend.folder.get(index) : ({})
     }
 
-    Shortcut { sequence: "?"; context: Qt.ApplicationShortcut; onActivated: win.helpVisible = !win.helpVisible }
+    Shortcut { sequence: "?"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: win.helpVisible = !win.helpVisible }
     Shortcut { sequence: "Escape"; context: Qt.ApplicationShortcut; enabled: win.helpVisible; onActivated: win.helpVisible = false }
-    Shortcut { sequence: "Q"; context: Qt.ApplicationShortcut; onActivated: Qt.quit() }
-    Shortcut { sequence: "Space"; context: Qt.ApplicationShortcut; onActivated: backend.togglePreview(win.current.path || "") }
+    Shortcut { sequence: "Q"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: Qt.quit() }
+    Shortcut { sequence: "Space"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: backend.togglePreview(win.current.path || "") }
     // Pins the selected folder, or the folder being shown when a file is
     // selected; pressed again, unpins it.
     function togglePin() {
@@ -79,21 +89,54 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+1"; context: Qt.ApplicationShortcut; onActivated: win.viewMode = "grid" }
     Shortcut { sequence: "Ctrl+2"; context: Qt.ApplicationShortcut; onActivated: win.viewMode = "list" }
     Shortcut { sequence: "Ctrl+3"; context: Qt.ApplicationShortcut; onActivated: win.viewMode = "columns" }
+    Shortcut { sequences: [StandardKey.Copy]; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: fileOps.copy(win.selectedPaths) }
+    Shortcut { sequences: [StandardKey.Cut]; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: fileOps.cut(win.selectedPaths) }
+    Shortcut { sequences: [StandardKey.Paste]; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: fileOps.paste(backend.path) }
+    // "Yank": the selected path (or the folder's) as text, for a terminal.
+    Shortcut { sequence: "Ctrl+Shift+C"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: fileOps.yank(win.selectedPaths.length > 0 ? win.selectedPaths : [backend.path]) }
+    Shortcut { sequence: "Delete"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: fileOps.trash(win.selectedPaths) }
+    Shortcut { sequence: "F2"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: if (win.current.path) rename.open(win.current) }
+    Shortcut { sequence: "Ctrl+Shift+D"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: if (win.current.path) fileOps.duplicate(win.current.path) }
+    Shortcut { sequence: "Ctrl+Shift+N"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: fileOps.newFolder(backend.path) }
+    // Tab hands the keyboard between the sidebar and the files.
+    Shortcut {
+        sequences: ["Tab", "Backtab"]
+        context: Qt.ApplicationShortcut
+        enabled: !win.typing
+        onActivated: sidebar.activeFocus ? (view.item && view.item.focusView()) : sidebar.focusSidebar()
+    }
     Shortcut { sequence: "Ctrl+D"; context: Qt.ApplicationShortcut; onActivated: win.togglePin() }
     Shortcut { sequence: "Ctrl+I"; context: Qt.ApplicationShortcut; onActivated: win.previewVisible = !win.previewVisible }
-    Shortcut { sequences: ["Return", "Enter"]; context: Qt.ApplicationShortcut; onActivated: if (win.current.path) backend.open(win.current.path) }
-    Shortcut { sequences: ["Backspace", "Alt+Up"]; context: Qt.ApplicationShortcut; onActivated: backend.goUp() }
+    Shortcut { sequences: ["Return", "Enter"]; context: Qt.ApplicationShortcut; enabled: !win.typing && !sidebar.activeFocus; onActivated: if (win.current.path) backend.open(win.current.path) }
+    Shortcut { sequences: ["Backspace", "Alt+Up"]; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: backend.goUp() }
     Shortcut { sequences: ["Alt+Left", StandardKey.Back]; context: Qt.ApplicationShortcut; onActivated: backend.back() }
     Shortcut { sequences: ["Alt+Right", StandardKey.Forward]; context: Qt.ApplicationShortcut; onActivated: backend.forward() }
     Shortcut { sequence: "Alt+Home"; context: Qt.ApplicationShortcut; onActivated: backend.navigate(places.home) }
     Shortcut { sequence: "Ctrl+H"; context: Qt.ApplicationShortcut; onActivated: backend.folder.showHidden = !backend.folder.showHidden }
-    Shortcut { sequence: "S"; context: Qt.ApplicationShortcut; onActivated: backend.folder.sortMode = backend.folder.sortMode === "name" ? "modified" : "name" }
+    Shortcut { sequence: "S"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: {
+        const modes = ["name", "kind", "modified", "oldest", "size"]
+        backend.folder.sortMode = modes[(modes.indexOf(backend.folder.sortMode) + 1) % modes.length]
+    } }
     Shortcut { sequences: ["F5", StandardKey.Refresh]; context: Qt.ApplicationShortcut; onActivated: { backend.folder.reload(); places.refresh() } }
 
     Connections {
         target: backend
         function onSelectRequested(name) { if (view.item) view.item.select(name) }
         function onActivateRequested() { win.raise(); win.requestActivate() }
+    }
+
+    Connections {
+        target: view.item
+        ignoreUnknownSignals: true
+        function onContextMenu(item, folder) { fileMenu.show(item, folder) }
+    }
+
+    // Finished file work selects what it made (the pasted file, the new
+    // folder, the new name) once the folder has re-read.
+    Connections {
+        target: fileOps
+        function onDone(folder, name) { if (folder === backend.path) backend.expectSelection(name) }
+        function onFailed(message) { backend.showMessage(message) }
     }
 
     Connections {
@@ -134,7 +177,7 @@ ApplicationWindow {
             Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: 40
-                visible: backend.message.length > 0 || backend.busy.length > 0 || backend.folder.error.length > 0
+                visible: backend.message.length > 0 || backend.busy.length > 0 || fileOps.busy.length > 0 || backend.folder.error.length > 0
                 color: backend.message.length > 0 || backend.folder.error.length > 0 ? win.tint(theme.red, 0.14) : win.tint(theme.accent, 0.10)
                 RowLayout {
                     anchors.fill: parent
@@ -142,7 +185,7 @@ ApplicationWindow {
                     anchors.rightMargin: 12
                     Text {
                         Layout.fillWidth: true
-                        text: backend.message || backend.folder.error || backend.busy
+                        text: backend.message || backend.folder.error || backend.busy || fileOps.busy
                         color: theme.brightForeground
                         elide: Text.ElideRight
                     }
@@ -161,6 +204,8 @@ ApplicationWindow {
                 spacing: 0
 
                 Sidebar {
+                    id: sidebar
+                    onFinished: if (view.item) view.item.focusView()
                     Layout.preferredWidth: 236
                     Layout.fillHeight: true
                 }
@@ -251,6 +296,11 @@ ApplicationWindow {
         }
 
         MountPrompt {
+            anchors.fill: parent
+        }
+
+        RenameDialog {
+            id: rename
             anchors.fill: parent
         }
 

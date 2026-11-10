@@ -3,6 +3,10 @@
 #include <QCache>
 #include <QCollator>
 #include <QDir>
+#include <QXmlStreamReader>
+#include <QUrl>
+#include <QStandardPaths>
+#include <QFile>
 #include <QFileInfo>
 #include <QFutureWatcher>
 #include <QMimeDatabase>
@@ -16,6 +20,13 @@ FolderModel::FolderModel(QObject *parent) : QAbstractListModel(parent) {
     m_debounce.setSingleShot(true);
     m_debounce.setInterval(250);
     connect(&m_watcher, &QFileSystemWatcher::directoryChanged, this, [this] { m_debounce.start(); });
+    // Recents' file is rewritten (replaced) by GTK, so it's watched again
+    // after each change.
+    connect(&m_watcher, &QFileSystemWatcher::fileChanged, this, [this](const QString &file) {
+        m_debounce.start();
+        if (!m_watcher.files().contains(file) && QFileInfo::exists(file))
+            m_watcher.addPath(file);
+    });
     connect(&m_debounce, &QTimer::timeout, this, &FolderModel::reload);
     m_staleClear.setSingleShot(true);
     m_staleClear.setInterval(150);
@@ -104,7 +115,7 @@ void FolderModel::setShowHidden(bool show) {
 }
 
 void FolderModel::setSortMode(const QString &sort) {
-    if (sort == m_sort || (sort != "name" && sort != "modified"))
+    if (sort == m_sort || !sortModes().contains(sort))
         return;
     m_sort = sort;
     emit sortModeChanged();
@@ -112,11 +123,13 @@ void FolderModel::setSortMode(const QString &sort) {
 }
 
 void FolderModel::setPath(const QString &path) {
-    const QString clean = path.isEmpty() ? QString() : QDir::cleanPath(path);
+    const QString clean = path.isEmpty() || path == recentPath() ? path : QDir::cleanPath(path);
     if (clean == m_path)
         return;
     if (!m_watcher.directories().isEmpty())
         m_watcher.removePaths(m_watcher.directories());
+    if (!m_watcher.files().isEmpty())
+        m_watcher.removePaths(m_watcher.files());
     m_path = clean;
     emit pathChanged();
 
@@ -140,7 +153,7 @@ void FolderModel::setPath(const QString &path) {
     } else {
         m_staleClear.start();
     }
-    m_watcher.addPath(m_path);
+    m_watcher.addPath(m_path == recentPath() ? recentFile() : m_path);
     reload();
 }
 
@@ -163,6 +176,11 @@ QString FolderModel::kindForMime(const QString &mime) {
 
 QVector<FolderModel::Entry> FolderModel::list(const QString &path, bool showHidden, const QString &sort,
                                               QString *error) {
+    if (path == recentPath()) {
+        // Recents are always most recently used first; that's what they're for.
+        Q_UNUSED(sort);
+        return listRecent(recentFile(), showHidden);
+    }
     QVector<Entry> entries;
     QDir dir(path);
     if (!dir.exists()) {
@@ -197,17 +215,94 @@ QVector<FolderModel::Entry> FolderModel::list(const QString &path, bool showHidd
         entries.push_back(e);
     }
 
+    sortEntries(entries, sort);
+    return entries;
+}
+
+QStringList FolderModel::sortModes() {
+    // "modified" is newest first; it keeps its name so saved settings
+    // from before "oldest" existed still read right.
+    return {"name", "kind", "modified", "oldest", "size"};
+}
+
+void FolderModel::sortEntries(QVector<Entry> &entries, const QString &sort) {
     QCollator collator;
     collator.setNumericMode(true);
     collator.setCaseSensitivity(Qt::CaseInsensitive);
-    std::sort(entries.begin(), entries.end(), [&](const Entry &a, const Entry &b) {
+    std::stable_sort(entries.begin(), entries.end(), [&](const Entry &a, const Entry &b) {
+        // Folders first in every order, as everywhere else on the desktop.
         if (a.isDir != b.isDir)
             return a.isDir;
         if (sort == "modified" && a.modified != b.modified)
             return a.modified > b.modified;
+        if (sort == "oldest" && a.modified != b.modified)
+            return a.modified < b.modified;
+        // Biggest first; folders have no size of their own and stay by name.
+        if (sort == "size" && !a.isDir && a.size != b.size)
+            return a.size > b.size;
+        if (sort == "kind" && !a.isDir) {
+            if (a.kind != b.kind)
+                return a.kind < b.kind;
+            if (a.extension != b.extension)
+                return collator.compare(a.extension, b.extension) < 0;
+        }
         return collator.compare(a.name, b.name) < 0;
     });
+}
+
+// Recents are GTK's recently used files (~/.local/share/recently-used.xbel),
+// which every GTK and many other apps add to: the files still there, the
+// most recently used first.
+QVector<FolderModel::Entry> FolderModel::listRecent(const QString &xbel, bool showHidden, int limit) {
+    struct Used { QString path; QDateTime when; };
+    QVector<Used> used;
+    QFile file(xbel);
+    if (file.open(QIODevice::ReadOnly)) {
+        QXmlStreamReader xml(&file);
+        while (xml.readNextStartElement() || !xml.atEnd()) {
+            if (xml.isStartElement() && xml.name() == QLatin1String("bookmark")) {
+                const auto attrs = xml.attributes();
+                const QUrl url(attrs.value("href").toString());
+                QDateTime when = QDateTime::fromString(attrs.value("visited").toString(), Qt::ISODate);
+                const QDateTime modified = QDateTime::fromString(attrs.value("modified").toString(), Qt::ISODate);
+                if (!when.isValid() || (modified.isValid() && modified > when))
+                    when = modified;
+                if (url.isLocalFile())
+                    used.push_back({url.toLocalFile(), when});
+            }
+            if (xml.hasError())
+                break;
+        }
+    }
+    std::stable_sort(used.begin(), used.end(), [](const Used &a, const Used &b) { return a.when > b.when; });
+
+    QVector<Entry> entries;
+    QStringList seen;
+    QMimeDatabase mimes;
+    for (const Used &u : used) {
+        const QFileInfo info(u.path);
+        if (seen.contains(u.path) || !info.exists() || (!showHidden && info.fileName().startsWith('.')))
+            continue;
+        seen << u.path;
+        Entry e;
+        e.name = info.fileName();
+        e.path = info.absoluteFilePath();
+        e.isDir = info.isDir();
+        e.size = e.isDir ? 0 : info.size();
+        e.modified = info.lastModified();
+        e.mime = e.isDir ? QStringLiteral("inode/directory")
+                         : mimes.mimeTypeForFile(info, QMimeDatabase::MatchExtension).name();
+        e.kind = kindForMime(e.mime);
+        e.extension = e.isDir ? QString() : info.suffix().toUpper();
+        entries.push_back(e);
+        if (entries.size() == limit)
+            break;
+    }
     return entries;
+}
+
+QString FolderModel::recentFile() {
+    return QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/recently-used.xbel";
 }
 
 void FolderModel::summarize(Entry &entry, bool showHidden) {

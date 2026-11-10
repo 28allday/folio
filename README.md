@@ -5,6 +5,8 @@
 Folio is Omarchy's file manager: one window for finding, previewing and opening your files. It follows the Omarchy theme and language live, works from the keyboard, and never crawls your home folder in the background. Thumbnails are made when a tile needs one and shared with other apps through the standard `~/.cache/thumbnails` cache.
 
 - **Home**: every folder in your home, with the standard ones and Dropbox drawn with their own icons; click the Home label to go home.
+- **Views**: Recents (files you've used lately, in any app) and Trash.
+- **Files**: right-click for open with, rename, duplicate, copy, cut, paste, compress, share (LocalSend or Taildrop) and delete to the trash. Copy and paste work with other apps, and nothing is ever overwritten.
 - **Pinned**: any folder, pinned with Ctrl+D or by dragging it onto the sidebar. Pins are GTK's bookmarks, so they show up in file dialogs too.
 - **Devices**: physical drives, whether plugged in or extra internal disks; the system's own partitions stay out of the way.
 - **Tailnet**: the machines on your tailnet. Opening one mounts it over SFTP through GVfs and lands in the matching home folder.
@@ -23,8 +25,14 @@ Folio is Omarchy's file manager: one window for finding, previewing and opening 
 | Space | Preview the selected file (Space or Esc closes, ← → step through) |
 | Ctrl+I | Show or hide the details pane |
 | Ctrl+D | Pin or unpin the folder |
+| Ctrl+C / Ctrl+X / Ctrl+V | Copy, cut, paste files |
+| Ctrl+Shift+C | Copy the path as text |
+| F2 / Ctrl+Shift+D | Rename / duplicate |
+| Ctrl+Shift+N | New folder |
+| Delete | Move to the trash |
+| Tab | Switch between the sidebar and the files |
 | Ctrl+1 / Ctrl+2 / Ctrl+3 | Grid, list, or columns (in columns, → goes into a folder and ← back out) |
-| S | Sort by name or newest first |
+| S | Sort: name, kind, newest, oldest, size |
 | Ctrl+H | Show hidden files |
 | F5 | Reload |
 | ? | Show every shortcut |

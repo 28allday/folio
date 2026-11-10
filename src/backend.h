@@ -47,6 +47,8 @@ public:
     Q_INVOKABLE void openPeer(const QString &host);
     Q_INVOKABLE void dismissMessage();
     Q_INVOKABLE void showMessage(const QString &message) { setMessage(message); }
+    // Selects `name` the next time the folder loads (after file work).
+    Q_INVOKABLE void expectSelection(const QString &name) { m_pendingSelection = name; }
     Q_INVOKABLE QVariantMap details(const QString &path, const QString &kind, const QString &mime) const;
     // The item to select once the folder has loaded (where we came from, or
     // what "Show in folder" asked for); empty means the first item.

@@ -72,6 +72,12 @@ public:
     // Synchronous building blocks, used by the background passes and tests.
     static QVector<Entry> list(const QString &path, bool showHidden, const QString &sort, QString *error);
     static void summarize(Entry &entry, bool showHidden);
+    static QStringList sortModes();
+    static void sortEntries(QVector<Entry> &entries, const QString &sort);
+    // The Recents view: a path that isn't a folder, listing recently used files.
+    static QString recentPath() { return QStringLiteral("recent:"); }
+    static QString recentFile();
+    static QVector<Entry> listRecent(const QString &xbel, bool showHidden, int limit = 200);
     static QString kindForMime(const QString &mime);
 
 signals:

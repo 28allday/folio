@@ -30,6 +30,7 @@ Item {
         "videos": "M3 5h18v14H3zM10 9v6l5-3z",
         // Dropbox's own mark, five diamonds: filled, as the brand draws it.
         "dropbox": "M7 2.5L12 5.7 7 8.9 2 5.7zM17 2.5L22 5.7 17 8.9 12 5.7zM7 8.9L12 12.1 7 15.3 2 12.1zM17 8.9L22 12.1 17 15.3 12 12.1zM12 13.3L17 16.5 12 19.7 7 16.5z",
+        "recent": circle(12, 12, 9) + "M12 7v5l3 2",
         "trash": "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13",
         "drive": "M3 6h18v12H3zM7 14h2",
         "peer": "M4 4h16v11H4zM9 20h6M12 15v5",

@@ -13,6 +13,18 @@ GridView {
     }
     function focusView() { forceActiveFocus() }
 
+    // Right-click on an item (selecting it) or on empty space.
+    signal contextMenu(var item, string folder)
+    TapHandler {
+        acceptedButtons: Qt.RightButton
+        onTapped: (point) => {
+            const index = grid.indexAt(point.position.x + grid.contentX, point.position.y + grid.contentY)
+            if (index >= 0)
+                grid.currentIndex = index
+            grid.contextMenu(index >= 0 ? backend.folder.get(index) : null, backend.path)
+        }
+    }
+
     clip: true
     focus: true
     keyNavigationEnabled: true

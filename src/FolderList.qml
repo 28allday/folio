@@ -17,20 +17,26 @@ ColumnLayout {
     }
     function focusView() { list.forceActiveFocus() }
 
+    signal contextMenu(var item, string folder)
+
     function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
 
     spacing: 0
 
+    // Each heading sorts by its column; Modified flips between newest and
+    // oldest first when clicked again.
     component HeaderLabel: Text {
         property string sort
-        color: sort.length > 0 && backend.folder.sortMode === sort ? theme.accent : theme.secondaryForeground
+        property string alternate
+        readonly property bool sorted: sort.length > 0 && (backend.folder.sortMode === sort || backend.folder.sortMode === alternate)
+        color: sorted ? theme.accent : theme.secondaryForeground
         font.pixelSize: 11
         font.letterSpacing: 1.1
         font.capitalization: Font.AllUppercase
         elide: Text.ElideRight
         TapHandler {
             enabled: parent.sort.length > 0
-            onTapped: backend.folder.sortMode = parent.sort
+            onTapped: backend.folder.sortMode = parent.alternate.length > 0 && backend.folder.sortMode === parent.sort ? parent.alternate : parent.sort
         }
         HoverHandler { enabled: parent.sort.length > 0; cursorShape: Qt.PointingHandCursor }
     }
@@ -43,9 +49,15 @@ ColumnLayout {
         Layout.bottomMargin: 8
         spacing: 12
         HeaderLabel { Layout.fillWidth: true; text: qsTr("Name"); sort: "name" }
-        HeaderLabel { Layout.preferredWidth: 120; text: qsTr("Kind") }
-        HeaderLabel { Layout.preferredWidth: 96; horizontalAlignment: Text.AlignRight; text: qsTr("Size") }
-        HeaderLabel { Layout.preferredWidth: 168; Layout.leftMargin: 12; text: qsTr("Modified"); sort: "modified" }
+        HeaderLabel { Layout.preferredWidth: 120; text: qsTr("Kind"); sort: "kind" }
+        HeaderLabel { Layout.preferredWidth: 96; horizontalAlignment: Text.AlignRight; text: qsTr("Size"); sort: "size" }
+        HeaderLabel {
+            Layout.preferredWidth: 168
+            Layout.leftMargin: 12
+            text: backend.folder.sortMode === "oldest" ? qsTr("Modified ↑") : qsTr("Modified")
+            sort: "modified"
+            alternate: "oldest"
+        }
     }
     Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: view.tint(theme.foreground, 0.1) }
 
@@ -62,6 +74,16 @@ ColumnLayout {
         highlightFollowsCurrentItem: false
         model: backend.folder
         ScrollBar.vertical: ScrollBar { }
+
+        TapHandler {
+            acceptedButtons: Qt.RightButton
+            onTapped: (point) => {
+                const index = list.indexAt(point.position.x + list.contentX, point.position.y + list.contentY)
+                if (index >= 0)
+                    list.currentIndex = index
+                view.contextMenu(index >= 0 ? backend.folder.get(index) : null, backend.path)
+            }
+        }
 
         delegate: FileRow {
             width: list.width

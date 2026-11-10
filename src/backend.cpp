@@ -51,6 +51,8 @@ QString Backend::gvfsRoot() {
 
 QString Backend::title() const {
     const QString p = path();
+    if (p == FolderModel::recentPath())
+        return tr("Recents");
     if (p == m_home)
         return tr("Home");
     if (p == "/")
@@ -64,6 +66,8 @@ QVariantList Backend::crumbs() const {
     // Breadcrumbs start at the nearest root that means something to a person:
     // ~ for home, a tailnet machine's name for its mount, / otherwise.
     const QString p = path();
+    if (p == FolderModel::recentPath())
+        return {QVariantMap{{"name", tr("Recents")}, {"path", p}}};
     QString base = "/";
     QString label = "/";
     if (p == m_home || p.startsWith(m_home + "/")) {
@@ -90,8 +94,12 @@ void Backend::navigate(const QString &path) {
 }
 
 void Backend::go(const QString &path, bool record) {
-    const QString clean = QDir::cleanPath(path);
-    if (!QFileInfo(clean).isDir()) {
+    const QString clean = path == FolderModel::recentPath() ? path : QDir::cleanPath(path);
+    // The trash folder only exists once something has been trashed; the
+    // spec lets anyone create it, so Trash always opens.
+    if (clean == QDir::cleanPath(m_home + "/.local/share/Trash/files"))
+        QDir().mkpath(clean);
+    if (clean != FolderModel::recentPath() && !QFileInfo(clean).isDir()) {
         setMessage(tr("%1 isn't a folder.").arg(clean));
         return;
     }
@@ -119,6 +127,9 @@ void Backend::open(const QString &path) {
 }
 
 void Backend::goUp() {
+    // Recents is a list, not a folder: there's nothing above it.
+    if (path() == FolderModel::recentPath())
+        return;
     const QString parent = QFileInfo(path()).absolutePath();
     if (parent == path())
         return;

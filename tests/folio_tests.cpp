@@ -1,4 +1,6 @@
 #include <QDir>
+#include <QMimeData>
+#include <memory>
 #include <QFile>
 #include <QImage>
 #include <QImageReader>
@@ -8,6 +10,7 @@
 #include <QtTest>
 
 #include "backend.h"
+#include "fileops.h"
 #include "foldermodel.h"
 #include "places.h"
 #include "previewer.h"
@@ -110,6 +113,107 @@ private slots:
         QVERIFY(loaded.wait(3000));
         QCOMPARE(resets.count(), 0);
         QCOMPARE(model.count(), 1);
+    }
+
+    void fileOpsNeverOverwrite()
+    {
+        QTemporaryDir dir;
+        write(dir.filePath("notes.tar.gz"), "x");
+        QDir(dir.path()).mkdir("Photos");
+        QCOMPARE(FileOps::freeName(dir.path(), "fresh.txt"), QString("fresh.txt"));
+        QCOMPARE(FileOps::freeName(dir.path(), "notes.tar.gz"), QString("notes (copy).tar.gz"));
+        write(dir.filePath("notes (copy).tar.gz"), "x");
+        QCOMPARE(FileOps::freeName(dir.path(), "notes.tar.gz"), QString("notes (copy 2).tar.gz"));
+        QCOMPARE(FileOps::freeName(dir.path(), "Photos"), QString("Photos (copy)"));
+    }
+
+    void fileOpsCopyAndMove()
+    {
+        QTemporaryDir from, to;
+        QDir(from.path()).mkpath("album/inner");
+        write(from.filePath("album/inner/a.jpg"), "picture");
+        write(from.filePath("todo.txt"), "list");
+        write(to.filePath("todo.txt"), "already here");
+
+        QString error;
+        QStringList made = FileOps::transfer({from.filePath("album"), from.filePath("todo.txt")}, to.path(), false, &error);
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QCOMPARE(made, QStringList({"album", "todo (copy).txt"}));
+        QVERIFY(QFile::exists(to.filePath("album/inner/a.jpg")));
+        QFile kept(to.filePath("todo.txt"));
+        QVERIFY(kept.open(QIODevice::ReadOnly));
+        QCOMPARE(kept.readAll(), QByteArray("already here"));
+        QVERIFY(QFile::exists(from.filePath("todo.txt"))); // copied, not moved
+
+        made = FileOps::transfer({from.filePath("todo.txt")}, to.path(), true, &error);
+        QCOMPARE(made, QStringList({"todo (copy 2).txt"}));
+        QVERIFY(!QFile::exists(from.filePath("todo.txt")));
+
+        // A folder can't go inside itself.
+        error.clear();
+        FileOps::transfer({to.filePath("album")}, to.filePath("album/inner"), true, &error);
+        QVERIFY(!error.isEmpty());
+        QVERIFY(QFile::exists(to.filePath("album/inner/a.jpg")));
+    }
+
+    void fileOpsClipboardFormats()
+    {
+        std::unique_ptr<QMimeData> data(FileOps::mimeDataFor({"/tmp/a b.txt", "/tmp/c.txt"}, true));
+        QCOMPARE(data->text(), QString("/tmp/a b.txt\n/tmp/c.txt"));
+        QVERIFY(data->data("x-special/gnome-copied-files").startsWith("cut\nfile:///tmp/a%20b.txt"));
+        bool cut = false;
+        QCOMPARE(FileOps::pathsFrom(data.get(), &cut), QStringList({"/tmp/a b.txt", "/tmp/c.txt"}));
+        QVERIFY(cut);
+
+        // From another app that only offers a URI list: a copy.
+        QMimeData plain;
+        plain.setUrls({QUrl::fromLocalFile("/tmp/x.png")});
+        QCOMPARE(FileOps::pathsFrom(&plain, &cut), QStringList({"/tmp/x.png"}));
+        QVERIFY(!cut);
+    }
+
+    void recentsReadGtkRecentFiles()
+    {
+        QTemporaryDir dir;
+        write(dir.filePath("old.txt"), "x");
+        write(dir.filePath("new.pdf"), "x");
+        write(dir.filePath(".secret"), "x");
+        const QByteArray url = QUrl::fromLocalFile(dir.path()).toEncoded();
+        write(dir.filePath("recently-used.xbel"),
+              "<?xml version=\"1.0\"?>\n<xbel version=\"1.0\">\n"
+              "<bookmark href=\"" + url + "/old.txt\" modified=\"2026-01-01T10:00:00Z\" visited=\"2026-01-02T10:00:00Z\"/>\n"
+              "<bookmark href=\"" + url + "/gone.txt\" modified=\"2026-05-01T10:00:00Z\"/>\n"
+              "<bookmark href=\"" + url + "/.secret\" modified=\"2026-05-01T10:00:00Z\"/>\n"
+              "<bookmark href=\"https://example.com/\" modified=\"2026-05-01T10:00:00Z\"/>\n"
+              "<bookmark href=\"" + url + "/new.pdf\" modified=\"2026-03-01T10:00:00Z\" visited=\"2026-03-01T10:00:00Z\"/>\n"
+              "</xbel>\n");
+        const auto entries = FolderModel::listRecent(dir.filePath("recently-used.xbel"), false);
+        // Missing, hidden and web entries are left out; newest use first.
+        QCOMPARE(entries.size(), 2);
+        QCOMPARE(entries.at(0).name, QString("new.pdf"));
+        QCOMPARE(entries.at(1).name, QString("old.txt"));
+        QCOMPARE(entries.at(0).kind, QString("pdf"));
+    }
+
+    void folderSortsFiveWays()
+    {
+        QVector<FolderModel::Entry> e(4);
+        e[0].name = "b.txt"; e[0].kind = "text"; e[0].extension = "TXT"; e[0].size = 10; e[0].modified = QDateTime::fromSecsSinceEpoch(300);
+        e[1].name = "a.png"; e[1].kind = "image"; e[1].extension = "PNG"; e[1].size = 500; e[1].modified = QDateTime::fromSecsSinceEpoch(100);
+        e[2].name = "c.txt"; e[2].kind = "text"; e[2].extension = "TXT"; e[2].size = 99; e[2].modified = QDateTime::fromSecsSinceEpoch(200);
+        e[3].name = "Zeta"; e[3].isDir = true; e[3].modified = QDateTime::fromSecsSinceEpoch(50);
+        auto order = [&](const QString &sort) {
+            auto copy = e;
+            FolderModel::sortEntries(copy, sort);
+            QStringList names;
+            for (const auto &x : copy) names << x.name;
+            return names.join(' ');
+        };
+        QCOMPARE(order("name"), QString("Zeta a.png b.txt c.txt"));
+        QCOMPARE(order("kind"), QString("Zeta a.png b.txt c.txt"));
+        QCOMPARE(order("modified"), QString("Zeta b.txt c.txt a.png"));
+        QCOMPARE(order("oldest"), QString("Zeta a.png c.txt b.txt"));
+        QCOMPARE(order("size"), QString("Zeta a.png c.txt b.txt"));
     }
 
     void kindsFromMimeTypes()

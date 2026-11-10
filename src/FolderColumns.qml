@@ -20,6 +20,9 @@ Item {
     }
     function focusView() { here.forceActiveFocus() }
 
+    // Every column has a menu: on an item there, or on the column's folder.
+    signal contextMenu(var item, string folder)
+
     function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
 
     readonly property var crumbs: backend.crumbs
@@ -95,6 +98,13 @@ Item {
                             onLoaded: column.revealNext()
                         }
                         function revealNext() { positionViewAtIndex(Math.max(0, folder.indexOf(ancestor.next)), ListView.Contain) }
+                        TapHandler {
+                            acceptedButtons: Qt.RightButton
+                            onTapped: (point) => {
+                                const index = column.indexAt(point.position.x + column.contentX, point.position.y + column.contentY)
+                                view.contextMenu(index >= 0 ? folder.get(index) : null, ancestor.path)
+                            }
+                        }
                         Connections {
                             target: ancestor
                             function onNextChanged() { column.revealNext() }
@@ -124,6 +134,16 @@ Item {
                 highlightFollowsCurrentItem: false
                 model: backend.folder
                 ScrollBar.vertical: ScrollBar { }
+
+                TapHandler {
+                    acceptedButtons: Qt.RightButton
+                    onTapped: (point) => {
+                        const index = here.indexAt(point.position.x + here.contentX, point.position.y + here.contentY)
+                        if (index >= 0)
+                            here.currentIndex = index
+                        view.contextMenu(index >= 0 ? backend.folder.get(index) : null, backend.path)
+                    }
+                }
 
                 Keys.onRightPressed: if (view.selected.isDir) backend.navigate(view.selected.path)
                 Keys.onLeftPressed: backend.goUp()
@@ -155,6 +175,13 @@ Item {
                 interactive: false
                 boundsBehavior: Flickable.StopAtBounds
                 ScrollBar.vertical: ScrollBar { }
+                TapHandler {
+                    acceptedButtons: Qt.RightButton
+                    onTapped: (point) => {
+                        const index = inside.indexAt(point.position.x + inside.contentX, point.position.y + inside.contentY)
+                        view.contextMenu(index >= 0 ? inside.model.get(index) : null, view.selected.path)
+                    }
+                }
                 model: FolderModel {
                     path: view.selected.isDir === true ? view.selected.path : ""
                     showHidden: backend.folder.showHidden

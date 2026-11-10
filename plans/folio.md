@@ -24,6 +24,9 @@ Done, tested (19 Qt Test cases), and verified offscreen:
 - Folder model listing off the UI thread, folders first, natural sort, name or newest-first, hidden files toggle, live reload on change.
 - Folder tiles as plain cards, selection shown as color on the item itself; file tiles with real thumbnails (in-process for common images, installed thumbnailers for video, PDF, HEIC, office files), drawn stand-ins otherwise.
 - Shared thumbnail cache per the spec, with failure markers so broken files aren't retried.
+- Sidebar sections Views (Recents from GTK's recently-used.xbel, Trash); Tab moves the keyboard between sidebar and files.
+- Right-click menus everywhere (Open, Open With, Preview, Rename, Duplicate, Copy, Cut, Paste, Copy Path, Compress, Share via LocalSend or Taildrop, Pin, Terminal, Delete to trash); clipboard interoperable with GNOME/KDE apps; pastes never overwrite.
+- Sort by name, kind, newest, oldest or size.
 - Three views, remembered between launches: grid (Ctrl+1), list with name, kind, size and date (Ctrl+2, Name and Modified headings sort), and Finder-style columns (Ctrl+3).
 - Preview pane: large preview, the system's type name, size, modified, dimensions, opening lines of text files, Open.
 - Sidebar: a Home section (its label goes home) listing every folder in home (XDG folders and Dropbox with their own glyphs, `omarchy` shown as Omarchy); Pinned folders (Ctrl+D or drag onto the sidebar) stored as GTK bookmarks; Dropbox (with `dropbox-cli` sync status), Trash, physical drives (removable and extra internal disks, not the system's own), online tailnet machines from `tailscale status --json`.

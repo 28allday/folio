@@ -13,6 +13,7 @@ class Places : public QObject {
     Q_PROPERTY(QString home READ home CONSTANT)
     Q_PROPERTY(QVariantList places READ places NOTIFY changed)
     Q_PROPERTY(QVariantList pinned READ pinned NOTIFY changed)
+    Q_PROPERTY(QVariantList views READ views NOTIFY changed)
     Q_PROPERTY(QVariantList devices READ devices NOTIFY changed)
     Q_PROPERTY(QVariantList peers READ peers NOTIFY changed)
     Q_PROPERTY(QString dropboxStatus READ dropboxStatus NOTIFY changed)
@@ -25,6 +26,7 @@ public:
     QString home() const { return m_home; }
     QVariantList places() const { return m_places; }
     QVariantList pinned() const { return m_pinned; }
+    QVariantList views() const { return m_views; }
     QVariantList devices() const { return m_devices; }
     QVariantList peers() const { return m_peers; }
     QString dropboxStatus() const { return m_dropboxStatus; }
@@ -72,7 +74,7 @@ private:
 
     QString m_home;
     bool m_realHome;
-    QVariantList m_places, m_pinned, m_devices, m_peers;
+    QVariantList m_places, m_pinned, m_views, m_devices, m_peers;
     QString m_dropboxStatus;
     QProcess m_tailscale, m_dropbox;
     QTimer m_poll;

@@ -11,6 +11,7 @@ Rectangle {
 
     property var shortcuts: [
         ["← ↑ → ↓", qsTr("Move the selection")],
+        ["Tab", qsTr("Switch between the sidebar and the files")],
         ["⏎", qsTr("Open")],
         ["Backspace", qsTr("Go to the parent folder")],
         ["Alt+← / Alt+→", qsTr("Back / forward (or the mouse's thumb buttons)")],
@@ -19,7 +20,13 @@ Rectangle {
         ["Space", qsTr("Preview the selected file")],
         ["Ctrl+I", qsTr("Show or hide the details pane")],
         ["Ctrl+D", qsTr("Pin or unpin the folder (or drag it to the sidebar)")],
-        ["S", qsTr("Sort by name or newest first")],
+        ["Ctrl+C / X / V", qsTr("Copy, cut, paste files")],
+        ["Ctrl+Shift+C", qsTr("Copy the path as text")],
+        ["F2 / Ctrl+Shift+D", qsTr("Rename / duplicate")],
+        ["Ctrl+Shift+N", qsTr("New folder")],
+        ["Delete", qsTr("Move to the trash")],
+        ["Right-click", qsTr("Everything else")],
+        ["S", qsTr("Sort: name, kind, newest, oldest, size")],
         ["Ctrl+H", qsTr("Show hidden files")],
         ["F5", qsTr("Reload")],
         ["?", qsTr("Show these shortcuts")],

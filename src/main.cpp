@@ -13,6 +13,7 @@
 
 #include "backend.h"
 #include "filemanager1.h"
+#include "fileops.h"
 #include "places.h"
 #include "previewer.h"
 #include "theme.h"
@@ -121,6 +122,8 @@ int main(int argc, char *argv[]) {
     Places places;
     Backend backend;
     Thumbnails thumbnails;
+    // Declared before the engine, so it outlives the QML that uses it.
+    FileOps fileOps;
 
     QString select;
     const QString start = startPath(app.arguments(), &select);
@@ -135,6 +138,7 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("theme", &theme);
     engine.rootContext()->setContextProperty("places", &places);
     engine.rootContext()->setContextProperty("backend", &backend);
+    engine.rootContext()->setContextProperty("fileOps", &fileOps);
     engine.load(QUrl("qrc:/Main.qml"));
     if (engine.rootObjects().isEmpty())
         return 1;

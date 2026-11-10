@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-// Home's folders, pinned folders, drives and tailnet machines. The one holding the current folder
+// Home's folders, pinned folders, views, drives and tailnet machines. The one holding the current folder
 // stays lit while you dig into it, so you always know which root you're under.
 Rectangle {
     id: sidebar
@@ -14,11 +14,60 @@ Rectangle {
 
     function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
 
+    // Keyboard: Tab moves here from the files and back. ↑ ↓ move between
+    // rows, ⏎ (or →) opens one and hands the keyboard back to the files.
+    signal finished()
+    property int cursor: 0
+    readonly property var rows: [].concat(
+        places.places.map(p => ({ path: p.path })),
+        places.pinned.map(p => ({ path: p.path })),
+        places.views.map(p => ({ path: p.path })),
+        places.devices.map(p => ({ path: p.path })),
+        places.peers.map(p => ({ host: p.host })))
+    readonly property int pinnedAt: places.places.length
+    readonly property int viewsAt: pinnedAt + places.pinned.length
+    readonly property int devicesAt: viewsAt + places.views.length
+    readonly property int peersAt: devicesAt + places.devices.length
+
+    function focusSidebar() {
+        // Start on the row for where we are, or the top.
+        let at = 0
+        for (let i = 0; i < rows.length; ++i)
+            if (rows[i].path !== undefined && rows[i].path === activePath)
+                at = i
+        cursor = at
+        forceActiveFocus()
+    }
+    function activate(i) {
+        const row = rows[i]
+        if (!row)
+            return
+        if (row.host !== undefined)
+            backend.openPeer(row.host)
+        else
+            backend.navigate(row.path)
+        finished()
+    }
+    function reveal(item) {
+        const y = item.mapToItem(column, 0, 0).y
+        if (y < flick.contentY)
+            flick.contentY = Math.max(0, y - 20)
+        else if (y + item.height > flick.contentY + flick.height)
+            flick.contentY = y + item.height - flick.height + 20
+    }
+
+    Keys.onUpPressed: cursor = Math.max(0, cursor - 1)
+    Keys.onDownPressed: cursor = Math.min(rows.length - 1, cursor + 1)
+    Keys.onReturnPressed: activate(cursor)
+    Keys.onEnterPressed: activate(cursor)
+    Keys.onRightPressed: activate(cursor)
+    Keys.onEscapePressed: finished()
+
     // The deepest place the current folder sits under.
     readonly property string activePath: {
         let best = ""
         const here = backend.path
-        for (const list of [places.places, places.pinned, places.devices]) {
+        for (const list of [places.places, places.pinned, places.views, places.devices]) {
             for (const p of list) {
                 if ((here === p.path || here.startsWith(p.path === "/" ? "/" : p.path + "/")) && p.path.length > best.length && p.path !== "/")
                     best = p.path
@@ -47,6 +96,8 @@ Rectangle {
         id: row
         property string glyph
         property bool active: false
+        // The keyboard is on this row (the sidebar has focus).
+        property bool keyed: false
         property bool dim: false
         property string status
         property color statusColor: theme.green
@@ -60,10 +111,61 @@ Rectangle {
         // Inline components don't see the file's ids, so this keeps its own.
         function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
 
+    // Keyboard: Tab moves here from the files and back. ↑ ↓ move between
+    // rows, ⏎ (or →) opens one and hands the keyboard back to the files.
+    signal finished()
+    property int cursor: 0
+    readonly property var rows: [].concat(
+        places.places.map(p => ({ path: p.path })),
+        places.pinned.map(p => ({ path: p.path })),
+        places.views.map(p => ({ path: p.path })),
+        places.devices.map(p => ({ path: p.path })),
+        places.peers.map(p => ({ host: p.host })))
+    readonly property int pinnedAt: places.places.length
+    readonly property int viewsAt: pinnedAt + places.pinned.length
+    readonly property int devicesAt: viewsAt + places.views.length
+    readonly property int peersAt: devicesAt + places.devices.length
+
+    function focusSidebar() {
+        // Start on the row for where we are, or the top.
+        let at = 0
+        for (let i = 0; i < rows.length; ++i)
+            if (rows[i].path !== undefined && rows[i].path === activePath)
+                at = i
+        cursor = at
+        forceActiveFocus()
+    }
+    function activate(i) {
+        const row = rows[i]
+        if (!row)
+            return
+        if (row.host !== undefined)
+            backend.openPeer(row.host)
+        else
+            backend.navigate(row.path)
+        finished()
+    }
+    function reveal(item) {
+        const y = item.mapToItem(column, 0, 0).y
+        if (y < flick.contentY)
+            flick.contentY = Math.max(0, y - 20)
+        else if (y + item.height > flick.contentY + flick.height)
+            flick.contentY = y + item.height - flick.height + 20
+    }
+
+    Keys.onUpPressed: cursor = Math.max(0, cursor - 1)
+    Keys.onDownPressed: cursor = Math.min(rows.length - 1, cursor + 1)
+    Keys.onReturnPressed: activate(cursor)
+    Keys.onEnterPressed: activate(cursor)
+    Keys.onRightPressed: activate(cursor)
+    Keys.onEscapePressed: finished()
+
         background: Rectangle {
             radius: Math.min(4, theme.radius)
             color: row.active ? row.tint(theme.accent, 0.16)
                  : row.hovered && row.enabled ? row.tint(theme.foreground, 0.06) : "transparent"
+            border.width: row.keyed ? 1 : 0
+            border.color: theme.accent
         }
         contentItem: RowLayout {
             spacing: 14
@@ -96,6 +198,7 @@ Rectangle {
     }
 
     Flickable {
+        id: flick
         anchors.fill: parent
         contentHeight: column.implicitHeight + 40
         clip: true
@@ -121,6 +224,9 @@ Rectangle {
                 model: places.places
                 PlaceRow {
                     required property var modelData
+                    required property int index
+                    keyed: sidebar.activeFocus && sidebar.cursor === 0 + index
+                    onKeyedChanged: if (keyed) sidebar.reveal(this)
                     text: modelData.name
                     glyph: modelData.icon
                     active: sidebar.activePath === modelData.path
@@ -140,6 +246,9 @@ Rectangle {
                 PlaceRow {
                     id: pinRow
                     required property var modelData
+                    required property int index
+                    keyed: sidebar.activeFocus && sidebar.cursor === sidebar.pinnedAt + index
+                    onKeyedChanged: if (keyed) sidebar.reveal(this)
                     text: modelData.name
                     glyph: "folder"
                     active: sidebar.activePath === modelData.path
@@ -172,12 +281,32 @@ Rectangle {
                 }
             }
 
+            // Views: lists that aren't a folder of their own.
+            Item { implicitHeight: 20 }
+            SectionLabel { text: qsTr("Views") }
+            Repeater {
+                model: places.views
+                PlaceRow {
+                    required property var modelData
+                    required property int index
+                    text: modelData.name
+                    glyph: modelData.icon
+                    active: sidebar.activePath === modelData.path
+                    onClicked: backend.navigate(modelData.path)
+                    keyed: sidebar.activeFocus && sidebar.cursor === sidebar.viewsAt + index
+                    onKeyedChanged: if (keyed) sidebar.reveal(this)
+                }
+            }
+
             Item { implicitHeight: 20; visible: places.devices.length > 0 }
             SectionLabel { text: qsTr("Devices"); visible: places.devices.length > 0 }
             Repeater {
                 model: places.devices
                 PlaceRow {
                     required property var modelData
+                    required property int index
+                    keyed: sidebar.activeFocus && sidebar.cursor === sidebar.devicesAt + index
+                    onKeyedChanged: if (keyed) sidebar.reveal(this)
                     text: modelData.name
                     glyph: "drive"
                     active: sidebar.activePath === modelData.path
@@ -191,6 +320,9 @@ Rectangle {
                 model: places.peers
                 PlaceRow {
                     required property var modelData
+                    required property int index
+                    keyed: sidebar.activeFocus && sidebar.cursor === sidebar.peersAt + index
+                    onKeyedChanged: if (keyed) sidebar.reveal(this)
                     text: modelData.name
                     glyph: "peer"
                     active: backend.path.indexOf("/sftp:host=" + modelData.host) >= 0

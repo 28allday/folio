@@ -83,11 +83,13 @@ Rectangle {
             onClicked: bar.cycleView()
         }
         IconButton {
+            id: sortButton
             glyph: "sort"
-            text: backend.folder.sortMode === "name" ? qsTr("Sorted by name (S)") : qsTr("Newest first (S)")
-            active: backend.folder.sortMode === "modified"
-            onClicked: backend.folder.sortMode = backend.folder.sortMode === "name" ? "modified" : "name"
+            text: qsTr("Sort (S)")
+            active: sortMenu.visible
+            onClicked: sortMenu.popup(sortButton, 0, sortButton.height + 4)
         }
+        SortMenu { id: sortMenu }
         IconButton {
             glyph: "hidden"
             text: qsTr("Show hidden files (Ctrl+H)")

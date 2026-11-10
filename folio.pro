@@ -7,6 +7,7 @@ TEMPLATE = app
 HEADERS += \
     src/backend.h \
     src/filemanager1.h \
+    src/fileops.h \
     src/foldermodel.h \
     src/mounter.h \
     src/places.h \
@@ -19,6 +20,7 @@ SOURCES += \
     src/main.cpp \
     src/backend.cpp \
     src/filemanager1.cpp \
+    src/fileops.cpp \
     src/foldermodel.cpp \
     src/mounter.cpp \
     src/places.cpp \

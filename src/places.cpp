@@ -1,4 +1,5 @@
 #include "places.h"
+#include "foldermodel.h"
 
 #include <QCollator>
 #include <QDir>
@@ -91,10 +92,11 @@ void Places::refreshPlaces() {
             icon == "dropbox" ? m_dropboxStatus : QString());
     }
 
-    const QString trash = m_home + "/.local/share/Trash/files";
-    if (QFileInfo(trash).isDir())
-        add(tr("Trash"), trash, "trash");
     m_places = places;
+
+    // Views: lists that aren't a folder of their own.
+    m_views = {QVariantMap{{"name", tr("Recents")}, {"path", FolderModel::recentPath()}, {"icon", "recent"}},
+               QVariantMap{{"name", tr("Trash")}, {"path", m_home + "/.local/share/Trash/files"}, {"icon", "trash"}}};
 }
 
 // Omarchy's own folder reads as the name it goes by.
