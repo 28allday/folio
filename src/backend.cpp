@@ -215,6 +215,71 @@ Backend::~Backend() {
     }
 }
 
+QString Backend::typedPath() const {
+    const QString p = path();
+    if (p == m_home)
+        return "~/";
+    if (p.startsWith(m_home + "/"))
+        return "~" + p.mid(m_home.size()) + "/";
+    return p == FolderModel::recentPath() || p == "/" ? p : p + "/";
+}
+
+QString Backend::expandTyped(const QString &text, const QString &home, const QString &current) {
+    QString t = text.trimmed();
+    if (t.startsWith("file://"))
+        t = QUrl(t).toLocalFile();
+    if (t == "~")
+        return home;
+    if (t.startsWith("~/"))
+        return home + t.mid(1);
+    // A relative path is taken from the folder being shown.
+    if (!t.startsWith('/') && QFileInfo(current).isDir())
+        return QDir(current).filePath(t);
+    return t;
+}
+
+bool Backend::goTyped(const QString &text) {
+    const QString target = QDir::cleanPath(expandTyped(text, m_home, path()));
+    const QFileInfo info(target);
+    if (info.isDir()) {
+        navigate(target);
+        return true;
+    }
+    if (info.exists()) {
+        showItem(target);
+        return true;
+    }
+    setMessage(tr("%1 doesn't exist.").arg(text.trimmed()));
+    return false;
+}
+
+QString Backend::complete(const QString &text, const QString &home, const QString &current) {
+    // Completes the last part to the folder names it starts, as far as
+    // they agree, keeping how the user typed the front (~, relative).
+    const int slash = text.lastIndexOf('/');
+    const QString head = slash >= 0 ? text.left(slash + 1) : QString();
+    const QString part = text.mid(slash + 1);
+    const QString folder = expandTyped(head.isEmpty() ? "." : head, home, current);
+    QStringList matches;
+    const auto names = QDir(folder).entryList(QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden, QDir::Name);
+    for (const QString &name : names)
+        if (name.startsWith(part) && (part.startsWith('.') || !name.startsWith('.')))
+            matches << name;
+    if (matches.isEmpty())
+        return text;
+    if (matches.size() == 1)
+        return head + matches.first() + "/";
+    QString common = matches.first();
+    for (const QString &m : matches)
+        while (!m.startsWith(common))
+            common.chop(1);
+    return head + common;
+}
+
+QString Backend::completePath(const QString &text) const {
+    return complete(text, m_home, path());
+}
+
 void Backend::togglePreview(const QString &path) {
     if (previewing()) {
         m_preview.terminate();

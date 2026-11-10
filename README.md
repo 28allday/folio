@@ -31,6 +31,7 @@ Folio is Omarchy's file manager: one window for finding, previewing and opening 
 | Ctrl+Shift+N | New folder |
 | Delete | Move to the trash |
 | Tab | Switch between the sidebar and the files |
+| Ctrl+L | Type a path: Enter goes there, Tab completes, Esc cancels |
 | Ctrl+1 / Ctrl+2 / Ctrl+3 | Grid, list, or columns (in columns, → goes into a folder and ← back out) |
 | S | Sort: name, kind, newest, oldest, size |
 | Ctrl+H | Show hidden files |

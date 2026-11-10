@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Controls.Material
 
 // History buttons, the breadcrumb path, and the view toggles.
 Rectangle {
@@ -8,8 +9,23 @@ Rectangle {
 
     property bool previewVisible: true
     property string viewMode: "grid"
+    // Ctrl+L: the path as text to edit. Enter goes there, Escape cancels,
+    // Tab completes a folder name.
+    property bool editing: false
     signal togglePreview()
     signal cycleView()
+    signal editDone()
+
+    function editPath() {
+        pathField.text = backend.typedPath()
+        editing = true
+        pathField.forceActiveFocus()
+        pathField.selectAll()
+    }
+    function stopEditing() {
+        editing = false
+        editDone()
+    }
 
     color: theme.background
     implicitHeight: 60
@@ -26,7 +42,39 @@ Rectangle {
         IconButton { glyph: "forward"; text: qsTr("Forward"); enabled: backend.canForward; onClicked: backend.forward() }
         Item { implicitWidth: 16 }
 
+        TextField {
+            id: pathField
+            Layout.fillWidth: true
+            visible: bar.editing
+            font.pixelSize: 14
+            color: theme.brightForeground
+            selectionColor: theme.accent
+            selectedTextColor: theme.accentForeground
+            leftPadding: 12
+            rightPadding: 12
+            topPadding: 8
+            bottomPadding: 8
+            background: Rectangle {
+                implicitHeight: 36
+                color: theme.darkBackground
+                border.width: 1
+                border.color: theme.accent
+                radius: Math.min(4, theme.radius)
+            }
+            onAccepted: {
+                if (backend.goTyped(text))
+                    bar.stopEditing()
+            }
+            Keys.onEscapePressed: bar.stopEditing()
+            Keys.onTabPressed: {
+                text = backend.completePath(text)
+                cursorPosition = text.length
+            }
+            onActiveFocusChanged: if (!activeFocus && bar.editing) bar.stopEditing()
+        }
+
         Flickable {
+            visible: !bar.editing
             Layout.fillWidth: true
             Layout.fillHeight: true
             contentWidth: crumbs.implicitWidth

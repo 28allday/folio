@@ -53,6 +53,12 @@ public:
     // The item to select once the folder has loaded (where we came from, or
     // what "Show in folder" asked for); empty means the first item.
     Q_INVOKABLE QString takeSelection();
+    // The path as it's shown for editing (~ for home), going to a typed
+    // path (a folder, or a file to select in its folder; ~ works), and
+    // completing the last part of one to a folder name.
+    Q_INVOKABLE QString typedPath() const;
+    Q_INVOKABLE bool goTyped(const QString &text);
+    Q_INVOKABLE QString completePath(const QString &text) const;
     // Space: opens the large preview of a file in its own process, or closes
     // it when it's already open.
     Q_INVOKABLE void togglePreview(const QString &path);
@@ -65,6 +71,8 @@ public:
     void showItem(const QString &path);
 
     static QString gvfsRoot();
+    static QString expandTyped(const QString &text, const QString &home, const QString &current);
+    static QString complete(const QString &text, const QString &home, const QString &current);
 
 signals:
     void pathChanged();

@@ -28,7 +28,7 @@ ApplicationWindow {
     property string loadedPath: ""
     // While a text field has the keyboard (renaming, a password), single-key
     // and clipboard shortcuts stand aside so typing works.
-    readonly property bool typing: rename.visible || backend.mounter.asking
+    readonly property bool typing: rename.visible || backend.mounter.asking || pathBar.editing
     readonly property var selectedPaths: current.path ? [current.path] : []
     onCurrentChanged: {
         if (current.name)
@@ -105,6 +105,7 @@ ApplicationWindow {
         enabled: !win.typing
         onActivated: sidebar.activeFocus ? (view.item && view.item.focusView()) : sidebar.focusSidebar()
     }
+    Shortcut { sequences: ["Ctrl+L", "Alt+D"]; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: pathBar.editPath() }
     Shortcut { sequence: "Ctrl+D"; context: Qt.ApplicationShortcut; onActivated: win.togglePin() }
     Shortcut { sequence: "Ctrl+I"; context: Qt.ApplicationShortcut; onActivated: win.previewVisible = !win.previewVisible }
     Shortcut { sequences: ["Return", "Enter"]; context: Qt.ApplicationShortcut; enabled: !win.typing && !sidebar.activeFocus; onActivated: if (win.current.path) backend.open(win.current.path) }
@@ -166,6 +167,8 @@ ApplicationWindow {
             spacing: 0
 
             PathBar {
+                id: pathBar
+                onEditDone: if (view.item) view.item.focusView()
                 Layout.fillWidth: true
                 previewVisible: win.previewVisible
                 viewMode: win.viewMode
