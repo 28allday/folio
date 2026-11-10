@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Shapes
 
 // One item in the grid: a preview on top, its name below. Folders are a
-// quiet card with a dot per item inside; files show a real thumbnail when one
+// quiet card; files show a real thumbnail when one
 // can be made, and a drawn stand-in for their kind when not.
 Item {
     id: tile
@@ -37,17 +37,6 @@ Item {
                                      : kind === "image" ? theme.cyan
                                      : theme.secondaryForeground
 
-    Rectangle {
-        anchors.fill: parent
-        anchors.margins: 6
-        radius: Math.min(4, theme.radius)
-        color: tile.current ? tile.tint(theme.accent, 0.16)
-             : hover.hovered ? tile.tint(theme.foreground, 0.05)
-             : "transparent"
-        border.width: tile.current ? 1 : 0
-        border.color: theme.accent
-    }
-
     Item {
         id: art
         width: 128
@@ -60,6 +49,18 @@ Item {
             anchors.fill: parent
             sourceComponent: tile.isDir ? folderArt : fileArt
         }
+
+        // Selection is color on the item itself, not a frame around the
+        // tile: folders tint their own card, files get an accent outline.
+        Rectangle {
+            visible: !tile.isDir && (tile.current || hover.hovered)
+            anchors.fill: parent
+            anchors.margins: -5
+            color: "transparent"
+            border.width: tile.current ? 2 : 1
+            border.color: tile.current ? theme.accent : tile.tint(theme.foreground, 0.2)
+            radius: Math.min(4, theme.radius)
+        }
     }
 
     Text {
@@ -68,7 +69,7 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width - 28
         text: tile.name
-        color: tile.current ? theme.brightForeground : theme.foreground
+        color: tile.current ? theme.accent : theme.foreground
         font.pixelSize: 12
         horizontalAlignment: Text.AlignHCenter
         wrapMode: Text.WrapAtWordBoundaryOrAnywhere
@@ -103,33 +104,16 @@ Item {
         }
     }
 
-    // Folders are a plain card with a dot for each thing inside, up to eight,
-    // so full and empty folders read differently without a number or a
-    // picture competing with the files around them.
+    // Folders are a plain card, nothing on it; the name below says the rest.
     Component {
         id: folderArt
 
-        Item {
-            FolderShape {
-                fill: tile.current ? Qt.tint(theme.lighterBackground, tile.tint(theme.accent, 0.22)) : theme.lighterBackground
-                stroke: tile.current ? theme.accent : "transparent"
-            }
-            Row {
-                x: 14
-                y: 74
-                spacing: 4
-                Repeater {
-                    model: Math.max(0, Math.min(8, tile.itemCount))
-                    Rectangle { width: 4; height: 4; color: tile.tint(theme.foreground, 0.45) }
-                }
-                Text {
-                    visible: tile.itemCount > 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "+"
-                    color: tile.tint(theme.foreground, 0.45)
-                    font.pixelSize: 9
-                }
-            }
+        FolderShape {
+            fill: tile.current ? Qt.tint(theme.lighterBackground, tile.tint(theme.accent, 0.3))
+                : hover.hovered ? Qt.tint(theme.lighterBackground, tile.tint(theme.foreground, 0.06))
+                : theme.lighterBackground
+            stroke: tile.current ? theme.accent : "transparent"
+            strokeWidth: 1.5
         }
     }
 

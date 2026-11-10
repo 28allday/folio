@@ -7,7 +7,7 @@ Folio is Omarchy's file manager: one window for finding, previewing and opening 
 - **Places**: Home and your standard folders, with Dropbox listed (and its sync status shown) once it's set up.
 - **Devices**: the system drive and anything plugged in, with free space.
 - **Tailnet**: the machines on your tailnet. Opening one mounts it over SFTP through GVfs and lands in the matching home folder.
-- **Previews**: folders are quiet cards with a dot for each thing inside; photos, videos, PDFs and anything else with an installed thumbnailer show the real thing. Space opens a large preview, like Sushi or Quick Look: pictures at full size, video and audio playing, PDFs to scroll through, text and Markdown to read, with the arrows stepping through the folder. The details pane (Ctrl+I) shows a larger look, the facts, and the first lines of text files.
+- **Previews**: folders are quiet cards; photos, videos, PDFs and anything else with an installed thumbnailer show the real thing. Space opens a large preview, like Sushi or Quick Look: pictures at full size, video and audio playing, PDFs to scroll through, text and Markdown to read, with the arrows stepping through the folder. The details pane (Ctrl+I) shows a larger look, the facts, and the first lines of text files.
 - **Show in folder**: Folio answers `org.freedesktop.FileManager1`, so other apps' "Show in folder" buttons open it with the file selected.
 
 ## Keyboard

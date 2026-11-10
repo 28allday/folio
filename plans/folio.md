@@ -22,7 +22,7 @@ Folio replaces it with an app built the way Hype, Monologue, Omacut and Signed a
 Done, tested (19 Qt Test cases), and verified offscreen:
 
 - Folder model listing off the UI thread, folders first, natural sort, name or newest-first, hidden files toggle, live reload on change.
-- Folder tiles as plain cards with a dot per item inside (up to eight); file tiles with real thumbnails (in-process for common images, installed thumbnailers for video, PDF, HEIC, office files), drawn stand-ins otherwise.
+- Folder tiles as plain cards, selection shown as color on the item itself; file tiles with real thumbnails (in-process for common images, installed thumbnailers for video, PDF, HEIC, office files), drawn stand-ins otherwise.
 - Shared thumbnail cache per the spec, with failure markers so broken files aren't retried.
 - Preview pane: large preview, the system's type name, size, modified, dimensions, opening lines of text files, Open.
 - Sidebar: XDG places, Dropbox when `~/Dropbox` exists (with `dropbox-cli` sync status), Trash, system and removable drives with free space, tailnet machines from `tailscale status --json`.
