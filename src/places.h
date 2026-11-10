@@ -40,11 +40,6 @@ public:
     Q_INVOKABLE void unpin(const QString &path);
     Q_INVOKABLE bool isPinned(const QString &path) const;
 
-    // Reads bookmark lines ("file:///path Label") into pinned entries,
-    // leaving out folders already listed under Home and missing folders.
-    static QVariantList parseBookmarks(const QByteArray &contents, const QString &home);
-    static QString displayName(const QString &name);
-
     static QVariantList parseTailscale(const QByteArray &json);
     static QString parseDropboxStatus(const QByteArray &output);
 
