@@ -162,8 +162,10 @@ Item {
                     onActivated: backend.open(path)
                 }
 
+                // Where the first item would be, lined up with the names.
                 Text {
-                    anchors.centerIn: parent
+                    x: 14 + 20 + 12
+                    y: 8
                     visible: here.count === 0 && !backend.folder.loading && backend.folder.error.length === 0
                     text: qsTr("Empty")
                     color: theme.secondaryForeground
@@ -201,7 +203,8 @@ Item {
                 }
 
                 Text {
-                    anchors.centerIn: parent
+                    x: 14 + 20 + 12
+                    y: 8
                     visible: inside.count === 0
                     text: qsTr("Empty")
                     color: theme.secondaryForeground
