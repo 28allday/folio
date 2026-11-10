@@ -25,12 +25,7 @@ Rectangle {
     // included), so the pin box shows.
     property int dropHovers: 0
     readonly property bool dragging: drop.containsDrag || dropHovers > 0 || pinDrop.containsDrag
-    readonly property var rows: [].concat(
-        places.places.map(p => ({ path: p.path })),
-        places.pinned.map(p => ({ path: p.path })),
-        places.views.map(p => ({ path: p.path })),
-        places.devices.map(p => ({ path: p.path })),
-        places.peers.map(p => ({ host: p.host })))
+    readonly property var rows: [].concat(places.places, places.pinned, places.views, places.devices, places.peers)
     readonly property int pinnedAt: places.places.length
     readonly property int viewsAt: pinnedAt + places.pinned.length
     readonly property int devicesAt: viewsAt + places.views.length
@@ -40,7 +35,7 @@ Rectangle {
         // Start on the row for where we are, or the top.
         let at = 0
         for (let i = 0; i < rows.length; ++i)
-            if (rows[i].path !== undefined && rows[i].path === activePath)
+            if (rows[i].path === activePath)
                 at = i
         cursor = at
         forceActiveFocus()
@@ -76,7 +71,7 @@ Rectangle {
         const here = sidebar.target.path
         for (const list of [places.places, places.pinned, places.views, places.devices]) {
             for (const p of list) {
-                if ((here === p.path || here.startsWith(p.path === "/" ? "/" : p.path + "/")) && p.path.length > best.length && p.path !== "/")
+                if (p.path !== "/" && (here === p.path || here.startsWith(p.path + "/")) && p.path.length > best.length)
                     best = p.path
             }
         }
