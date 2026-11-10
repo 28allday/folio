@@ -17,6 +17,9 @@ FocusScope {
     readonly property var paneBackend: backend
     property bool closable: false
     signal closeRequested()
+    // How far this pane's path bar reaches right, over the details column,
+    // so the rightmost pane's buttons sit at the window's edge.
+    property int barExtension: 0
 
     property string viewMode: host ? host.viewMode : "grid"
     onViewModeChanged: if (host && active) host.viewMode = viewMode
@@ -158,18 +161,9 @@ FocusScope {
         anchors.fill: parent
         spacing: 0
 
-        PathBar {
-            id: pathBar
-            Layout.fillWidth: true
-            onEditDone: pane.focusView()
-            previewVisible: pane.host ? pane.host.previewVisible : true
-            viewMode: pane.viewMode
-            closable: pane.closable
-            onTogglePreview: if (pane.host) pane.host.previewVisible = !pane.host.previewVisible
-            onCycleView: pane.cycleView()
-            onCloseRequested: pane.closeRequested()
-        }
-
+        // Room for the path bar, which is drawn on top so it can reach over
+        // the details column.
+        Item { Layout.fillWidth: true; implicitHeight: pathBar.implicitHeight }
         // Problems and slow work are said in the window, not swallowed.
         Rectangle {
             Layout.fillWidth: true
@@ -264,10 +258,22 @@ FocusScope {
         }
     }
 
+    PathBar {
+        id: pathBar
+        width: pane.width + pane.barExtension
+        onEditDone: pane.focusView()
+        previewVisible: pane.host ? pane.host.previewVisible : true
+        viewMode: pane.viewMode
+        closable: pane.closable
+        onTogglePreview: if (pane.host) pane.host.previewVisible = !pane.host.previewVisible
+        onCycleView: pane.cycleView()
+        onCloseRequested: pane.closeRequested()
+    }
+
     // With two panes, a line along the top marks the one keys go to.
     Rectangle {
         visible: pane.closable || (pane.host && pane.host.split)
-        anchors.top: parent.top
+        y: pathBar.height - 1
         width: parent.width
         height: 2
         color: pane.active ? theme.accent : "transparent"

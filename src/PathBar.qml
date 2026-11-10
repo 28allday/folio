@@ -30,7 +30,9 @@ Rectangle {
         editDone()
     }
 
-    color: theme.background
+    // Transparent: the window draws one bar across the whole top, so the
+    // path bars of one or two panes read as part of it.
+    color: "transparent"
     implicitHeight: 60
 
     function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }

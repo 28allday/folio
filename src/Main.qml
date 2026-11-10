@@ -4,9 +4,10 @@ import QtQuick.Controls.Material
 import QtQuick.Layouts
 import QtCore
 
-// The window: the sidebar, one folder pane or two side by side
-// (Ctrl+Shift+N splits, Ctrl+W closes the right one), and the details pane.
-// The sidebar and the details follow the pane used last.
+// The window: one bar across the top, under it the sidebar, one folder pane
+// or two side by side (Ctrl+Shift+N splits, Ctrl+W closes the right one),
+// and the details pane. Each pane's path sits in the bar above its files;
+// the sidebar and the details follow the pane used last.
 ApplicationWindow {
     id: win
     width: 1280
@@ -32,6 +33,8 @@ ApplicationWindow {
     // The right pane while the window is split.
     property var rightPane: null
     readonly property bool split: rightPane !== null
+    // The rightmost pane's path bar reaches over the details column.
+    readonly property int detailsWidth: details.visible ? details.width : 0
 
     // Remembers the view between launches (~/.config/folio/folio.conf).
     Settings {
@@ -48,6 +51,7 @@ ApplicationWindow {
             if (!rightPane)
                 return
             rightPane.closable = true
+            rightPane.barExtension = Qt.binding(() => win.detailsWidth)
             rightPane.closeRequested.connect(closeSplit)
         }
         rightPane.focusView()
@@ -88,6 +92,15 @@ ApplicationWindow {
         LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
         LayoutMirroring.childrenInherit: true
 
+        // The bar across the top; the panes' path bars draw over it.
+        readonly property int barHeight: 60
+        Rectangle {
+            width: parent.width
+            height: parent.barHeight
+            color: theme.background
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: win.tint(theme.foreground, 0.12) }
+        }
+
         RowLayout {
             anchors.fill: parent
             spacing: 0
@@ -96,20 +109,22 @@ ApplicationWindow {
                 id: sidebar
                 target: win.activePane ? win.activePane.paneBackend : backend
                 onFinished: win.activePane.focusView()
+                Layout.topMargin: parent.parent.barHeight
                 Layout.preferredWidth: 236
                 Layout.fillHeight: true
             }
-            Rectangle { Layout.fillHeight: true; implicitWidth: 1; color: win.tint(theme.foreground, 0.12) }
+            Rectangle { Layout.topMargin: parent.parent.barHeight; Layout.fillHeight: true; implicitWidth: 1; color: win.tint(theme.foreground, 0.12) }
 
             FolderPane {
                 id: leftPane
+                barExtension: win.split ? 0 : win.detailsWidth
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 focus: true
             }
 
             // The right pane of a split; Folio puts it here (see windows.cpp).
-            Rectangle { visible: win.split; Layout.fillHeight: true; implicitWidth: 1; color: win.tint(theme.foreground, 0.12) }
+            Rectangle { visible: win.split; Layout.topMargin: parent.parent.barHeight; Layout.fillHeight: true; implicitWidth: 1; color: win.tint(theme.foreground, 0.12) }
             Item {
                 id: splitHost
                 objectName: "splitHost"
@@ -119,7 +134,9 @@ ApplicationWindow {
             }
 
             PreviewPane {
+                id: details
                 visible: win.previewVisible && win.width >= (win.split ? 1400 : 960)
+                Layout.topMargin: parent.parent.barHeight
                 Layout.preferredWidth: 300
                 Layout.fillHeight: true
                 item: win.activePane ? win.activePane.current : ({})
