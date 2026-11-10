@@ -263,9 +263,10 @@ QString Backend::expandTyped(const QString &text, const QString &home, const QSt
         return home;
     if (t.startsWith("~/"))
         return home + t.mid(1);
-    // A relative path is taken from the folder being shown.
-    if (!t.startsWith('/') && QFileInfo(current).isDir())
-        return QDir(current).filePath(t);
+    // A relative path is taken from the folder being shown, or from home in
+    // Recents, which isn't a folder.
+    if (!t.startsWith('/'))
+        return QDir(QFileInfo(current).isDir() ? current : home).filePath(t);
     return t;
 }
 

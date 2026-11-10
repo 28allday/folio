@@ -609,12 +609,14 @@ private slots:
         QCOMPARE(Backend::expandTyped("~/Work", h, h), h + "/Work");
         QCOMPARE(Backend::expandTyped("Work/folio", h, h), h + "/Work/folio");
         QCOMPARE(Backend::expandTyped("/etc", h, h), QString("/etc"));
+        QCOMPARE(Backend::expandTyped("Work", h, "recent:"), h + "/Work");
         QCOMPARE(Backend::complete("~/Doc", h, h), QString("~/Documents/"));
         QCOMPARE(Backend::complete("~/Work/fo", h, h), QString("~/Work/fo"));   // folio or forge
         QCOMPARE(Backend::complete("~/Work/fol", h, h), QString("~/Work/folio/"));
         QCOMPARE(Backend::complete("~/.co", h, h), QString("~/.config/"));
         QCOMPARE(Backend::complete("~/c", h, h), QString("~/c"));               // hidden stays hidden
         QCOMPARE(Backend::complete("Wo", h, h), QString("Work/"));
+        QCOMPARE(Backend::complete("Wo", h, "recent:"), QString("Work/"));
     }
 
     void backendShowItemSelectsTheFile()
