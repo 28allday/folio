@@ -82,7 +82,7 @@ public:
     Q_INVOKABLE QVariantMap get(int row) const;
     Q_INVOKABLE int indexOf(const QString &name) const;
 
-    // The selection, kept by name so it survives a re-read or a re-sort.
+    // The selection, kept by path so it survives a re-read or a re-sort.
     // The views keep the cursor (the current item) themselves.
     int selectedCount() const { return m_selected.size(); }
     Q_INVOKABLE void selectOnly(int row);
@@ -134,7 +134,7 @@ private:
     QString m_path;
     QVector<Entry> m_entries;
     QSet<QString> m_selected;
-    void setSelected(const QSet<QString> &names);
+    void setSelected(const QSet<QString> &paths);
     bool m_loading = false;
     QString m_error;
     bool m_showHidden = false;

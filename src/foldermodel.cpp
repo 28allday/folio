@@ -96,7 +96,7 @@ QVariant FolderModel::data(const QModelIndex &index, int role) const {
     case ExtensionRole: return e.extension;
     case ItemCountRole: return e.itemCount;
     case PeekRole: return e.peek;
-    case SelectedRole: return m_selected.contains(e.name);
+    case SelectedRole: return m_selected.contains(e.path);
     }
     return {};
 }
@@ -425,8 +425,8 @@ void FolderModel::reload() {
         if (!m_selected.isEmpty()) {
             QSet<QString> still;
             for (const Entry &e : m_entries)
-                if (m_selected.contains(e.name))
-                    still.insert(e.name);
+                if (m_selected.contains(e.path))
+                    still.insert(e.path);
             if (still != m_selected) {
                 m_selected = still;
                 emit selectionChanged();
@@ -488,31 +488,31 @@ QVariantMap FolderModel::get(int row) const {
         {"name", e.name}, {"path", e.path}, {"isDir", e.isDir}, {"size", e.size},
         {"modified", e.modified}, {"kind", e.kind}, {"mime", e.mime},
         {"extension", e.extension}, {"itemCount", e.itemCount}, {"peek", e.peek},
-        {"selected", m_selected.contains(e.name)},
+        {"selected", m_selected.contains(e.path)},
     };
 }
 
-void FolderModel::setSelected(const QSet<QString> &names) {
-    if (names == m_selected)
+void FolderModel::setSelected(const QSet<QString> &paths) {
+    if (paths == m_selected)
         return;
-    m_selected = names;
+    m_selected = paths;
     if (!m_entries.isEmpty())
         emit dataChanged(index(0), index(m_entries.size() - 1), {SelectedRole});
     emit selectionChanged();
 }
 
 void FolderModel::selectOnly(int row) {
-    setSelected(row >= 0 && row < m_entries.size() ? QSet<QString>{m_entries[row].name} : QSet<QString>{});
+    setSelected(row >= 0 && row < m_entries.size() ? QSet<QString>{m_entries[row].path} : QSet<QString>{});
 }
 
 void FolderModel::toggleSelected(int row) {
     if (row < 0 || row >= m_entries.size())
         return;
-    QSet<QString> names = m_selected;
-    const QString name = m_entries[row].name;
-    if (!names.remove(name))
-        names.insert(name);
-    setSelected(names);
+    QSet<QString> paths = m_selected;
+    const QString path = m_entries[row].path;
+    if (!paths.remove(path))
+        paths.insert(path);
+    setSelected(paths);
 }
 
 void FolderModel::selectRange(int from, int to, bool add) {
@@ -520,25 +520,25 @@ void FolderModel::selectRange(int from, int to, bool add) {
         return;
     from = qBound(0, from, int(m_entries.size()) - 1);
     to = qBound(0, to, int(m_entries.size()) - 1);
-    QSet<QString> names = add ? m_selected : QSet<QString>{};
+    QSet<QString> paths = add ? m_selected : QSet<QString>{};
     for (int row = qMin(from, to); row <= qMax(from, to); ++row)
-        names.insert(m_entries[row].name);
-    setSelected(names);
+        paths.insert(m_entries[row].path);
+    setSelected(paths);
 }
 
 void FolderModel::selectRows(const QList<int> &rows) {
-    QSet<QString> names;
+    QSet<QString> paths;
     for (int row : rows)
         if (row >= 0 && row < m_entries.size())
-            names.insert(m_entries[row].name);
-    setSelected(names);
+            paths.insert(m_entries[row].path);
+    setSelected(paths);
 }
 
 void FolderModel::selectAll() {
-    QSet<QString> names;
+    QSet<QString> paths;
     for (const Entry &e : m_entries)
-        names.insert(e.name);
-    setSelected(names);
+        paths.insert(e.path);
+    setSelected(paths);
 }
 
 void FolderModel::clearSelection() {
@@ -546,14 +546,14 @@ void FolderModel::clearSelection() {
 }
 
 bool FolderModel::isSelected(int row) const {
-    return row >= 0 && row < m_entries.size() && m_selected.contains(m_entries[row].name);
+    return row >= 0 && row < m_entries.size() && m_selected.contains(m_entries[row].path);
 }
 
 QStringList FolderModel::selectedPaths() const {
     // In the folder's order, not the order they were picked in.
     QStringList paths;
     for (const Entry &e : m_entries)
-        if (m_selected.contains(e.name))
+        if (m_selected.contains(e.path))
             paths << e.path;
     return paths;
 }

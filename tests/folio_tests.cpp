@@ -280,7 +280,7 @@ private slots:
         QCOMPARE(order("size"), QString("Zeta a.png c.txt b.txt"));
     }
 
-    void folderSelectsByName()
+    void folderKeepsASelection()
     {
         QTemporaryDir dir;
         for (const char *name : {"a.txt", "b.txt", "c.txt", "d.txt"})
@@ -310,6 +310,41 @@ private slots:
         QCOMPARE(model.selectedCount(), 3);
         model.clearSelection();
         QCOMPARE(model.selectedCount(), 0);
+    }
+
+    void recentsSelectOneOfTwoSameNamedFiles()
+    {
+        // Recents can hold two files of the same name from different
+        // folders; selecting one leaves the other alone.
+        QTemporaryDir data;
+        QDir(data.path()).mkpath("a");
+        QDir(data.path()).mkpath("b");
+        write(data.filePath("a/README.md"), "x");
+        write(data.filePath("b/README.md"), "x");
+        const QByteArray url = QUrl::fromLocalFile(data.path()).toEncoded();
+        write(data.filePath("recently-used.xbel"),
+              "<?xml version=\"1.0\"?>\n<xbel version=\"1.0\">\n"
+              "<bookmark href=\"" + url + "/a/README.md\" modified=\"2026-01-01T10:00:00Z\"/>\n"
+              "<bookmark href=\"" + url + "/b/README.md\" modified=\"2026-02-01T10:00:00Z\"/>\n"
+              "</xbel>\n");
+        const QByteArray dataHome = qgetenv("XDG_DATA_HOME");
+        qputenv("XDG_DATA_HOME", QFile::encodeName(data.path()));
+        const auto restore = qScopeGuard([&] {
+            if (dataHome.isNull())
+                qunsetenv("XDG_DATA_HOME");
+            else
+                qputenv("XDG_DATA_HOME", dataHome);
+        });
+
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(FolderModel::recentPath());
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 2);
+        model.selectOnly(0);
+        QCOMPARE(model.selectedCount(), 1);
+        QVERIFY(!model.isSelected(1));
+        QCOMPARE(model.selectedPaths(), QStringList({data.filePath("b/README.md")}));
     }
 
     void trashRestoresAndEmpties()
