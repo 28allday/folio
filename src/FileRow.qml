@@ -33,11 +33,21 @@ Item {
     // always gets room: in a narrow window the date goes first, then the
     // size. (The icon says what kind a file is; there's no column for it.)
     readonly property int sizeWidth: 96
-    readonly property int dateWidth: 168
-    readonly property bool showDate: detailed && width >= 560
+    readonly property int dateWidth: 96
+    readonly property bool showDate: detailed && width >= 480
     readonly property bool showSize: detailed && width >= 380
 
     function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
+
+    // When it changed: the time for today, the date before that.
+    function when(date) {
+        if (!date)
+            return ""
+        const locale = Qt.locale(translator.language)
+        const now = new Date()
+        const today = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate()
+        return today ? date.toLocaleTimeString(locale, Locale.ShortFormat) : date.toLocaleDateString(locale, Locale.ShortFormat)
+    }
 
     function formatSize(bytes) {
         const units = [qsTr("B"), qsTr("KB"), qsTr("MB"), qsTr("GB"), qsTr("TB")]
@@ -122,7 +132,7 @@ Item {
             visible: row.showDate
             Layout.preferredWidth: row.dateWidth
             Layout.leftMargin: 12
-            text: row.modified ? row.modified.toLocaleString(Qt.locale(translator.language), Locale.ShortFormat) : ""
+            text: row.when(row.modified)
             color: theme.secondaryForeground
             font.pixelSize: 12
             elide: Text.ElideRight
