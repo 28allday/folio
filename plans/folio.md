@@ -30,7 +30,7 @@ Done, tested (19 Qt Test cases), and verified offscreen:
 - Split view (Ctrl+Shift+N, Ctrl+W closes): two folder panes side by side, each with its own path, history and selection; sidebar and details follow the active pane. New windows (Ctrl+N) open in the running process.
 - Multi-select: Shift+click/arrows for ranges, Alt+click to add or remove, rubber band on empty space, Ctrl+A; file actions and drags act on the selection.
 - Path entry (Ctrl+L): ~ and relative paths, a file selects itself in its folder, Tab completes folder names.
-- Three views, remembered between launches: grid (Ctrl+1), list with name, size and date (Ctrl+2; headings sort; the date then the size step aside when narrow), and Finder-style columns (Ctrl+3).
+- Three views, remembered between launches: grid (Ctrl+1), list with name, size and date (Ctrl+2; no headings; the date then the size step aside when narrow), and Finder-style columns (Ctrl+3).
 - Preview pane: large preview, the system's type name, size, modified, dimensions, opening lines of text files, Open.
 - Sidebar: a Home section (its label goes home) listing every folder in home (XDG folders and Dropbox with their own glyphs, `omarchy` shown as Omarchy); Pinned folders (Ctrl+D or drag onto the sidebar) stored as GTK bookmarks; Dropbox (with `dropbox-cli` sync status), Trash, physical drives (removable and extra internal disks, not the system's own), online tailnet machines from `tailscale status --json`.
 - Tailnet machines open over SFTP through GIO, landing in the matching home folder; GVfs's questions (host key on first connection, password) are asked in the window.
