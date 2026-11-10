@@ -27,10 +27,9 @@ QString mtimeOf(const QString &path) {
     return QString::number(QFileInfo(path).lastModified().toSecsSinceEpoch());
 }
 
-// The spec's Exec field: %i input path, %u input URI, %o output, %s size.
-// Qt writes longer PNG text values as compressed zTXt chunks, which some
-// thumbnail readers (Qt's own included) don't return. The thumbnail spec's
-// keys belong in plain tEXt, so re-encode them after Qt writes the image.
+// Qt writes longer PNG text values as compressed zTXt chunks. The thumbnail
+// spec's keys belong in plain tEXt, which is all some thumbnail readers look
+// at, so re-encode them after Qt writes the image.
 QByteArray withPlainText(const QByteArray &png) {
     if (!png.startsWith("\x89PNG\r\n\x1a\n"))
         return png;
@@ -68,6 +67,7 @@ QByteArray withPlainText(const QByteArray &png) {
     return out;
 }
 
+// The spec's Exec field: %i input path, %u input URI, %o output, %s size.
 QStringList expandCommand(const QString &command, const QString &input, const QString &output, int size) {
     QStringList args = QProcess::splitCommand(command);
     for (QString &arg : args) {
