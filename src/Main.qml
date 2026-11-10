@@ -50,6 +50,8 @@ ApplicationWindow {
             rightPane = windows.openSplit(win, activePane.paneBackend.path)
             if (!rightPane)
                 return
+            rightPane.parent = splitHost
+            rightPane.anchors.fill = splitHost
             rightPane.closable = true
             rightPane.barExtension = Qt.binding(() => win.detailsWidth)
             rightPane.closeRequested.connect(closeSplit)
@@ -124,13 +126,12 @@ ApplicationWindow {
                 focus: true
             }
 
-            // The right pane of a split; Folio puts it here (see windows.cpp).
-            // Between the panes the divider runs up through the top bar, so
-            // each path reads as belonging to the files below it.
+            // openSplit() puts the right pane of a split here. Between the
+            // panes the divider runs up through the top bar, so each path
+            // reads as belonging to the files below it.
             Rectangle { visible: win.split; Layout.fillHeight: true; implicitWidth: 1; color: win.tint(theme.foreground, 0.12) }
             Item {
                 id: splitHost
-                objectName: "splitHost"
                 visible: win.split
                 Layout.fillWidth: true
                 Layout.fillHeight: true

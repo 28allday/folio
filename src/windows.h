@@ -8,7 +8,6 @@ class Backend;
 class FileOps;
 class QQmlContext;
 class QQmlEngine;
-class QQuickWindow;
 
 // Folio's windows, all in one process. Each has its own folder, history,
 // preview and file work (a Backend and a FileOps); they share the theme,
@@ -28,8 +27,9 @@ public:
     // The window used most recently, for "Show in folder" from other apps.
     Backend *latest() const;
 
-    // Splits a window: a second folder pane on the right, with its own
-    // folder, history and selection, starting at `folder`. Returns the pane.
+    // Splits a window: a second folder pane, with its own folder, history
+    // and selection, starting at `folder`. Returns the pane, for Main.qml to
+    // put on the right.
     Q_INVOKABLE QObject *openSplit(QObject *window, const QString &folder);
     Q_INVOKABLE void closeSplit(QObject *window);
 
@@ -40,16 +40,16 @@ private:
         FileOps *fileOps = nullptr;
         QQmlContext *context = nullptr;
     };
+    // The window's own pane is the window itself (its item is the
+    // QQuickWindow); the split is empty until Ctrl+Alt+N.
     struct Window {
-        QQuickWindow *window;
-        Backend *backend;
-        FileOps *fileOps;
-        QQmlContext *context;
+        Pane main;
         Pane split;
     };
+    Pane makePane(QQmlComponent &component, QQmlContext *parent);
     Window *find(QObject *window);
     static void release(Pane &pane);
-    void close(QQuickWindow *window);
+    void close(QObject *window);
 
     QQmlEngine *m_engine;
     QQmlComponent m_component;
