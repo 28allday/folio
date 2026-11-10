@@ -194,7 +194,7 @@ Item {
                 Text {
                     x: 14 + 20 + 12
                     y: 8
-                    visible: inside.count === 0
+                    visible: inside.count === 0 && !inside.model.loading
                     text: qsTr("Empty")
                     color: theme.secondaryForeground
                 }
