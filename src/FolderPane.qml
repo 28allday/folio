@@ -57,15 +57,17 @@ FocusScope {
     // Restore and Empty Trash.
     readonly property bool inTrash: fileOps.inTrash(backend.path)
     function deleteSelected() {
-        const paths = pane.selectedPaths
+        if (pane.inTrash)
+            confirmDelete(pane.selectedPaths)
+        else
+            fileOps.trash(pane.selectedPaths)
+    }
+    function confirmDelete(paths) {
         if (paths.length === 0)
             return
-        if (!pane.inTrash) {
-            fileOps.trash(paths)
-            return
-        }
+        const name = paths[0].slice(paths[0].lastIndexOf("/") + 1)
         confirm.ask(qsTr("Delete for good?"),
-                    paths.length === 1 ? qsTr("%1 will be deleted permanently. This can't be undone.").arg(pane.current.name)
+                    paths.length === 1 ? qsTr("%1 will be deleted permanently. This can't be undone.").arg(name)
                                        : qsTr("%n items will be deleted permanently. This can't be undone.", "", paths.length),
                     qsTr("Delete"), () => fileOps.deleteForever(paths))
     }
@@ -200,7 +202,7 @@ FocusScope {
         id: fileMenu
         objectName: "fileMenu"
         onRenameRequested: (target) => rename.open(target)
-        onDeleteRequested: pane.deleteSelected()
+        onDeleteRequested: (paths) => pane.confirmDelete(paths)
         onEmptyTrashRequested: pane.emptyTrash()
     }
 

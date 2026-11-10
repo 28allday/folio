@@ -17,7 +17,7 @@ FolioMenu {
     property string folder
 
     signal renameRequested(var target)
-    signal deleteRequested()
+    signal deleteRequested(var paths)
     signal emptyTrashRequested()
     // In the trash the menu is about getting things back, or letting go.
     readonly property bool trashView: fileOps.inTrash(folder)
@@ -217,6 +217,6 @@ FolioMenu {
         text: fileMenu.trashView ? qsTr("Delete Permanently…")
             : fileMenu.onSelection ? qsTr("Delete %n Items", "", fileMenu.paths.length) : qsTr("Delete")
         keys: "Delete"
-        onTriggered: fileMenu.trashView ? fileMenu.deleteRequested() : fileOps.trash(fileMenu.paths)
+        onTriggered: fileMenu.trashView ? fileMenu.deleteRequested(fileMenu.paths) : fileOps.trash(fileMenu.paths)
     }
 }
