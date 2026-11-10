@@ -38,15 +38,13 @@ FolioMenu {
     function show(clicked, where, near) {
         target = clicked
         folder = where
-        // Submenus (Open With, Share) only make sense on an item; their
-        // entries are made by Menu itself, so they're hidden here.
+        // Submenus (Open With, Share) show only when they have entries.
+        // Menu makes their entries itself, so they're set here rather than
+        // bound where they're declared.
         for (let i = 0; i < count; ++i) {
             const entry = itemAt(i)
-            if (entry && entry.subMenu) {
-                const shown = entry.subMenu === shareMenu ? canShare : entry.subMenu === openWith ? canOpenWith : onItem
-                entry.visible = shown
-                entry.height = shown ? entry.implicitHeight : 0
-            }
+            if (entry && entry.subMenu)
+                entry.shown = entry.subMenu === shareMenu ? canShare : canOpenWith
         }
         if (near)
             popup(near, Math.min(near.width / 2, 120), near.height / 2)
@@ -151,23 +149,20 @@ FolioMenu {
     FolioMenu {
         id: shareMenu
         title: qsTr("Share")
-        Repeater {
-            model: fileMenu.canDropbox ? 1 : 0
-            FolioMenuItem {
-                text: qsTr("Dropbox Link")
-                onTriggered: fileOps.dropboxLink(fileMenu.target.path)
-            }
+        FolioMenuItem {
+            shown: fileMenu.canDropbox
+            text: qsTr("Dropbox Link")
+            onTriggered: fileOps.dropboxLink(fileMenu.target.path)
         }
-        Repeater {
-            model: fileMenu.canLocalSend ? 1 : 0
-            FolioMenuItem {
-                text: qsTr("LocalSend…")
-                onTriggered: fileOps.shareLocalSend(fileMenu.paths)
-            }
+        FolioMenuItem {
+            shown: fileMenu.canLocalSend
+            text: qsTr("LocalSend…")
+            onTriggered: fileOps.shareLocalSend(fileMenu.paths)
         }
     }
     // Taildrop is its own menu inside Share, one entry per machine; it's
-    // added only while there are machines to send to.
+    // added, after the other entries, only while there are machines to
+    // send to.
     Instantiator {
         model: fileMenu.canTaildrop ? 1 : 0
         delegate: FolioMenu {
@@ -181,7 +176,7 @@ FolioMenu {
                 }
             }
         }
-        onObjectAdded: (index, object) => shareMenu.insertMenu(0, object)
+        onObjectAdded: (index, object) => shareMenu.addMenu(object)
         onObjectRemoved: (index, object) => shareMenu.removeMenu(object)
     }
     FolioMenuItem {
