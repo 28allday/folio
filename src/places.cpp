@@ -1,6 +1,10 @@
 #include "places.h"
 
+#include <QCollator>
 #include <QDir>
+#include <QFile>
+#include <QSaveFile>
+#include <QUrl>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -39,6 +43,7 @@ Places::Places(const QString &home, QObject *parent)
 
 void Places::refresh() {
     refreshPlaces();
+    refreshPinned();
     refreshDevices();
     if (m_realHome) {
         pollTailscale();
@@ -56,23 +61,144 @@ QString Places::userDirectory(int location, const QString &fallback) const {
     return m_home + "/" + fallback;
 }
 
+// The sidebar's Home section is every folder in home, the way they appear in the home
+// folder itself, so whatever someone keeps at the top of their home (Work,
+// omarchy, Dropbox) is one click away without a bookmarks feature.
 void Places::refreshPlaces() {
     QVariantList places;
     auto add = [&](const QString &name, const QString &path, const QString &icon, const QString &status = {}) {
-        if (QFileInfo(path).isDir())
-            places << QVariantMap{{"name", name}, {"path", path}, {"icon", icon}, {"status", status}};
+        places << QVariantMap{{"name", name}, {"path", path}, {"icon", icon}, {"status", status}};
     };
-    add(tr("Home"), m_home, "home");
-    add(tr("Documents"), userDirectory(QStandardPaths::DocumentsLocation, "Documents"), "documents");
-    add(tr("Downloads"), userDirectory(QStandardPaths::DownloadLocation, "Downloads"), "downloads");
-    add(tr("Pictures"), userDirectory(QStandardPaths::PicturesLocation, "Pictures"), "pictures");
-    add(tr("Music"), userDirectory(QStandardPaths::MusicLocation, "Music"), "music");
-    add(tr("Videos"), userDirectory(QStandardPaths::MoviesLocation, "Videos"), "videos");
-    // Dropbox's folder only exists once it's set up (omarchy-install-service-
-    // dropbox), so its presence is the signal to show it.
-    add("Dropbox", m_home + "/Dropbox", "dropbox", m_dropboxStatus);
-    add(tr("Trash"), m_home + "/.local/share/Trash/files", "trash");
+    // The XDG folders keep their own glyphs, wherever user-dirs points.
+    const QHash<QString, QString> icons{
+        {userDirectory(QStandardPaths::DocumentsLocation, "Documents"), "documents"},
+        {userDirectory(QStandardPaths::DownloadLocation, "Downloads"), "downloads"},
+        {userDirectory(QStandardPaths::PicturesLocation, "Pictures"), "pictures"},
+        {userDirectory(QStandardPaths::MusicLocation, "Music"), "music"},
+        {userDirectory(QStandardPaths::MoviesLocation, "Videos"), "videos"},
+        {m_home + "/Dropbox", "dropbox"},
+    };
+
+    QStringList names = QDir(m_home).entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::NoSort);
+    QCollator collator;
+    collator.setNumericMode(true);
+    collator.setCaseSensitivity(Qt::CaseInsensitive);
+    std::sort(names.begin(), names.end(), [&](const QString &a, const QString &b) { return collator.compare(a, b) < 0; });
+    for (const QString &name : names) {
+        const QString path = m_home + "/" + name;
+        const QString icon = icons.value(path, "folder");
+        add(displayName(name), path, icon,
+            icon == "dropbox" ? m_dropboxStatus : QString());
+    }
+
+    const QString trash = m_home + "/.local/share/Trash/files";
+    if (QFileInfo(trash).isDir())
+        add(tr("Trash"), trash, "trash");
     m_places = places;
+}
+
+// Omarchy's own folder reads as the name it goes by.
+QString Places::displayName(const QString &name) {
+    return name == "omarchy" ? QStringLiteral("Omarchy") : name;
+}
+
+QString Places::bookmarksPath() const {
+    // Tests use a temporary home, whose bookmarks live inside it.
+    const QString config = m_realHome ? QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
+                                      : m_home + "/.config";
+    return config + "/gtk-3.0/bookmarks";
+}
+
+QVariantList Places::parseBookmarks(const QByteArray &contents, const QString &home) {
+    QVariantList pinned;
+    QStringList seen;
+    for (const QByteArray &raw : contents.split('\n')) {
+        const QString line = QString::fromUtf8(raw).trimmed();
+        if (line.isEmpty())
+            continue;
+        const int space = line.indexOf(' ');
+        const QUrl url(space < 0 ? line : line.left(space));
+        const QString label = space < 0 ? QString() : line.mid(space + 1).trimmed();
+        // Remote bookmarks (sftp://, smb://) stay in the file for GTK, but
+        // only local folders are pinned here for now.
+        if (!url.isLocalFile())
+            continue;
+        const QString path = QDir::cleanPath(url.toLocalFile());
+        // Folders right in home are already under Home; Omarchy also seeds
+        // a few of those as bookmarks for the file dialogs.
+        if (QFileInfo(path).absolutePath() == QDir::cleanPath(home) || path == QDir::cleanPath(home)
+            || seen.contains(path) || !QFileInfo(path).isDir())
+            continue;
+        seen << path;
+        pinned << QVariantMap{{"name", label.isEmpty() ? displayName(QFileInfo(path).fileName()) : label},
+                              {"path", path}, {"icon", "folder"}};
+    }
+    return pinned;
+}
+
+QStringList Places::readBookmarkLines() const {
+    QFile file(bookmarksPath());
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+    QStringList lines = QString::fromUtf8(file.readAll()).split('\n');
+    lines.removeAll(QString());
+    return lines;
+}
+
+bool Places::writeBookmarkLines(const QStringList &lines) {
+    QDir().mkpath(QFileInfo(bookmarksPath()).absolutePath());
+    // Written beside the file and renamed over it, so GTK never reads half
+    // a list.
+    QSaveFile file(bookmarksPath());
+    if (!file.open(QIODevice::WriteOnly))
+        return false;
+    file.write((lines.join('\n') + '\n').toUtf8());
+    return file.commit();
+}
+
+void Places::refreshPinned() {
+    QFile file(bookmarksPath());
+    m_pinned = file.open(QIODevice::ReadOnly) ? parseBookmarks(file.readAll(), m_home) : QVariantList();
+}
+
+bool Places::isPinned(const QString &path) const {
+    const QString clean = QDir::cleanPath(path);
+    for (const QVariant &p : m_pinned)
+        if (p.toMap().value("path").toString() == clean)
+            return true;
+    return false;
+}
+
+QString Places::pin(const QString &path) {
+    const QString clean = QDir::cleanPath(path);
+    const QFileInfo info(clean);
+    if (!info.isDir())
+        return tr("Only folders can be pinned.");
+    if (info.absolutePath() == QDir::cleanPath(m_home) || clean == QDir::cleanPath(m_home))
+        return tr("%1 is already under Home.").arg(displayName(info.fileName()));
+    if (isPinned(clean))
+        return {};
+    QStringList lines = readBookmarkLines();
+    lines << QString::fromUtf8(QUrl::fromLocalFile(clean).toEncoded());
+    if (!writeBookmarkLines(lines))
+        return tr("Couldn't save the pin to %1.").arg(bookmarksPath());
+    refreshPinned();
+    emit changed();
+    return {};
+}
+
+void Places::unpin(const QString &path) {
+    const QString clean = QDir::cleanPath(path);
+    QStringList lines = readBookmarkLines();
+    const int before = lines.size();
+    lines.erase(std::remove_if(lines.begin(), lines.end(), [&](const QString &line) {
+        const QUrl url(line.section(' ', 0, 0));
+        return url.isLocalFile() && QDir::cleanPath(url.toLocalFile()) == clean;
+    }), lines.end());
+    if (lines.size() != before && writeBookmarkLines(lines)) {
+        refreshPinned();
+        emit changed();
+    }
 }
 
 QVariantList Places::physicalDrives(const QList<Mount> &mounts, const QString &systemDevice) {

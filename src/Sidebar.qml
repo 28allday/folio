@@ -2,12 +2,15 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-// Places, devices and tailnet machines. The place holding the current folder
+// Home's folders, pinned folders, drives and tailnet machines. The one holding the current folder
 // stays lit while you dig into it, so you always know which root you're under.
 Rectangle {
     id: sidebar
 
     color: theme.background
+    // A long tailnet scrolls inside the sidebar instead of spilling over
+    // the status bar below it.
+    clip: true
 
     function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
 
@@ -15,7 +18,7 @@ Rectangle {
     readonly property string activePath: {
         let best = ""
         const here = backend.path
-        for (const list of [places.places, places.devices]) {
+        for (const list of [places.places, places.pinned, places.devices]) {
             for (const p of list) {
                 if ((here === p.path || here.startsWith(p.path === "/" ? "/" : p.path + "/")) && p.path.length > best.length && p.path !== "/")
                     best = p.path
@@ -77,6 +80,21 @@ Rectangle {
         }
     }
 
+    DropArea {
+        id: drop
+        anchors.fill: parent
+        keys: ["text/uri-list"]
+        onDropped: drop => {
+            for (const url of drop.urls) {
+                const path = decodeURIComponent(url.toString().replace(/^file:\/\//, ""))
+                const problem = places.pin(path)
+                if (problem.length > 0)
+                    backend.showMessage(problem)
+            }
+            drop.accept(Qt.LinkAction)
+        }
+    }
+
     Flickable {
         anchors.fill: parent
         contentHeight: column.implicitHeight + 40
@@ -90,7 +108,15 @@ Rectangle {
             width: sidebar.width - 24
             spacing: 1
 
-            SectionLabel { text: qsTr("Places") }
+            // The section's label is home itself: click it to go there.
+            SectionLabel {
+                text: qsTr("Home")
+                color: backend.path === places.home ? theme.accent
+                     : homeHover.hovered ? theme.foreground : theme.secondaryForeground
+                Accessible.role: Accessible.Button
+                HoverHandler { id: homeHover; cursorShape: Qt.PointingHandCursor }
+                TapHandler { onTapped: backend.navigate(places.home) }
+            }
             Repeater {
                 model: places.places
                 PlaceRow {
@@ -101,6 +127,48 @@ Rectangle {
                     status: sidebar.statusText(modelData.status)
                     statusColor: modelData.status === "stopped" ? theme.red : modelData.status === "syncing" ? theme.yellow : theme.green
                     onClicked: backend.navigate(modelData.path)
+                }
+            }
+
+            // Pinned folders from anywhere, kept in GTK's bookmarks. While a
+            // folder is dragged over the sidebar, the section shows (even
+            // empty) as the place to drop it.
+            Item { implicitHeight: 20; visible: places.pinned.length > 0 || drop.containsDrag }
+            SectionLabel { text: qsTr("Pinned"); visible: places.pinned.length > 0 || drop.containsDrag }
+            Repeater {
+                model: places.pinned
+                PlaceRow {
+                    id: pinRow
+                    required property var modelData
+                    text: modelData.name
+                    glyph: "folder"
+                    active: sidebar.activePath === modelData.path
+                    onClicked: backend.navigate(modelData.path)
+                    IconButton {
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        implicitWidth: 28
+                        implicitHeight: 28
+                        visible: pinRow.hovered || hovered
+                        glyph: "close"
+                        text: qsTr("Unpin")
+                        onClicked: places.unpin(pinRow.modelData.path)
+                    }
+                }
+            }
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: 34
+                visible: drop.containsDrag
+                color: sidebar.tint(theme.accent, 0.10)
+                border.width: 1
+                border.color: theme.accent
+                radius: Math.min(4, theme.radius)
+                Text {
+                    anchors.centerIn: parent
+                    text: qsTr("Drop to pin")
+                    color: theme.accent
+                    font.pixelSize: 12
                 }
             }
 

@@ -66,7 +66,22 @@ Item {
         lineHeight: 1.15
     }
 
-    HoverHandler { id: hover }
+    HoverHandler {
+        id: hover
+        // The picture that follows the pointer while dragging; taken ahead
+        // of time because a drag can't wait for it.
+        onHoveredChanged: if (hovered) art.grabToImage(result => tile.Drag.imageSource = result.url)
+    }
+
+    // Dragging hands the file to whatever it lands on as a URI list: the
+    // sidebar pins a folder, other apps get the file.
+    Drag.active: drag.active
+    Drag.dragType: Drag.Automatic
+    Drag.supportedActions: Qt.CopyAction | Qt.LinkAction
+    Drag.mimeData: ({ "text/uri-list": "file://" + encodeURI(tile.path) })
+    Drag.hotSpot.x: tile.width / 2
+    Drag.hotSpot.y: 40
+    DragHandler { id: drag; target: null }
 
     TapHandler {
         onTapped: tile.clicked()

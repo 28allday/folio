@@ -4,6 +4,7 @@
 #include <QImageReader>
 #include <QSignalSpy>
 #include <QTemporaryDir>
+#include <QUrl>
 #include <QtTest>
 
 #include "backend.h"
@@ -116,21 +117,60 @@ private slots:
         QCOMPARE(backend.takeSelection(), QString("report.pdf"));
     }
 
-    void placesShowDropboxOnlyWhenPresent()
+    void placesListEveryFolderInHome()
     {
         QTemporaryDir home;
-        QDir(home.path()).mkpath("Documents");
+        for (const char *dir : {"Work", "Documents", "omarchy", ".config", "project10", "project9"})
+            QDir(home.path()).mkpath(dir);
+        write(home.filePath("notes.txt"), "not a folder");
         auto names = [](const Places &p) {
             QStringList list;
             for (const auto &v : p.places()) list << v.toMap().value("name").toString();
             return list;
         };
-        QVERIFY(!names(Places(home.path())).contains("Dropbox"));
+        QCOMPARE(names(Places(home.path())),
+                 QStringList({"Documents", "Omarchy", "project9", "project10", "Work"}));
+
+        // Dropbox shows once its folder exists, with its own mark.
         QDir(home.path()).mkpath("Dropbox");
-        const QStringList withDropbox = names(Places(home.path()));
-        QVERIFY(withDropbox.contains("Dropbox"));
-        QVERIFY(withDropbox.contains("Documents"));
-        QVERIFY(!withDropbox.contains("Music"));
+        const Places withDropbox(home.path());
+        QCOMPARE(names(withDropbox).at(1), QString("Dropbox"));
+        QCOMPARE(withDropbox.places().at(1).toMap().value("icon").toString(), QString("dropbox"));
+        QCOMPARE(withDropbox.places().at(0).toMap().value("icon").toString(), QString("documents"));
+        QCOMPARE(withDropbox.places().at(5).toMap().value("icon").toString(), QString("folder"));
+    }
+
+    void placesPinFoldersAsGtkBookmarks()
+    {
+        QTemporaryDir home;
+        for (const char *dir : {"Work/folio", "Downloads", "Work/hype"})
+            QDir(home.path()).mkpath(dir);
+        const QString bookmarks = home.filePath(".config/gtk-3.0/bookmarks");
+        QDir().mkpath(QFileInfo(bookmarks).absolutePath());
+        // Omarchy's seeded home folders and a remote bookmark are kept in
+        // the file but not shown as pins.
+        write(bookmarks, QUrl::fromLocalFile(home.filePath("Downloads")).toEncoded() + " Downloads\n"
+                         "sftp://studio/srv Studio\n"
+                         + QUrl::fromLocalFile(home.filePath("Work/hype")).toEncoded() + " Slides\n");
+
+        Places places(home.path());
+        QCOMPARE(places.pinned().size(), 1);
+        QCOMPARE(places.pinned().at(0).toMap().value("name").toString(), QString("Slides"));
+
+        QCOMPARE(places.pin(home.filePath("Work/folio")), QString());
+        QVERIFY(places.isPinned(home.filePath("Work/folio")));
+        QCOMPARE(places.pinned().size(), 2);
+        QVERIFY(!places.pin(home.filePath("Downloads")).isEmpty()); // already under Home
+
+        places.unpin(home.filePath("Work/hype"));
+        QFile file(bookmarks);
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const QByteArray saved = file.readAll();
+        QVERIFY(saved.contains("sftp://studio/srv Studio"));
+        QVERIFY(saved.contains("Downloads"));
+        QVERIFY(saved.contains("Work/folio"));
+        QVERIFY(!saved.contains("Work/hype"));
+        QCOMPARE(places.pinned().size(), 1);
     }
 
     void placesParseTailscalePeers()

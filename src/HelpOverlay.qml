@@ -17,6 +17,7 @@ Rectangle {
         ["Alt+Home", qsTr("Go home")],
         ["Space", qsTr("Preview the selected file")],
         ["Ctrl+I", qsTr("Show or hide the details pane")],
+        ["Ctrl+D", qsTr("Pin or unpin the folder (or drag it to the sidebar)")],
         ["S", qsTr("Sort by name or newest first")],
         ["Ctrl+H", qsTr("Show hidden files")],
         ["F5", qsTr("Reload")],

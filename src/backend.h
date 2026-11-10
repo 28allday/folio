@@ -46,6 +46,7 @@ public:
     Q_INVOKABLE void forward();
     Q_INVOKABLE void openPeer(const QString &host);
     Q_INVOKABLE void dismissMessage();
+    Q_INVOKABLE void showMessage(const QString &message) { setMessage(message); }
     Q_INVOKABLE QVariantMap details(const QString &path, const QString &kind, const QString &mime) const;
     // The item to select once the folder has loaded (where we came from, or
     // what "Show in folder" asked for); empty means the first item.

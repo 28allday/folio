@@ -42,12 +42,25 @@ ApplicationWindow {
     Shortcut { sequence: "Escape"; context: Qt.ApplicationShortcut; enabled: win.helpVisible; onActivated: win.helpVisible = false }
     Shortcut { sequence: "Q"; context: Qt.ApplicationShortcut; onActivated: Qt.quit() }
     Shortcut { sequence: "Space"; context: Qt.ApplicationShortcut; onActivated: backend.togglePreview(win.current.path || "") }
+    // Pins the selected folder, or the folder being shown when a file is
+    // selected; pressed again, unpins it.
+    function togglePin() {
+        const target = win.current.isDir ? win.current.path : backend.path
+        if (places.isPinned(target)) {
+            places.unpin(target)
+            return
+        }
+        const problem = places.pin(target)
+        if (problem.length > 0)
+            backend.showMessage(problem)
+    }
+    Shortcut { sequence: "Ctrl+D"; context: Qt.ApplicationShortcut; onActivated: win.togglePin() }
     Shortcut { sequence: "Ctrl+I"; context: Qt.ApplicationShortcut; onActivated: win.previewVisible = !win.previewVisible }
     Shortcut { sequences: ["Return", "Enter"]; context: Qt.ApplicationShortcut; onActivated: if (win.current.path) backend.open(win.current.path) }
     Shortcut { sequences: ["Backspace", "Alt+Up"]; context: Qt.ApplicationShortcut; onActivated: backend.goUp() }
     Shortcut { sequences: ["Alt+Left", StandardKey.Back]; context: Qt.ApplicationShortcut; onActivated: backend.back() }
     Shortcut { sequences: ["Alt+Right", StandardKey.Forward]; context: Qt.ApplicationShortcut; onActivated: backend.forward() }
-    Shortcut { sequence: "Alt+Home"; context: Qt.ApplicationShortcut; onActivated: backend.navigate(places.places.length > 0 ? places.places[0].path : "/") }
+    Shortcut { sequence: "Alt+Home"; context: Qt.ApplicationShortcut; onActivated: backend.navigate(places.home) }
     Shortcut { sequence: "Ctrl+H"; context: Qt.ApplicationShortcut; onActivated: backend.folder.showHidden = !backend.folder.showHidden }
     Shortcut { sequence: "S"; context: Qt.ApplicationShortcut; onActivated: backend.folder.sortMode = backend.folder.sortMode === "name" ? "modified" : "name" }
     Shortcut { sequences: ["F5", StandardKey.Refresh]; context: Qt.ApplicationShortcut; onActivated: { backend.folder.reload(); places.refresh() } }
@@ -134,11 +147,6 @@ ApplicationWindow {
                             font.weight: Font.DemiBold
                             elide: Text.ElideRight
                         }
-                        Text {
-                            text: backend.folder.sortMode === "name" ? qsTr("By name") : qsTr("Newest first")
-                            color: theme.secondaryForeground
-                            font.pixelSize: 12
-                        }
                     }
 
                     GridView {
@@ -150,6 +158,10 @@ ApplicationWindow {
                         clip: true
                         focus: true
                         keyNavigationEnabled: true
+                        // Pressing and dragging picks up a file (to pin it, or
+                        // drop it in another app) rather than flicking; the
+                        // wheel and touchpad still scroll.
+                        interactive: false
                         boundsBehavior: Flickable.StopAtBounds
                         model: backend.folder
                         readonly property int columns: Math.max(1, Math.floor(width / 168))
