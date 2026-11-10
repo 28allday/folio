@@ -5,7 +5,7 @@ import QtQuick.Layouts
 import QtCore
 
 // The window: one bar across the top, under it the sidebar, one folder pane
-// or two side by side (Ctrl+Shift+N splits, Ctrl+W closes the right one),
+// or two side by side (Ctrl+Alt+N splits, Ctrl+W closes the right one),
 // and the details pane. Each pane's path sits in the bar above its files;
 // the sidebar and the details follow the pane used last.
 ApplicationWindow {
@@ -43,7 +43,7 @@ ApplicationWindow {
 
     function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
 
-    // Ctrl+Shift+N: a second pane on the right, starting where the active
+    // Ctrl+Alt+N: a second pane on the right, starting where the active
     // one is. Pressed again, it moves the keyboard there.
     function openSplit() {
         if (!rightPane) {
@@ -68,7 +68,7 @@ ApplicationWindow {
     Shortcut { sequence: "?"; enabled: !win.activePane.typing || win.helpVisible; onActivated: win.helpVisible = !win.helpVisible }
     Shortcut { sequence: "Escape"; enabled: win.helpVisible; onActivated: win.helpVisible = false }
     Shortcut { sequence: "Q"; enabled: !win.activePane.typing; onActivated: win.close() }
-    Shortcut { sequence: "Ctrl+Shift+N"; enabled: !win.activePane.typing; onActivated: win.openSplit() }
+    Shortcut { sequence: "Ctrl+Alt+N"; enabled: !win.activePane.typing; onActivated: win.openSplit() }
     Shortcut { sequence: "Ctrl+W"; enabled: win.split; onActivated: win.closeSplit() }
     Shortcut { sequence: "Ctrl+I"; onActivated: win.previewVisible = !win.previewVisible }
     // Tab moves the keyboard: sidebar, left pane, right pane, and around.
@@ -118,6 +118,7 @@ ApplicationWindow {
             FolderPane {
                 id: leftPane
                 barExtension: win.split ? 0 : win.detailsWidth
+                barLeft: sidebar.width + 1
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 focus: true

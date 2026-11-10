@@ -3,9 +3,9 @@ import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
 
-// One folder pane: its path bar, problems banner, the files (grid,
-// list or columns) and status line, with its own menu and dialogs. A window
-// has one, or two side by side (Ctrl+Shift+N); each has its own folder,
+// One folder pane: its path bar, problems banner and the files (grid,
+// list or columns), with its own menu and dialogs. A window
+// has one, or two side by side (Ctrl+Alt+N); each has its own folder,
 // history, selection and preview through its own `backend` and `fileOps`.
 // Keys act on the pane that was used last.
 FocusScope {
@@ -20,6 +20,7 @@ FocusScope {
     // How far this pane's path bar reaches right, over the details column,
     // so the rightmost pane's buttons sit at the window's edge.
     property int barExtension: 0
+    property int barLeft: 0
 
     property string viewMode: host ? host.viewMode : "grid"
     onViewModeChanged: if (host && active) host.viewMode = viewMode
@@ -97,7 +98,7 @@ FocusScope {
     }
     Shortcut { sequence: "Ctrl+Shift+D"; enabled: pane.keys; onActivated: if (pane.current.path) fileOps.duplicate(pane.current.path) }
     Shortcut { sequences: [StandardKey.New]; enabled: pane.keys; onActivated: backend.newWindow() }
-    Shortcut { sequence: "F7"; enabled: pane.keys; onActivated: fileOps.newFolder(backend.path) }
+    Shortcut { sequence: "Ctrl+Shift+N"; enabled: pane.keys; onActivated: fileOps.newFolder(backend.path) }
     Shortcut { sequences: ["Ctrl+L", "Alt+D"]; enabled: pane.keys; onActivated: pathBar.editPath() }
     Shortcut { sequence: "Ctrl+D"; enabled: pane.active; onActivated: pane.togglePin() }
     Shortcut { sequence: "Ctrl+1"; enabled: pane.active; onActivated: pane.viewMode = "grid" }
@@ -228,39 +229,15 @@ FocusScope {
         Component { id: gridView; FolderGrid { } }
         Component { id: listView; FolderList { } }
         Component { id: columnsView; FolderColumns { } }
-
-        Rectangle {
-            Layout.fillWidth: true
-            implicitHeight: 34
-            color: theme.background
-            Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: pane.tint(theme.foreground, 0.12) }
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 24
-                anchors.rightMargin: 24
-                Text {
-                    Layout.fillWidth: true
-                    text: qsTr("%n items", "", backend.folder.count)
-                          + (backend.folder.folderCount > 0 ? " · " + qsTr("%n folders", "", backend.folder.folderCount) : "")
-                          + (backend.folder.selectedCount > 1 ? " · " + qsTr("%n selected", "", backend.folder.selectedCount) : "")
-                    color: theme.secondaryForeground
-                    font.pixelSize: 12
-                    elide: Text.ElideRight
-                }
-                Text {
-                    text: pane.current.name ? (pane.current.isDir ? pane.current.name : pane.current.name + " · " + pane.formatSize(pane.current.size)) : ""
-                    color: theme.foreground
-                    font.pixelSize: 12
-                    elide: Text.ElideMiddle
-                    Layout.maximumWidth: pane.width * 0.5
-                }
-            }
-        }
     }
 
+    // Drawn over the window's top bar. It reaches left over the sidebar for
+    // the first pane (so the path starts at the window's edge) and right over
+    // the details column for the last one (so the buttons end at the edge).
     PathBar {
         id: pathBar
-        width: pane.width + pane.barExtension
+        x: -pane.barLeft
+        width: pane.barLeft + pane.width + pane.barExtension
         onEditDone: pane.focusView()
         previewVisible: pane.host ? pane.host.previewVisible : true
         viewMode: pane.viewMode

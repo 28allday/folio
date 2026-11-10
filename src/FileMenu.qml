@@ -177,7 +177,7 @@ Menu {
     Entry {
         shown: !menu.onItem
         text: qsTr("New Folder")
-        keys: "F7"
+        keys: "Ctrl+Shift+N"
         onTriggered: fileOps.newFolder(menu.folder)
     }
     Line { }

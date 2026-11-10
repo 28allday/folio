@@ -33,8 +33,8 @@ Folio is Omarchy's file manager: one window for finding, previewing and opening 
 | Ctrl+Shift+C | Copy the path as text |
 | F2 / Ctrl+Shift+D | Rename / duplicate |
 | Ctrl+N | New window on this folder |
-| Ctrl+Shift+N / Ctrl+W | Split into two panes / close the right one |
-| F7 | New folder |
+| Ctrl+Shift+N | New folder |
+| Ctrl+Alt+N / Ctrl+W | Split into two panes / close the right one |
 | Delete | Move to the trash |
 | Tab | Move between the sidebar and the panes |
 | Ctrl+L | Type a path: Enter goes there, Tab completes, Esc cancels |

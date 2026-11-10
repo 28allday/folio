@@ -22,12 +22,13 @@ Folio replaces it with an app built the way Hype, Monologue, Omacut and Signed a
 Done, tested (19 Qt Test cases), and verified offscreen:
 
 - Folder model listing off the UI thread, folders first, natural sort, name or newest-first, hidden files toggle, live reload on change.
+- Grid tiles show size (or item count) and date under the name; no status bar.
 - Folder tiles as plain cards, selection shown as color on the item itself; file tiles with real thumbnails (in-process for common images, installed thumbnailers for video, PDF, HEIC, office files), drawn stand-ins otherwise.
 - Shared thumbnail cache per the spec, with failure markers so broken files aren't retried.
 - Sidebar sections Views (Recents from GTK's recently-used.xbel, Trash); Tab moves the keyboard between sidebar and files.
 - Right-click menus everywhere (Open, Open With, Preview, Rename, Duplicate, Copy, Cut, Paste, Copy Path, Compress, Share via LocalSend or Taildrop, Pin, Terminal, Delete to trash); clipboard interoperable with GNOME/KDE apps; pastes never overwrite.
 - Sort by name, kind, newest, oldest or size.
-- Split view (Ctrl+Shift+N, Ctrl+W closes): two folder panes side by side, each with its own path, history and selection; sidebar and details follow the active pane. New windows (Ctrl+N) open in the running process.
+- Split view (Ctrl+Alt+N, Ctrl+W closes): two folder panes side by side, each with its own path, history and selection; sidebar and details follow the active pane. New windows (Ctrl+N) open in the running process.
 - Multi-select: Shift+click/arrows for ranges, Alt+click to add or remove, rubber band on empty space, Ctrl+A; file actions and drags act on the selection.
 - Path entry (Ctrl+L): ~ and relative paths, a file selects itself in its folder, Tab completes folder names.
 - Three views, remembered between launches: grid (Ctrl+1), list with name, size and date (Ctrl+2; no headings; the date then the size step aside when narrow), and Finder-style columns (Ctrl+3).
