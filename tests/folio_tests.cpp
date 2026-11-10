@@ -99,6 +99,17 @@ private slots:
         // A column with no folder clears at once.
         model.setPath(QString());
         QCOMPARE(model.count(), 0);
+
+        // Going back to a folder just seen shows it in the same step, and
+        // the background re-read leaves it alone when nothing changed.
+        loaded.clear();
+        model.setPath(a.path());
+        QCOMPARE(model.count(), 1);
+        QCOMPARE(loaded.count(), 1);
+        QSignalSpy resets(&model, &QAbstractItemModel::modelReset);
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(resets.count(), 0);
+        QCOMPARE(model.count(), 1);
     }
 
     void kindsFromMimeTypes()

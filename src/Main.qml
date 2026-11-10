@@ -25,6 +25,7 @@ ApplicationWindow {
     property string viewMode: "grid"
     // The selected name, carried across a switch of view.
     property string lastName: ""
+    property string loadedPath: ""
     onCurrentChanged: {
         if (current.name)
             lastName = current.name
@@ -97,7 +98,17 @@ ApplicationWindow {
 
     Connections {
         target: backend.folder
-        function onLoaded() { if (view.item) view.item.select(backend.takeSelection()) }
+        // A folder arriving selects where we came from (or the first item);
+        // the same folder re-read (a remembered listing refreshed, or files
+        // changing on disk) keeps what was selected.
+        function onLoaded() {
+            if (!view.item)
+                return
+            const pending = backend.takeSelection()
+            const same = backend.folder.path === win.loadedPath
+            win.loadedPath = backend.folder.path
+            view.item.select(pending || (same ? win.lastName : ""))
+        }
     }
 
     // Right-to-left languages mirror the window; the Translator sets the

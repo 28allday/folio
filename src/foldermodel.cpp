@@ -1,5 +1,6 @@
 #include "foldermodel.h"
 
+#include <QCache>
 #include <QCollator>
 #include <QDir>
 #include <QFileInfo>
@@ -19,6 +20,33 @@ FolderModel::FolderModel(QObject *parent) : QAbstractListModel(parent) {
     m_staleClear.setSingleShot(true);
     m_staleClear.setInterval(150);
     connect(&m_staleClear, &QTimer::timeout, this, &FolderModel::clearEntries);
+}
+
+// Recent listings, shared by every model (the window's folder and each
+// column), so stepping back and forth or opening a column for a folder just
+// seen shows it in the same frame instead of an old or empty one. Each is
+// re-read in the background and only replaced when something changed.
+static QCache<QString, QVector<FolderModel::Entry>> &recentListings() {
+    static QCache<QString, QVector<FolderModel::Entry>> cache(64);
+    return cache;
+}
+
+QString FolderModel::cacheKey() const {
+    return m_path + '\n' + (m_showHidden ? "h" : "") + '\n' + m_sort;
+}
+
+void FolderModel::remember() {
+    recentListings().insert(cacheKey(), new QVector<Entry>(m_entries));
+}
+
+bool FolderModel::sameListing(const QVector<Entry> &a, const QVector<Entry> &b) {
+    if (a.size() != b.size())
+        return false;
+    for (int i = 0; i < a.size(); ++i)
+        if (a[i].name != b[i].name || a[i].size != b[i].size || a[i].modified != b[i].modified
+            || a[i].isDir != b[i].isDir)
+            return false;
+    return true;
 }
 
 void FolderModel::clearEntries() {
@@ -101,7 +129,17 @@ void FolderModel::setPath(const QString &path) {
         clearEntries();
         return;
     }
-    m_staleClear.start();
+    if (const auto *cached = recentListings().object(cacheKey())) {
+        m_staleClear.stop();
+        beginResetModel();
+        m_entries = *cached;
+        endResetModel();
+        emit countChanged();
+        setError({});
+        emit loaded();
+    } else {
+        m_staleClear.start();
+    }
     m_watcher.addPath(m_path);
     reload();
 }
@@ -206,14 +244,22 @@ void FolderModel::reload() {
             return; // A newer listing replaced this one while it ran.
         m_staleClear.stop();
         const auto [entries, error] = watcher->result();
-        beginResetModel();
-        m_entries = entries;
-        endResetModel();
-        emit countChanged();
+        // Unchanged (the usual case after showing a remembered listing):
+        // leave the items, and their folder summaries, alone.
+        const bool same = error == m_error && !m_entries.isEmpty() && sameListing(m_entries, entries);
+        if (!same) {
+            beginResetModel();
+            m_entries = entries;
+            endResetModel();
+            emit countChanged();
+        }
         setError(error);
         setLoading(false);
         emit loaded();
-        summarizeFolders(generation);
+        if (error.isEmpty())
+            remember();
+        if (!same)
+            summarizeFolders(generation);
     });
     watcher->setFuture(QtConcurrent::run([path, showHidden, sort] {
         QString error;
@@ -244,6 +290,7 @@ void FolderModel::summarizeFolders(quint64 generation) {
             const QModelIndex at = index(row);
             emit dataChanged(at, at, {ItemCountRole, PeekRole});
         }
+        remember();
     });
     watcher->setFuture(QtConcurrent::run([folders, showHidden]() mutable {
         for (auto &folder : folders)

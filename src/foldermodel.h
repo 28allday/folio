@@ -86,6 +86,9 @@ signals:
 private:
     void setLoading(bool loading);
     void clearEntries();
+    QString cacheKey() const;
+    void remember();
+    static bool sameListing(const QVector<Entry> &a, const QVector<Entry> &b);
     void setError(const QString &error);
     void summarizeFolders(quint64 generation);
 
