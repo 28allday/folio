@@ -163,11 +163,7 @@ Rectangle {
                     required property var modelData
                     text: modelData.name
                     glyph: "peer"
-                    dim: !modelData.online
-                    enabled: modelData.online
                     active: backend.path.indexOf("/sftp:host=" + modelData.host) >= 0
-                    status: "■"
-                    statusColor: modelData.online ? theme.green : sidebar.tint(theme.foreground, 0.25)
                     onClicked: backend.openPeer(modelData.host)
                 }
             }

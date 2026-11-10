@@ -49,18 +49,6 @@ Item {
             anchors.fill: parent
             sourceComponent: tile.isDir ? folderArt : fileArt
         }
-
-        // Selection is color on the item itself, not a frame around the
-        // tile: folders tint their own card, files get an accent outline.
-        Rectangle {
-            visible: !tile.isDir && (tile.current || hover.hovered)
-            anchors.fill: parent
-            anchors.margins: -5
-            color: "transparent"
-            border.width: tile.current ? 2 : 1
-            border.color: tile.current ? theme.accent : tile.tint(theme.foreground, 0.2)
-            radius: Math.min(4, theme.radius)
-        }
     }
 
     Text {
@@ -147,6 +135,32 @@ Item {
                 anchors.fill: parent
                 active: thumb.status !== Image.Ready
                 sourceComponent: tile.kind === "audio" ? waveArt : tile.kind === "video" ? reelArt : pageArt
+            }
+
+            // Selection is a border on what's drawn, hugging it: the
+            // thumbnail at its painted size, the page stand-in, or the box
+            // of the others.
+            readonly property rect shown: {
+                const w = width, h = height
+                if (thumb.status === Image.Ready) {
+                    const pw = thumb.fillMode === Image.PreserveAspectCrop ? w : thumb.paintedWidth
+                    const ph = thumb.fillMode === Image.PreserveAspectCrop ? h : thumb.paintedHeight
+                    return Qt.rect((w - pw) / 2, (h - ph) / 2, pw, ph)
+                }
+                if (tile.kind === "audio" || tile.kind === "video")
+                    return Qt.rect(0, 0, w, h)
+                return Qt.rect((w - 66) / 2, 0, 66, h)
+            }
+            Rectangle {
+                visible: tile.current || hover.hovered
+                x: parent.shown.x - 3
+                y: parent.shown.y - 3
+                width: parent.shown.width + 6
+                height: parent.shown.height + 6
+                color: "transparent"
+                border.width: tile.current ? 2 : 1
+                border.color: tile.current ? theme.accent : tile.tint(theme.foreground, 0.2)
+                radius: Math.min(4, theme.radius)
             }
         }
     }

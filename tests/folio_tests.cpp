@@ -140,10 +140,10 @@ private slots:
             "b":{"HostName":"studio","DNSName":"studio.example.ts.net.","OS":"linux","Online":true},
             "c":{"HostName":"phone","DNSName":"phone.example.ts.net.","OS":"iOS","Online":true}}})";
         const auto peers = Places::parseTailscale(json);
-        QCOMPARE(peers.size(), 2);
+        // Offline machines and phones are left out.
+        QCOMPARE(peers.size(), 1);
         QCOMPARE(peers.at(0).toMap().value("name").toString(), QString("studio"));
         QCOMPARE(peers.at(0).toMap().value("host").toString(), QString("studio.example.ts.net"));
-        QCOMPARE(peers.at(1).toMap().value("online").toBool(), false);
     }
 
     void placesParseDropboxStatus()
