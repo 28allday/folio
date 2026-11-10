@@ -45,7 +45,6 @@ FolioDialog {
         PlainButton {
             text: qsTr("Cancel")
             onClicked: dialog.close()
-            Keys.onEscapePressed: dialog.close()
         }
         PlainButton {
             id: confirmButton
@@ -54,7 +53,6 @@ FolioDialog {
             onClicked: dialog.accept()
             Keys.onReturnPressed: dialog.accept()
             Keys.onEnterPressed: dialog.accept()
-            Keys.onEscapePressed: dialog.close()
         }
     }
 }
