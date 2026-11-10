@@ -23,6 +23,7 @@ Folio is Omarchy's file manager: one window for finding, previewing and opening 
 | Space | Preview the selected file (Space or Esc closes, ← → step through) |
 | Ctrl+I | Show or hide the details pane |
 | Ctrl+D | Pin or unpin the folder |
+| Ctrl+1 / Ctrl+2 / Ctrl+3 | Grid, list, or columns (in columns, → goes into a folder and ← back out) |
 | S | Sort by name or newest first |
 | Ctrl+H | Show hidden files |
 | F5 | Reload |

@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
+import QtCore
 
 ApplicationWindow {
     id: win
@@ -21,6 +22,25 @@ ApplicationWindow {
 
     property bool helpVisible: false
     property bool previewVisible: true
+    property string viewMode: "grid"
+    // The selected name, carried across a switch of view.
+    property string lastName: ""
+    onCurrentChanged: {
+        if (current.name)
+            lastName = current.name
+        // An open preview stays on the selected item.
+        if (backend.previewing && current.path)
+            backend.followSelection(current.path)
+    }
+
+    function cycleView() {
+        viewMode = viewMode === "grid" ? "list" : viewMode === "list" ? "columns" : "grid"
+    }
+
+    // Remembers the view between launches (~/.config/folio/folio.conf).
+    Settings {
+        property alias viewMode: win.viewMode
+    }
 
     function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
 
@@ -35,7 +55,8 @@ ApplicationWindow {
     readonly property var current: {
         // Re-read when the folder changes underneath the selection.
         backend.folder.count
-        return grid.currentIndex >= 0 ? backend.folder.get(grid.currentIndex) : ({})
+        const index = view.item ? view.item.currentIndex : -1
+        return index >= 0 ? backend.folder.get(index) : ({})
     }
 
     Shortcut { sequence: "?"; context: Qt.ApplicationShortcut; onActivated: win.helpVisible = !win.helpVisible }
@@ -54,6 +75,9 @@ ApplicationWindow {
         if (problem.length > 0)
             backend.showMessage(problem)
     }
+    Shortcut { sequence: "Ctrl+1"; context: Qt.ApplicationShortcut; onActivated: win.viewMode = "grid" }
+    Shortcut { sequence: "Ctrl+2"; context: Qt.ApplicationShortcut; onActivated: win.viewMode = "list" }
+    Shortcut { sequence: "Ctrl+3"; context: Qt.ApplicationShortcut; onActivated: win.viewMode = "columns" }
     Shortcut { sequence: "Ctrl+D"; context: Qt.ApplicationShortcut; onActivated: win.togglePin() }
     Shortcut { sequence: "Ctrl+I"; context: Qt.ApplicationShortcut; onActivated: win.previewVisible = !win.previewVisible }
     Shortcut { sequences: ["Return", "Enter"]; context: Qt.ApplicationShortcut; onActivated: if (win.current.path) backend.open(win.current.path) }
@@ -67,13 +91,13 @@ ApplicationWindow {
 
     Connections {
         target: backend
-        function onSelectRequested(name) { grid.select(name) }
+        function onSelectRequested(name) { if (view.item) view.item.select(name) }
         function onActivateRequested() { win.raise(); win.requestActivate() }
     }
 
     Connections {
         target: backend.folder
-        function onLoaded() { grid.select(backend.takeSelection()) }
+        function onLoaded() { if (view.item) view.item.select(backend.takeSelection()) }
     }
 
     // Right-to-left languages mirror the window; the Translator sets the
@@ -90,7 +114,9 @@ ApplicationWindow {
             PathBar {
                 Layout.fillWidth: true
                 previewVisible: win.previewVisible
+                viewMode: win.viewMode
                 onTogglePreview: win.previewVisible = !win.previewVisible
+                onCycleView: win.cycleView()
             }
 
             // Problems and slow work are said in the window, not swallowed.
@@ -149,51 +175,23 @@ ApplicationWindow {
                         }
                     }
 
-                    GridView {
-                        id: grid
+                    // Grid, list or columns: each takes the folder's model and
+                    // keeps the window's one selection.
+                    Loader {
+                        id: view
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        Layout.leftMargin: 24
-                        Layout.rightMargin: 24
-                        clip: true
-                        focus: true
-                        keyNavigationEnabled: true
-                        // Pressing and dragging picks up a file (to pin it, or
-                        // drop it in another app) rather than flicking; the
-                        // wheel and touchpad still scroll.
-                        interactive: false
-                        boundsBehavior: Flickable.StopAtBounds
-                        model: backend.folder
-                        readonly property int columns: Math.max(1, Math.floor(width / 168))
-                        cellWidth: Math.floor(width / columns)
-                        cellHeight: 176
-                        highlightFollowsCurrentItem: false
-                        // An open preview stays on the selected item.
-                        onCurrentIndexChanged: if (backend.previewing) backend.followSelection(backend.folder.get(currentIndex).path || "")
-                        ScrollBar.vertical: ScrollBar { }
-
-                        function select(name) {
-                            const found = name ? backend.folder.indexOf(name) : -1
-                            currentIndex = found >= 0 ? found : (count > 0 ? 0 : -1)
-                            if (currentIndex >= 0)
-                                positionViewAtIndex(currentIndex, GridView.Contain)
-                        }
-
-                        delegate: FileTile {
-                            width: grid.cellWidth
-                            height: grid.cellHeight
-                            current: GridView.isCurrentItem
-                            onClicked: { grid.currentIndex = index; grid.forceActiveFocus() }
-                            onActivated: backend.open(path)
-                        }
-
-                        Text {
-                            anchors.centerIn: parent
-                            visible: grid.count === 0 && !backend.folder.loading && backend.folder.error.length === 0
-                            text: qsTr("This folder is empty")
-                            color: theme.secondaryForeground
-                        }
+                        Layout.leftMargin: win.viewMode === "grid" ? 24 : win.viewMode === "list" ? 20 : 0
+                        Layout.rightMargin: win.viewMode === "columns" ? 0 : 24
+                        sourceComponent: win.viewMode === "list" ? listView
+                                       : win.viewMode === "columns" ? columnsView
+                                       : gridView
+                        // A new view picks up the selection the old one had.
+                        onLoaded: { item.select(win.lastName); item.focusView() }
                     }
+                    Component { id: gridView; FolderGrid { } }
+                    Component { id: listView; FolderList { } }
+                    Component { id: columnsView; FolderColumns { } }
                 }
 
                 PreviewPane {

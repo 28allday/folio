@@ -13,7 +13,7 @@
 // first images inside it, which the folder tiles show peeking out.
 class FolderModel : public QAbstractListModel {
     Q_OBJECT
-    Q_PROPERTY(QString path READ path NOTIFY pathChanged)
+    Q_PROPERTY(QString path READ path WRITE setPath NOTIFY pathChanged)
     Q_PROPERTY(int count READ count NOTIFY countChanged)
     Q_PROPERTY(int folderCount READ folderCount NOTIFY countChanged)
     Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)

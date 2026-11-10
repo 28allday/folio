@@ -71,7 +71,7 @@ void FolderModel::setSortMode(const QString &sort) {
 }
 
 void FolderModel::setPath(const QString &path) {
-    const QString clean = QDir::cleanPath(path);
+    const QString clean = path.isEmpty() ? QString() : QDir::cleanPath(path);
     if (clean == m_path)
         return;
     if (!m_watcher.directories().isEmpty())
@@ -86,6 +86,9 @@ void FolderModel::setPath(const QString &path) {
     endResetModel();
     emit countChanged();
 
+    // An empty path is a column with nothing to show yet.
+    if (m_path.isEmpty())
+        return;
     m_watcher.addPath(m_path);
     reload();
 }

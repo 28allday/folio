@@ -7,7 +7,9 @@ Rectangle {
     id: bar
 
     property bool previewVisible: true
+    property string viewMode: "grid"
     signal togglePreview()
+    signal cycleView()
 
     color: theme.background
     implicitHeight: 60
@@ -72,6 +74,14 @@ Rectangle {
         }
 
         Item { implicitWidth: 16 }
+        // Shows the current view; clicking moves to the next one.
+        IconButton {
+            glyph: bar.viewMode
+            text: bar.viewMode === "grid" ? qsTr("Grid (Ctrl+1); click for list")
+                : bar.viewMode === "list" ? qsTr("List (Ctrl+2); click for columns")
+                : qsTr("Columns (Ctrl+3); click for grid")
+            onClicked: bar.cycleView()
+        }
         IconButton {
             glyph: "sort"
             text: backend.folder.sortMode === "name" ? qsTr("Sorted by name (S)") : qsTr("Newest first (S)")

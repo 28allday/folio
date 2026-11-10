@@ -15,6 +15,7 @@ Rectangle {
         ["Backspace", qsTr("Go to the parent folder")],
         ["Alt+← / Alt+→", qsTr("Back / forward (or the mouse's thumb buttons)")],
         ["Alt+Home", qsTr("Go home")],
+        ["Ctrl+1 / 2 / 3", qsTr("Grid, list or columns")],
         ["Space", qsTr("Preview the selected file")],
         ["Ctrl+I", qsTr("Show or hide the details pane")],
         ["Ctrl+D", qsTr("Pin or unpin the folder (or drag it to the sidebar)")],

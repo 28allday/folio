@@ -41,6 +41,8 @@ static QString startPath(const QStringList &args, QString *select) {
 // asking for "monospace" follows the user's choice.
 static void setUp(QGuiApplication &app) {
     app.setApplicationName("folio");
+    // Settings (the chosen view) go to ~/.config/folio/folio.conf.
+    app.setOrganizationName("folio");
     app.setApplicationVersion("0.1.0");
     app.setWindowIcon(QIcon::fromTheme("folio"));
     QFont font("monospace");
@@ -126,7 +128,8 @@ int main(int argc, char *argv[]) {
     QQmlApplicationEngine engine;
     QObject::connect(&translator, &Translator::changed, &engine, &QQmlEngine::retranslate);
     engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
-    qmlRegisterUncreatableType<FolderModel>("Folio", 1, 0, "FolderModel", "Owned by the backend");
+    // Creatable too: the column view lists each folder on the way here.
+    qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
     qmlRegisterUncreatableType<Mounter>("Folio", 1, 0, "Mounter", "Owned by the backend");
     engine.rootContext()->setContextProperty("translator", &translator);
     engine.rootContext()->setContextProperty("theme", &theme);

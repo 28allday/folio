@@ -4,6 +4,10 @@
         <file alias="Glyph.qml">Glyph.qml</file>
         <file alias="IconButton.qml">IconButton.qml</file>
         <file alias="FileTile.qml">FileTile.qml</file>
+        <file alias="FileRow.qml">FileRow.qml</file>
+        <file alias="FolderGrid.qml">FolderGrid.qml</file>
+        <file alias="FolderList.qml">FolderList.qml</file>
+        <file alias="FolderColumns.qml">FolderColumns.qml</file>
         <file alias="Sidebar.qml">Sidebar.qml</file>
         <file alias="PathBar.qml">PathBar.qml</file>
         <file alias="PreviewPane.qml">PreviewPane.qml</file>

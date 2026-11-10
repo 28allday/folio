@@ -24,6 +24,7 @@ Done, tested (19 Qt Test cases), and verified offscreen:
 - Folder model listing off the UI thread, folders first, natural sort, name or newest-first, hidden files toggle, live reload on change.
 - Folder tiles as plain cards, selection shown as color on the item itself; file tiles with real thumbnails (in-process for common images, installed thumbnailers for video, PDF, HEIC, office files), drawn stand-ins otherwise.
 - Shared thumbnail cache per the spec, with failure markers so broken files aren't retried.
+- Three views, remembered between launches: grid (Ctrl+1), list with name, kind, size and date (Ctrl+2, Name and Modified headings sort), and Finder-style columns (Ctrl+3).
 - Preview pane: large preview, the system's type name, size, modified, dimensions, opening lines of text files, Open.
 - Sidebar: a Home section (its label goes home) listing every folder in home (XDG folders and Dropbox with their own glyphs, `omarchy` shown as Omarchy); Pinned folders (Ctrl+D or drag onto the sidebar) stored as GTK bookmarks; Dropbox (with `dropbox-cli` sync status), Trash, physical drives (removable and extra internal disks, not the system's own), online tailnet machines from `tailscale status --json`.
 - Tailnet machines open over SFTP through GIO, landing in the matching home folder; GVfs's questions (host key on first connection, password) are asked in the window.
@@ -66,7 +67,6 @@ Done, tested (19 Qt Test cases), and verified offscreen:
 - Type-to-filter in the current folder (instant, no index).
 - Search everywhere by name with `plocate`, scoped to the current folder and below, with a live fallback walk for folders `updatedb` doesn't cover (new files, mounts).
 - No full-text search. If it's ever wanted, it runs on demand (`rg` under the current folder), never as an index.
-- List view (Ctrl+2) with name, kind, size, modified; grid (Ctrl+1).
 - Path entry (Ctrl+L) with completion.
 
 ### 3. Actions menu
