@@ -65,27 +65,16 @@ Rectangle {
                 columns: 2
                 rowSpacing: 10
                 columnSpacing: 28
+                // Each key, then what it does: the grid fills its two
+                // columns in order. (QML's JavaScript has no Array.flat.)
                 Repeater {
-                    model: overlay.shortcuts
+                    model: [].concat(...overlay.shortcuts)
                     delegate: Text {
                         required property var modelData
                         required property int index
-                        Layout.row: index
-                        Layout.column: 0
-                        text: modelData[0]
-                        color: theme.accent
-                    }
-                }
-                Repeater {
-                    model: overlay.shortcuts
-                    delegate: Text {
-                        required property var modelData
-                        required property int index
-                        Layout.row: index
-                        Layout.column: 1
-                        Layout.fillWidth: true
-                        text: modelData[1]
-                        color: theme.foreground
+                        Layout.fillWidth: index % 2 === 1
+                        text: modelData
+                        color: index % 2 ? theme.foreground : theme.accent
                     }
                 }
             }
