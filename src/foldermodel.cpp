@@ -91,7 +91,6 @@ QVariant FolderModel::data(const QModelIndex &index, int role) const {
         return {};
     const Entry &e = m_entries.at(index.row());
     switch (role) {
-    case Qt::DisplayRole:
     case NameRole: return e.name;
     case PathRole: return e.path;
     case IsDirRole: return e.isDir;
@@ -112,10 +111,6 @@ QHash<int, QByteArray> FolderModel::roleNames() const {
         {ModifiedRole, "modified"}, {KindRole, "kind"}, {MimeRole, "mime"},
         {ExtensionRole, "extension"}, {ItemCountRole, "itemCount"}, {SelectedRole, "selected"},
     };
-}
-
-int FolderModel::folderCount() const {
-    return std::count_if(m_entries.begin(), m_entries.end(), [](const Entry &e) { return e.isDir; });
 }
 
 void FolderModel::setShowHidden(bool show) {

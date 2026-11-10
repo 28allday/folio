@@ -21,7 +21,6 @@ class FolderModel : public QAbstractListModel {
     Q_OBJECT
     Q_PROPERTY(QString path READ path WRITE setPath NOTIFY pathChanged)
     Q_PROPERTY(int count READ count NOTIFY countChanged)
-    Q_PROPERTY(int folderCount READ folderCount NOTIFY countChanged)
     Q_PROPERTY(bool loading READ loading NOTIFY loadingChanged)
     Q_PROPERTY(QString error READ error NOTIFY errorChanged)
     Q_PROPERTY(bool showHidden READ showHidden WRITE setShowHidden NOTIFY showHiddenChanged)
@@ -67,7 +66,6 @@ public:
 
     QString path() const { return m_path; }
     int count() const { return m_entries.size(); }
-    int folderCount() const;
     bool loading() const { return m_loading; }
     QString error() const { return m_error; }
     bool showHidden() const { return m_showHidden; }
