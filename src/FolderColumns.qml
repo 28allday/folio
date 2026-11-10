@@ -23,6 +23,30 @@ Item {
     function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
 
     readonly property var crumbs: backend.crumbs
+
+    // The folders on the way here, kept as a list model that is only trimmed
+    // and extended: moving one folder deeper or back out adds or drops one
+    // column, and the rest stay as they are instead of reloading (which
+    // flashed).
+    ListModel { id: trail }
+    function syncTrail() {
+        const want = []
+        for (let i = 0; i + 1 < crumbs.length; ++i)
+            want.push({ path: crumbs[i].path, next: crumbs[i + 1].name })
+        let same = 0
+        while (same < trail.count && same < want.length && trail.get(same).path === want[same].path)
+            ++same
+        // Columns that stay may now point at a different next folder.
+        for (let i = 0; i < same; ++i)
+            if (trail.get(i).next !== want[i].next)
+                trail.setProperty(i, "next", want[i].next)
+        if (trail.count > same)
+            trail.remove(same, trail.count - same)
+        for (let i = same; i < want.length; ++i)
+            trail.append(want[i])
+    }
+    onCrumbsChanged: syncTrail()
+    Component.onCompleted: syncTrail()
     readonly property var selected: here.currentIndex >= 0 ? (backend.folder.count, backend.folder.get(here.currentIndex)) : ({})
 
     // Keeps the newest columns in view as the trail grows.
@@ -48,11 +72,11 @@ Item {
 
             // The folders on the way here, each showing which way the trail goes.
             Repeater {
-                model: view.crumbs.length - 1
+                model: trail
                 Row {
                     id: ancestor
-                    required property int index
-                    readonly property string next: view.crumbs[index + 1].name
+                    required property string path
+                    required property string next
                     height: row.height
 
                     ListView {
@@ -65,10 +89,15 @@ Item {
                         ScrollBar.vertical: ScrollBar { }
                         model: FolderModel {
                             id: folder
-                            path: view.crumbs[ancestor.index].path
+                            path: ancestor.path
                             showHidden: backend.folder.showHidden
                             sortMode: backend.folder.sortMode
-                            onLoaded: column.positionViewAtIndex(Math.max(0, folder.indexOf(ancestor.next)), ListView.Contain)
+                            onLoaded: column.revealNext()
+                        }
+                        function revealNext() { positionViewAtIndex(Math.max(0, folder.indexOf(ancestor.next)), ListView.Contain) }
+                        Connections {
+                            target: ancestor
+                            function onNextChanged() { column.revealNext() }
                         }
                         delegate: FileRow {
                             width: column.width

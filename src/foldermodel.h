@@ -85,6 +85,7 @@ signals:
 
 private:
     void setLoading(bool loading);
+    void clearEntries();
     void setError(const QString &error);
     void summarizeFolders(quint64 generation);
 
@@ -97,4 +98,5 @@ private:
     quint64 m_generation = 0;
     QFileSystemWatcher m_watcher;
     QTimer m_debounce;
+    QTimer m_staleClear;
 };

@@ -16,6 +16,19 @@ FolderModel::FolderModel(QObject *parent) : QAbstractListModel(parent) {
     m_debounce.setInterval(250);
     connect(&m_watcher, &QFileSystemWatcher::directoryChanged, this, [this] { m_debounce.start(); });
     connect(&m_debounce, &QTimer::timeout, this, &FolderModel::reload);
+    m_staleClear.setSingleShot(true);
+    m_staleClear.setInterval(150);
+    connect(&m_staleClear, &QTimer::timeout, this, &FolderModel::clearEntries);
+}
+
+void FolderModel::clearEntries() {
+    m_staleClear.stop();
+    if (m_entries.isEmpty())
+        return;
+    beginResetModel();
+    m_entries.clear();
+    endResetModel();
+    emit countChanged();
 }
 
 int FolderModel::rowCount(const QModelIndex &parent) const {
@@ -79,16 +92,16 @@ void FolderModel::setPath(const QString &path) {
     m_path = clean;
     emit pathChanged();
 
-    // Clear right away so the old folder never shows under the new path while
-    // a slow listing is in flight.
-    beginResetModel();
-    m_entries.clear();
-    endResetModel();
-    emit countChanged();
-
+    // The old folder stays up while the new one is read, which locally takes
+    // a few milliseconds: swapping straight from one to the other avoids an
+    // empty frame between them. A slow listing (a tailnet machine) clears it
+    // after a moment, so the old folder never lingers under the new path.
     // An empty path is a column with nothing to show yet.
-    if (m_path.isEmpty())
+    if (m_path.isEmpty()) {
+        clearEntries();
         return;
+    }
+    m_staleClear.start();
     m_watcher.addPath(m_path);
     reload();
 }
@@ -191,6 +204,7 @@ void FolderModel::reload() {
         watcher->deleteLater();
         if (generation != m_generation)
             return; // A newer listing replaced this one while it ran.
+        m_staleClear.stop();
         const auto [entries, error] = watcher->result();
         beginResetModel();
         m_entries = entries;

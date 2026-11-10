@@ -77,6 +77,30 @@ private slots:
         QCOMPARE(model.indexOf("one.txt"), 0);
     }
 
+    void folderModelSwapsFoldersWithoutAnEmptyFrame()
+    {
+        QTemporaryDir a, b;
+        write(a.filePath("one.txt"), "x");
+        write(b.filePath("two.txt"), "x");
+        write(b.filePath("three.txt"), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(a.path());
+        QVERIFY(loaded.wait(3000));
+
+        // Moving on keeps the old entries until the new ones are in.
+        QSignalSpy counts(&model, &FolderModel::countChanged);
+        model.setPath(b.path());
+        QCOMPARE(model.count(), 1);
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 2);
+        QCOMPARE(counts.count(), 1); // straight from one to two, never zero
+
+        // A column with no folder clears at once.
+        model.setPath(QString());
+        QCOMPARE(model.count(), 0);
+    }
+
     void kindsFromMimeTypes()
     {
         QCOMPARE(FolderModel::kindForMime("application/pdf"), QString("pdf"));
