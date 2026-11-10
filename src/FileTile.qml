@@ -19,7 +19,6 @@ Item {
     required property var size
     required property var modified
     required property bool selected
-    required property var peek
 
     property bool current: false
 

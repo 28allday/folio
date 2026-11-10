@@ -13,8 +13,7 @@
 
 // One folder's contents, listed off the UI thread so a slow mount (an SFTP
 // share over the tailnet, say) never freezes the window. Listing happens in
-// two passes: the entries first, then each subfolder's item count and the
-// first images inside it, which the folder tiles show peeking out.
+// two passes: the entries first, then each subfolder's item count.
 class QFileInfo;
 class QMimeDatabase;
 
@@ -42,7 +41,6 @@ public:
         MimeRole,
         ExtensionRole,
         ItemCountRole,
-        PeekRole,
         SelectedRole,
     };
 
@@ -56,6 +54,7 @@ public:
         QString mime;
         QString extension;
         int itemCount = -1;
+        // The first pictures in a folder, for the preview window.
         QStringList peek;
     };
 

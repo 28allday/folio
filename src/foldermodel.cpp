@@ -101,7 +101,6 @@ QVariant FolderModel::data(const QModelIndex &index, int role) const {
     case MimeRole: return e.mime;
     case ExtensionRole: return e.extension;
     case ItemCountRole: return e.itemCount;
-    case PeekRole: return e.peek;
     case SelectedRole: return m_selected.contains(e.path);
     }
     return {};
@@ -111,8 +110,7 @@ QHash<int, QByteArray> FolderModel::roleNames() const {
     return {
         {NameRole, "name"}, {PathRole, "path"}, {IsDirRole, "isDir"}, {SizeRole, "size"},
         {ModifiedRole, "modified"}, {KindRole, "kind"}, {MimeRole, "mime"},
-        {ExtensionRole, "extension"}, {ItemCountRole, "itemCount"}, {PeekRole, "peek"},
-        {SelectedRole, "selected"},
+        {ExtensionRole, "extension"}, {ItemCountRole, "itemCount"}, {SelectedRole, "selected"},
     };
 }
 
@@ -479,9 +477,8 @@ void FolderModel::summarizeFolders(quint64 generation) {
             if (row >= m_entries.size() || m_entries[row].path != summary.path)
                 continue;
             m_entries[row].itemCount = summary.itemCount;
-            m_entries[row].peek = summary.peek;
             const QModelIndex at = index(row);
-            emit dataChanged(at, at, {ItemCountRole, PeekRole});
+            emit dataChanged(at, at, {ItemCountRole});
             updated = true;
         }
         // QML re-reads its get() snapshots (the current item, which the
@@ -511,8 +508,7 @@ QVariantMap FolderModel::get(int row) const {
     return {
         {"name", e.name}, {"path", e.path}, {"isDir", e.isDir}, {"size", e.size},
         {"modified", e.modified}, {"kind", e.kind}, {"mime", e.mime},
-        {"extension", e.extension}, {"itemCount", e.itemCount}, {"peek", e.peek},
-        {"selected", m_selected.contains(e.path)},
+        {"extension", e.extension}, {"itemCount", e.itemCount}, {"selected", m_selected.contains(e.path)},
     };
 }
 
