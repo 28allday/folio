@@ -268,6 +268,19 @@ private slots:
         QVERIFY(!cut);
     }
 
+    void fileOpsDragUriLists()
+    {
+        // Names holding what means something in a URI ("#", "?", "%") are
+        // dragged as the same paths they came from.
+        FileOps ops;
+        const QStringList paths{"/tmp/Track #1.mp3", "/tmp/what?.txt", "/tmp/100% done/caf\u00e9.txt"};
+        QMimeData data;
+        data.setData("text/uri-list", ops.uriList(paths).toUtf8());
+        QCOMPARE(ops.localPaths(data.urls()), paths);
+        // Only local files are dropped as paths.
+        QCOMPARE(ops.localPaths({QUrl("https://example.com/a"), QUrl::fromLocalFile("/tmp/x")}), QStringList({"/tmp/x"}));
+    }
+
     void recentsReadGtkRecentFiles()
     {
         QTemporaryDir dir;

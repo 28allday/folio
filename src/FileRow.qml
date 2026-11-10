@@ -172,11 +172,16 @@ Item {
     }
 
     // Like the tiles: dragged, a row is a file for the sidebar or another app.
-    Drag.active: drag.active
     Drag.dragType: Drag.Automatic
     Drag.supportedActions: Qt.CopyAction | Qt.LinkAction
-    // Dragging a selected item takes the whole selection along.
-    Drag.mimeData: ({ "text/uri-list": (row.selected && backend.folder.selectedCount > 1 ? backend.folder.selectedPaths() : [row.path])
-                                         .map(p => "file://" + encodeURI(p)).join("\r\n") })
-    DragHandler { id: drag; target: null }
+    DragHandler {
+        target: null
+        // Dragging a selected item takes the whole selection along. The list
+        // is built as the drag starts, not again on every change of selection.
+        onActiveChanged: {
+            if (active)
+                row.Drag.mimeData = { "text/uri-list": fileOps.uriList(row.selected && backend.folder.selectedCount > 1 ? backend.folder.selectedPaths() : [row.path]) }
+            row.Drag.active = active
+        }
+    }
 }

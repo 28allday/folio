@@ -131,15 +131,20 @@ Item {
 
     // Dragging hands the file to whatever it lands on as a URI list: the
     // sidebar pins a folder, other apps get the file.
-    Drag.active: drag.active
     Drag.dragType: Drag.Automatic
     Drag.supportedActions: Qt.CopyAction | Qt.LinkAction
-    // Dragging a selected item takes the whole selection along.
-    Drag.mimeData: ({ "text/uri-list": (tile.selected && backend.folder.selectedCount > 1 ? backend.folder.selectedPaths() : [tile.path])
-                                         .map(p => "file://" + encodeURI(p)).join("\r\n") })
     Drag.hotSpot.x: tile.width / 2
     Drag.hotSpot.y: 40
-    DragHandler { id: drag; target: null }
+    DragHandler {
+        target: null
+        // Dragging a selected item takes the whole selection along. The list
+        // is built as the drag starts, not again on every change of selection.
+        onActiveChanged: {
+            if (active)
+                tile.Drag.mimeData = { "text/uri-list": fileOps.uriList(tile.selected && backend.folder.selectedCount > 1 ? backend.folder.selectedPaths() : [tile.path]) }
+            tile.Drag.active = active
+        }
+    }
 
     TapHandler {
         id: tap

@@ -139,7 +139,7 @@ Rectangle {
             onEntered: (drag) => { drag.accepted = row.dropTrashes ? drag.hasUrls : fileOps.canDrop(drag.urls, row.dropPath) }
             onDropped: (drop) => {
                 if (row.dropTrashes) {
-                    fileOps.trash(drop.urls.map(u => decodeURIComponent(u.toString().replace(/^file:\/\//, ""))))
+                    fileOps.trash(fileOps.localPaths(drop.urls))
                 } else {
                     fileOps.dropInto(drop.urls, row.dropPath)
                 }
@@ -260,8 +260,7 @@ Rectangle {
                     anchors.fill: parent
                     keys: ["text/uri-list"]
                     onDropped: (drop) => {
-                        for (const url of drop.urls) {
-                            const path = decodeURIComponent(url.toString().replace(/^file:\/\//, ""))
+                        for (const path of fileOps.localPaths(drop.urls)) {
                             const problem = places.pin(path)
                             if (problem.length > 0)
                                 sidebar.target.showMessage(problem)

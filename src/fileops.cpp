@@ -213,11 +213,23 @@ bool FileOps::canDrop(const QList<QUrl> &urls, const QString &folder) const {
 void FileOps::dropInto(const QList<QUrl> &urls, const QString &folder) {
     if (!canDrop(urls, folder) || !m_busy.isEmpty())
         return;
+    const QStringList paths = localPaths(urls);
+    transferInBackground(paths, folder, sameDrive(paths.first(), folder), false);
+}
+
+QString FileOps::uriList(const QStringList &paths) const {
+    QStringList uris;
+    for (const QString &path : paths)
+        uris << QString::fromLatin1(QUrl::fromLocalFile(path).toEncoded());
+    return uris.join("\r\n");
+}
+
+QStringList FileOps::localPaths(const QList<QUrl> &urls) const {
     QStringList paths;
     for (const QUrl &url : urls)
         if (url.isLocalFile())
             paths << url.toLocalFile();
-    transferInBackground(paths, folder, sameDrive(paths.first(), folder), false);
+    return paths;
 }
 
 void FileOps::transferInBackground(const QStringList &paths, const QString &folder, bool move, bool releaseClipboard) {
