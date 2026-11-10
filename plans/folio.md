@@ -77,7 +77,7 @@ Done, tested (19 Qt Test cases), and verified offscreen:
 
 ### 4. Remote and removable storage
 
-- GVfs shows the host key fingerprint as "???" on first connection; show the real fingerprint (from `ssh-keyscan`) next to its question so it can be checked.
+- Tailnet machines' first-connection host key question is accepted automatically (Tailscale already authenticated the peer); other servers are asked, and GVfs shows their fingerprint as "???", so show the real one (from `ssh-keyscan`) next to the question.
 - Unmount and eject (removable drives, SFTP mounts) from the sidebar.
 - Taildrive shares listed under their machine once the tailnet's ACLs grant `drive:share`/`drive:access`; mounted as WebDAV through GVfs.
 - SMB/NFS/MTP keep working through the GVfs backends Omarchy already installs (`gvfs-smb`, `gvfs-nfs`, `gvfs-mtp`); MTP phones appear under Devices.

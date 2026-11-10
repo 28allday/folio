@@ -157,7 +157,10 @@ void Backend::openPeer(const QString &host) {
     // any other folder.
     m_mountHost = host;
     setBusy(tr("Connecting to %1…").arg(host));
-    m_mounter.mount("sftp://" + host + "/");
+    // Tailnet machines are reached over WireGuard to a peer Tailscale has
+    // already authenticated, so the SSH "first time seeing this host" check
+    // adds nothing but a prompt; it's accepted for them, and only them.
+    m_mounter.mount("sftp://" + host + "/", true);
 }
 
 void Backend::dismissMessage() {

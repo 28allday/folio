@@ -13,6 +13,14 @@ struct MounterCallbacks {
     static void question(GMountOperation *op, const char *message, const char **choices, gpointer data) {
         g_signal_stop_emission_by_name(op, "ask-question");
         auto *self = static_cast<Mounter *>(data);
+        // The one question GVfs's SFTP backend asks is whether to trust a
+        // host key it has never seen; "Log In Anyway" comes first. A changed
+        // key for a known machine never gets here: ssh refuses it outright.
+        if (self->m_trustNewHost && choices && choices[0]) {
+            g_mount_operation_set_choice(op, 0);
+            g_mount_operation_reply(op, G_MOUNT_OPERATION_HANDLED);
+            return;
+        }
         self->m_prompt = QString::fromUtf8(message).trimmed();
         self->m_choices.clear();
         for (int i = 0; choices && choices[i]; ++i)
@@ -72,10 +80,11 @@ Mounter::~Mounter() {
     finish();
 }
 
-void Mounter::mount(const QString &uri) {
+void Mounter::mount(const QString &uri, bool trustNewHost) {
     if (m_operation)
         return;
     m_uri = uri;
+    m_trustNewHost = trustNewHost;
     m_file = g_file_new_for_uri(uri.toUtf8().constData());
     m_operation = g_mount_operation_new();
     g_signal_connect(m_operation, "ask-question", G_CALLBACK(MounterCallbacks::question), this);

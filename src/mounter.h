@@ -32,8 +32,11 @@ public:
     bool wantsPassword() const { return m_wantsPassword; }
     QString user() const { return m_user; }
 
-    // Mounts the location; `mounted` carries its local GVfs path.
-    void mount(const QString &uri);
+    // Mounts the location; `mounted` carries its local GVfs path. With
+    // `trustNewHost`, a machine seen for the first time is accepted without
+    // asking (for tailnet machines, whose identity Tailscale has already
+    // checked).
+    void mount(const QString &uri, bool trustNewHost = false);
 
     // The user's answer to a question, by choice index.
     Q_INVOKABLE void choose(int choice);
@@ -57,6 +60,7 @@ private:
     GMountOperation *m_operation = nullptr;
     GFile *m_file = nullptr;
     QString m_uri;
+    bool m_trustNewHost = false;
     bool m_asking = false;
     QString m_prompt;
     QStringList m_choices;
