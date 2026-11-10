@@ -12,23 +12,16 @@ struct MounterCallbacks {
     // GMountOperation's own handlers run after these and answer
     // "unhandled" at once, which GVfs reports as a cancelled login; stopping
     // the emission leaves the operation waiting for the user's reply.
-    static void question(GMountOperation *op, const char *message, const char **choices, gpointer data) {
+    // GVfs's SFTP backend asks two questions, about a host seen for the
+    // first time and about a host whose key differs from the key for its IP
+    // address, and both list "Log In Anyway" first. A tailnet machine is
+    // reached over WireGuard and already authenticated by Tailscale, so the
+    // answer is always yes. A changed key for a known machine never gets
+    // here: ssh refuses it outright.
+    static void question(GMountOperation *op, const char *, const char **, gpointer) {
         g_signal_stop_emission_by_name(op, "ask-question");
-        auto *self = static_cast<Mounter *>(data);
-        // The one question GVfs's SFTP backend asks is whether to trust a
-        // host key it has never seen; "Log In Anyway" comes first. A changed
-        // key for a known machine never gets here: ssh refuses it outright.
-        if (self->m_trustNewHost && choices && choices[0]) {
-            g_mount_operation_set_choice(op, 0);
-            g_mount_operation_reply(op, G_MOUNT_OPERATION_HANDLED);
-            return;
-        }
-        self->m_prompt = QString::fromUtf8(message).trimmed();
-        self->m_choices.clear();
-        for (int i = 0; choices && choices[i]; ++i)
-            self->m_choices << QString::fromUtf8(choices[i]);
-        self->m_wantsPassword = false;
-        self->setAsking(true);
+        g_mount_operation_set_choice(op, 0);
+        g_mount_operation_reply(op, G_MOUNT_OPERATION_HANDLED);
     }
 
     static void password(GMountOperation *op, const char *message, const char *user, const char *,
@@ -36,9 +29,7 @@ struct MounterCallbacks {
         g_signal_stop_emission_by_name(op, "ask-password");
         auto *self = static_cast<Mounter *>(data);
         self->m_prompt = QString::fromUtf8(message).trimmed();
-        self->m_choices.clear();
         self->m_user = QString::fromUtf8(user ? user : "");
-        self->m_wantsPassword = true;
         self->setAsking(true);
     }
 
@@ -87,10 +78,9 @@ Mounter::~Mounter() {
     finish();
 }
 
-void Mounter::mount(const QString &uri, bool trustNewHost) {
+void Mounter::mount(const QString &uri) {
     if (m_operation)
         return;
-    m_trustNewHost = trustNewHost;
     GFile *file = g_file_new_for_uri(uri.toUtf8().constData());
     m_operation = g_mount_operation_new();
     g_signal_connect(m_operation, "ask-question", G_CALLBACK(MounterCallbacks::question), this);
@@ -103,14 +93,6 @@ void Mounter::mount(const QString &uri, bool trustNewHost) {
                                   MounterCallbacks::mounted, new QPointer<Mounter>(this));
     // The pending mount holds its own reference to the file.
     g_object_unref(file);
-}
-
-void Mounter::choose(int choice) {
-    if (!m_operation || !m_asking)
-        return;
-    setAsking(false);
-    g_mount_operation_set_choice(m_operation, choice);
-    g_mount_operation_reply(m_operation, G_MOUNT_OPERATION_HANDLED);
 }
 
 void Mounter::providePassword(const QString &user, const QString &password) {
@@ -133,11 +115,8 @@ void Mounter::cancel() {
 
 void Mounter::setAsking(bool asking) {
     m_asking = asking;
-    if (!asking) {
+    if (!asking)
         m_prompt.clear();
-        m_choices.clear();
-        m_wantsPassword = false;
-    }
     emit askingChanged();
 }
 

@@ -28,7 +28,7 @@ Backend::Backend(const QString &home, QObject *parent)
     });
     connect(&m_mounter, &Mounter::failed, this, [this](const QString &error) {
         setBusy({});
-        // An empty error is the user saying no to a question: nothing to report.
+        // An empty error is the user cancelling the sign-in: nothing to report.
         if (!error.isEmpty())
             setMessage(tr("Couldn't open %1 over SFTP: %2").arg(m_mountHost, error));
     });
@@ -188,10 +188,7 @@ void Backend::openPeer(const QString &host) {
     // any other folder.
     m_mountHost = host;
     setBusy(tr("Connecting to %1…").arg(host));
-    // Tailnet machines are reached over WireGuard to a peer Tailscale has
-    // already authenticated, so the SSH "first time seeing this host" check
-    // adds nothing but a prompt; it's accepted for them, and only them.
-    m_mounter.mount("sftp://" + host + "/", true);
+    m_mounter.mount("sftp://" + host + "/");
 }
 
 void Backend::showNotice(const QString &notice) {
