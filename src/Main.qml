@@ -249,6 +249,26 @@ ApplicationWindow {
                                        : gridView
                         // A new view picks up the selection the old one had.
                         onLoaded: { item.select(win.lastName); item.focusView() }
+
+                        // Files dropped on empty space land in this folder;
+                        // folders inside take drops on themselves first.
+                        DropArea {
+                            id: viewDrop
+                            anchors.fill: parent
+                            z: -1
+                            keys: ["text/uri-list"]
+                            onEntered: (drag) => { drag.accepted = fileOps.canDrop(drag.urls, backend.path) }
+                            onDropped: (drop) => { fileOps.dropInto(drop.urls, backend.path); drop.accept(Qt.MoveAction) }
+                            Rectangle {
+                                anchors.fill: parent
+                                anchors.margins: 2
+                                visible: viewDrop.containsDrag
+                                color: win.tint(theme.accent, 0.05)
+                                border.width: 2
+                                border.color: theme.accent
+                                radius: Math.min(6, theme.radius)
+                            }
+                        }
                     }
                     Component { id: gridView; FolderGrid { } }
                     Component { id: listView; FolderList { } }

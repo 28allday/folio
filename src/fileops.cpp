@@ -9,6 +9,7 @@
 #include <QMimeData>
 #include <QMimeDatabase>
 #include <QProcess>
+#include <QStorageInfo>
 #include <QStandardPaths>
 #include <QUrl>
 #include <QtConcurrent>
@@ -180,24 +181,61 @@ void FileOps::paste(const QString &folder) {
         emit failed(tr("Files can't be pasted here."));
         return;
     }
-    setBusy(cut ? tr("Moving %n items…", "", paths.size()) : tr("Copying %n items…", "", paths.size()));
+    // Cut files are gone from where they were once moved; pasting them
+    // again would find nothing, so the clipboard lets go of them.
+    transferInBackground(paths, folder, cut, cut);
+}
+
+bool FileOps::sameDrive(const QString &a, const QString &b) {
+    return QStorageInfo(a).device() == QStorageInfo(b).device();
+}
+
+bool FileOps::canDrop(const QList<QUrl> &urls, const QString &folder) const {
+    if (!QFileInfo(folder).isDir())
+        return false;
+    const QString target = QDir::cleanPath(folder);
+    bool any = false;
+    for (const QUrl &url : urls) {
+        if (!url.isLocalFile())
+            continue;
+        const QString path = QDir::cleanPath(url.toLocalFile());
+        // Not onto itself or inside itself.
+        if (path == target || target.startsWith(path + "/"))
+            return false;
+        // Already there: nothing would happen.
+        if (QFileInfo(path).absolutePath() != target)
+            any = true;
+    }
+    return any;
+}
+
+void FileOps::dropInto(const QList<QUrl> &urls, const QString &folder) {
+    if (!canDrop(urls, folder) || !m_busy.isEmpty())
+        return;
+    QStringList paths;
+    for (const QUrl &url : urls)
+        if (url.isLocalFile())
+            paths << url.toLocalFile();
+    transferInBackground(paths, folder, sameDrive(paths.first(), folder), false);
+}
+
+void FileOps::transferInBackground(const QStringList &paths, const QString &folder, bool move, bool releaseClipboard) {
+    setBusy(move ? tr("Moving %n items…", "", paths.size()) : tr("Copying %n items…", "", paths.size()));
     auto *watcher = new QFutureWatcher<QPair<QStringList, QString>>(this);
-    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, folder, cut] {
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, folder, releaseClipboard] {
         watcher->deleteLater();
         const auto [made, error] = watcher->result();
         setBusy({});
-        // Cut files are gone from where they were; pasting them again
-        // would find nothing, so the clipboard lets go of them.
-        if (cut && error.isEmpty())
+        if (releaseClipboard && error.isEmpty())
             QGuiApplication::clipboard()->clear();
         if (!error.isEmpty())
             emit failed(error);
         if (!made.isEmpty())
             emit done(folder, made.first());
     });
-    watcher->setFuture(QtConcurrent::run([paths, folder, cut] {
+    watcher->setFuture(QtConcurrent::run([paths, folder, move] {
         QString error;
-        const QStringList made = transfer(paths, folder, cut, &error);
+        const QStringList made = transfer(paths, folder, move, &error);
         return qMakePair(made, error);
     }));
 }

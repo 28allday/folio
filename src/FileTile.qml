@@ -49,6 +49,16 @@ Item {
             anchors.fill: parent
             sourceComponent: tile.isDir ? folderArt : fileArt
         }
+
+        // A folder takes files dropped on it, lighting up while they hover.
+        DropArea {
+            id: folderDrop
+            anchors.fill: parent
+            enabled: tile.isDir
+            keys: ["text/uri-list"]
+            onEntered: (drag) => { drag.accepted = fileOps.canDrop(drag.urls, tile.path) }
+            onDropped: (drop) => { fileOps.dropInto(drop.urls, tile.path); drop.accept(Qt.MoveAction) }
+        }
     }
 
     Text {
@@ -112,11 +122,11 @@ Item {
         id: folderArt
 
         FolderShape {
-            fill: tile.current ? Qt.tint(theme.lighterBackground, tile.tint(theme.accent, 0.3))
+            fill: tile.current || folderDrop.containsDrag ? Qt.tint(theme.lighterBackground, tile.tint(theme.accent, 0.3))
                 : hover.hovered ? Qt.tint(theme.lighterBackground, tile.tint(theme.foreground, 0.06))
                 : theme.lighterBackground
-            stroke: tile.current ? theme.accent : "transparent"
-            strokeWidth: 1.5
+            stroke: tile.current || folderDrop.containsDrag ? theme.accent : "transparent"
+            strokeWidth: folderDrop.containsDrag ? 2.5 : 1.5
         }
     }
 

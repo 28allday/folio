@@ -2,6 +2,7 @@
 
 #include <QObject>
 #include <QStringList>
+#include <QUrl>
 #include <QVariantList>
 
 class QMimeData;
@@ -29,6 +30,12 @@ public:
     Q_INVOKABLE void cut(const QStringList &paths);
     Q_INVOKABLE void yank(const QStringList &paths);
     Q_INVOKABLE void paste(const QString &folder);
+    // Files dropped on a folder: moved when they're on the same drive,
+    // copied from another drive. Dropping something where it already is
+    // does nothing.
+    Q_INVOKABLE void dropInto(const QList<QUrl> &urls, const QString &folder);
+    // Whether these can be dropped on `folder` (not onto themselves).
+    Q_INVOKABLE bool canDrop(const QList<QUrl> &urls, const QString &folder) const;
 
     // A copy beside the original, named "(copy)".
     Q_INVOKABLE void duplicate(const QString &path);
@@ -66,6 +73,7 @@ public:
     // The archive name for compressing these: "name.zip" for one item,
     // "Archive.zip" for several; never one that exists.
     static QString archiveName(const QStringList &paths);
+    static bool sameDrive(const QString &a, const QString &b);
     // Copies or moves each path into `folder`; returns the new names.
     static QStringList transfer(const QStringList &paths, const QString &folder, bool move, QString *error);
 
@@ -79,6 +87,7 @@ signals:
 
 private:
     void setBusy(const QString &busy);
+    void transferInBackground(const QStringList &paths, const QString &folder, bool move, bool releaseClipboard);
 
     QString m_busy;
 };

@@ -18,6 +18,11 @@ Rectangle {
     // rows, ⏎ (or →) opens one and hands the keyboard back to the files.
     signal finished()
     property int cursor: 0
+
+    // Something is being dragged over the sidebar (anywhere on it, rows
+    // included), so the pin box shows.
+    property int dropHovers: 0
+    readonly property bool dragging: drop.containsDrag || dropHovers > 0 || pinDrop.containsDrag
     readonly property var rows: [].concat(
         places.places.map(p => ({ path: p.path })),
         places.pinned.map(p => ({ path: p.path })),
@@ -98,6 +103,10 @@ Rectangle {
         property bool active: false
         // The keyboard is on this row (the sidebar has focus).
         property bool keyed: false
+        // Files dropped here go into this folder, or into the trash.
+        property string dropPath
+        property bool dropTrashes: false
+        readonly property bool dropHover: rowDrop.containsDrag
         property bool dim: false
         property string status
         property color statusColor: theme.green
@@ -115,6 +124,11 @@ Rectangle {
     // rows, ⏎ (or →) opens one and hands the keyboard back to the files.
     signal finished()
     property int cursor: 0
+
+    // Something is being dragged over the sidebar (anywhere on it, rows
+    // included), so the pin box shows.
+    property int dropHovers: 0
+    readonly property bool dragging: drop.containsDrag || dropHovers > 0 || pinDrop.containsDrag
     readonly property var rows: [].concat(
         places.places.map(p => ({ path: p.path })),
         places.pinned.map(p => ({ path: p.path })),
@@ -162,10 +176,26 @@ Rectangle {
 
         background: Rectangle {
             radius: Math.min(4, theme.radius)
-            color: row.active ? row.tint(theme.accent, 0.16)
+            color: row.active || row.dropHover ? row.tint(theme.accent, 0.16)
                  : row.hovered && row.enabled ? row.tint(theme.foreground, 0.06) : "transparent"
-            border.width: row.keyed ? 1 : 0
+            border.width: row.dropHover ? 2 : row.keyed ? 1 : 0
             border.color: theme.accent
+        }
+
+        DropArea {
+            id: rowDrop
+            anchors.fill: parent
+            enabled: row.dropPath.length > 0 || row.dropTrashes
+            keys: ["text/uri-list"]
+            onEntered: (drag) => { drag.accepted = row.dropTrashes ? drag.hasUrls : fileOps.canDrop(drag.urls, row.dropPath) }
+            onDropped: (drop) => {
+                if (row.dropTrashes) {
+                    fileOps.trash(drop.urls.map(u => decodeURIComponent(u.toString().replace(/^file:\/\//, ""))))
+                } else {
+                    fileOps.dropInto(drop.urls, row.dropPath)
+                }
+                drop.accept(Qt.MoveAction)
+            }
         }
         contentItem: RowLayout {
             spacing: 14
@@ -182,19 +212,12 @@ Rectangle {
         }
     }
 
+    // Notices a drag over the sidebar, to show the pin box; rows and the
+    // box take the drop itself.
     DropArea {
         id: drop
         anchors.fill: parent
         keys: ["text/uri-list"]
-        onDropped: drop => {
-            for (const url of drop.urls) {
-                const path = decodeURIComponent(url.toString().replace(/^file:\/\//, ""))
-                const problem = places.pin(path)
-                if (problem.length > 0)
-                    backend.showMessage(problem)
-            }
-            drop.accept(Qt.LinkAction)
-        }
     }
 
     Flickable {
@@ -225,6 +248,8 @@ Rectangle {
                 PlaceRow {
                     required property var modelData
                     required property int index
+                    dropPath: modelData.path
+                    onDropHoverChanged: sidebar.dropHovers += dropHover ? 1 : -1
                     keyed: sidebar.activeFocus && sidebar.cursor === 0 + index
                     onKeyedChanged: if (keyed) sidebar.reveal(this)
                     text: modelData.name
@@ -239,14 +264,16 @@ Rectangle {
             // Pinned folders from anywhere, kept in GTK's bookmarks. While a
             // folder is dragged over the sidebar, the section shows (even
             // empty) as the place to drop it.
-            Item { implicitHeight: 20; visible: places.pinned.length > 0 || drop.containsDrag }
-            SectionLabel { text: qsTr("Pinned"); visible: places.pinned.length > 0 || drop.containsDrag }
+            Item { implicitHeight: 20; visible: places.pinned.length > 0 || sidebar.dragging }
+            SectionLabel { text: qsTr("Pinned"); visible: places.pinned.length > 0 || sidebar.dragging }
             Repeater {
                 model: places.pinned
                 PlaceRow {
                     id: pinRow
                     required property var modelData
                     required property int index
+                    dropPath: modelData.path
+                    onDropHoverChanged: sidebar.dropHovers += dropHover ? 1 : -1
                     keyed: sidebar.activeFocus && sidebar.cursor === sidebar.pinnedAt + index
                     onKeyedChanged: if (keyed) sidebar.reveal(this)
                     text: modelData.name
@@ -268,9 +295,9 @@ Rectangle {
             Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: 34
-                visible: drop.containsDrag
-                color: sidebar.tint(theme.accent, 0.10)
-                border.width: 1
+                visible: sidebar.dragging
+                color: sidebar.tint(theme.accent, pinDrop.containsDrag ? 0.22 : 0.08)
+                border.width: pinDrop.containsDrag ? 2 : 1
                 border.color: theme.accent
                 radius: Math.min(4, theme.radius)
                 Text {
@@ -278,6 +305,20 @@ Rectangle {
                     text: qsTr("Drop to pin")
                     color: theme.accent
                     font.pixelSize: 12
+                }
+                DropArea {
+                    id: pinDrop
+                    anchors.fill: parent
+                    keys: ["text/uri-list"]
+                    onDropped: (drop) => {
+                        for (const url of drop.urls) {
+                            const path = decodeURIComponent(url.toString().replace(/^file:\/\//, ""))
+                            const problem = places.pin(path)
+                            if (problem.length > 0)
+                                backend.showMessage(problem)
+                        }
+                        drop.accept(Qt.LinkAction)
+                    }
                 }
             }
 
@@ -289,6 +330,8 @@ Rectangle {
                 PlaceRow {
                     required property var modelData
                     required property int index
+                    dropTrashes: modelData.icon === "trash"
+                    onDropHoverChanged: sidebar.dropHovers += dropHover ? 1 : -1
                     text: modelData.name
                     glyph: modelData.icon
                     active: sidebar.activePath === modelData.path
@@ -305,6 +348,8 @@ Rectangle {
                 PlaceRow {
                     required property var modelData
                     required property int index
+                    dropPath: modelData.path
+                    onDropHoverChanged: sidebar.dropHovers += dropHover ? 1 : -1
                     keyed: sidebar.activeFocus && sidebar.cursor === sidebar.devicesAt + index
                     onKeyedChanged: if (keyed) sidebar.reveal(this)
                     text: modelData.name

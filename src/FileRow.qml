@@ -53,12 +53,24 @@ Item {
                                   : row.kind === "pdf" || row.kind === "text" ? "documents"
                                   : "file"
 
+    // A folder row takes files dropped on it, lighting up while they hover.
+    DropArea {
+        id: folderDrop
+        anchors.fill: parent
+        enabled: row.isDir
+        keys: ["text/uri-list"]
+        onEntered: (drag) => { drag.accepted = fileOps.canDrop(drag.urls, row.path) }
+        onDropped: (drop) => { fileOps.dropInto(drop.urls, row.path); drop.accept(Qt.MoveAction) }
+    }
+
     Rectangle {
         anchors.fill: parent
         anchors.leftMargin: 4
         anchors.rightMargin: 4
         radius: Math.min(4, theme.radius)
-        color: row.current ? row.tint(theme.accent, 0.18)
+        border.width: folderDrop.containsDrag ? 2 : 0
+        border.color: theme.accent
+        color: row.current || folderDrop.containsDrag ? row.tint(theme.accent, 0.18)
              : row.trail ? row.tint(theme.foreground, 0.08)
              : hover.hovered ? row.tint(theme.foreground, 0.05)
              : "transparent"
