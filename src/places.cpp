@@ -292,7 +292,7 @@ QVariantList Places::parseTailscale(const QByteArray &json) {
         if (name.isEmpty() || host.isEmpty() || (os != "linux" && os != "macOS" && os != "windows")
             || !peer.value("Online").toBool())
             continue;
-        peers << QVariantMap{{"name", name}, {"host", host}, {"os", os}};
+        peers << QVariantMap{{"name", name}, {"host", host}};
     }
     std::sort(peers.begin(), peers.end(), [](const QVariant &a, const QVariant &b) {
         return QString::localeAwareCompare(a.toMap().value("name").toString(), b.toMap().value("name").toString()) < 0;

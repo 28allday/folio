@@ -226,7 +226,7 @@ Rectangle {
                     keyed: sidebar.activeFocus && sidebar.cursor === sidebar.pinnedAt + index
                     onKeyedChanged: if (keyed) sidebar.reveal(this)
                     text: modelData.name
-                    glyph: "folder"
+                    glyph: modelData.icon
                     active: sidebar.activePath === modelData.path
                     onClicked: sidebar.target.navigate(modelData.path)
                     IconButton {
@@ -301,7 +301,7 @@ Rectangle {
                     keyed: sidebar.activeFocus && sidebar.cursor === sidebar.devicesAt + index
                     onKeyedChanged: if (keyed) sidebar.reveal(this)
                     text: modelData.name
-                    glyph: "drive"
+                    glyph: modelData.icon
                     active: sidebar.activePath === modelData.path
                     onClicked: sidebar.target.navigate(modelData.path)
                 }
