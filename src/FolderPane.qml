@@ -226,28 +226,16 @@ FocusScope {
             }
         }
 
-        // The trash says what it holds and offers to empty it.
+        // The trash offers one thing: emptying it.
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: 48
-            visible: pane.inTrash
+            visible: pane.inTrash && backend.folder.count > 0
             color: pane.tint(theme.foreground, 0.04)
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 24
-                anchors.rightMargin: 16
-                Text {
-                    Layout.fillWidth: true
-                    text: backend.folder.count === 0 ? qsTr("The trash is empty.")
-                        : qsTr("%n items in the trash. Right-click to restore one.", "", backend.folder.count)
-                    color: theme.secondaryForeground
-                    elide: Text.ElideRight
-                }
-                PlainButton {
-                    visible: backend.folder.count > 0
-                    text: qsTr("Empty Trash")
-                    onClicked: pane.emptyTrash()
-                }
+            PlainButton {
+                anchors.centerIn: parent
+                text: qsTr("Empty Trash")
+                onClicked: pane.emptyTrash()
             }
         }
 
