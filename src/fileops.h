@@ -81,8 +81,8 @@ public:
     // ".pdf" in "Report v1.2.pdf", ".tar.gz" kept whole. -1 for folders and
     // dotfiles, which have none.
     Q_INVOKABLE static int extensionStart(const QString &name, bool isDir);
-    // Makes "New Folder" (or "New Folder 2"...) and returns its name.
-    Q_INVOKABLE QString newFolder(const QString &folder);
+    // Makes "New Folder" (or "New Folder 2"...); done() names it.
+    Q_INVOKABLE void newFolder(const QString &folder);
 
     // The apps that can open a file, from the desktop's MIME database:
     // {id, name, isDefault}, the default first.

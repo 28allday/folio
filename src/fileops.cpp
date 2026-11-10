@@ -550,20 +550,19 @@ QString FileOps::rename(const QString &path, const QString &name) {
     return {};
 }
 
-QString FileOps::newFolder(const QString &folder) {
+void FileOps::newFolder(const QString &folder) {
     if (!QFileInfo(folder).isDir()) {
         emit failed(tr("Folders can't be made here."));
-        return {};
+        return;
     }
     QString name = tr("New Folder");
     for (int n = 2; QFileInfo::exists(QDir(folder).filePath(name)); ++n)
         name = tr("New Folder %1").arg(n);
     if (!QDir(folder).mkdir(name)) {
         emit failed(tr("Couldn't create a folder here."));
-        return {};
+        return;
     }
     emit done(folder, name);
-    return name;
 }
 
 QVariantList FileOps::appsFor(const QString &path) const {
