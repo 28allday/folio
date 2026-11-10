@@ -292,6 +292,12 @@ QString Backend::completePath(const QString &text) const {
     return complete(text, m_home, path());
 }
 
+void Backend::newWindow() {
+    const QString here = path() == FolderModel::recentPath() ? m_home : path();
+    if (!QProcess::startDetached(QCoreApplication::applicationFilePath(), {here}))
+        setMessage(tr("Couldn't open another window."));
+}
+
 void Backend::togglePreview(const QString &path) {
     if (previewing()) {
         m_preview.terminate();

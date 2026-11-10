@@ -68,6 +68,9 @@ public:
     // Space: opens the large preview of a file in its own process, or closes
     // it when it's already open.
     Q_INVOKABLE void togglePreview(const QString &path);
+    // Ctrl+N: another Folio window, on the folder this one shows. It's its
+    // own process, so closing either leaves the other open.
+    Q_INVOKABLE void newWindow();
     // Keeps an open preview on the item selected in the grid.
     Q_INVOKABLE void followSelection(const QString &path);
 

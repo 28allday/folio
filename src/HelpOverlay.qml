@@ -25,6 +25,7 @@ Rectangle {
         ["Ctrl+C / X / V", qsTr("Copy, cut, paste files")],
         ["Ctrl+Shift+C", qsTr("Copy the path as text")],
         ["F2 / Ctrl+Shift+D", qsTr("Rename / duplicate")],
+        ["Ctrl+N", qsTr("New window")],
         ["Ctrl+Shift+N", qsTr("New folder")],
         ["Delete", qsTr("Move to the trash")],
         ["Right-click", qsTr("Everything else")],

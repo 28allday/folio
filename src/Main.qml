@@ -97,6 +97,7 @@ ApplicationWindow {
     Shortcut { sequence: "Delete"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: fileOps.trash(win.selectedPaths) }
     Shortcut { sequence: "F2"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: if (win.current.path) rename.open(win.current) }
     Shortcut { sequence: "Ctrl+Shift+D"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: if (win.current.path) fileOps.duplicate(win.current.path) }
+    Shortcut { sequences: [StandardKey.New]; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: backend.newWindow() }
     Shortcut { sequence: "Ctrl+Shift+N"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: fileOps.newFolder(backend.path) }
     // Tab hands the keyboard between the sidebar and the files.
     Shortcut {

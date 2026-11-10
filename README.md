@@ -28,6 +28,7 @@ Folio is Omarchy's file manager: one window for finding, previewing and opening 
 | Ctrl+C / Ctrl+X / Ctrl+V | Copy, cut, paste files |
 | Ctrl+Shift+C | Copy the path as text |
 | F2 / Ctrl+Shift+D | Rename / duplicate |
+| Ctrl+N | New window on this folder |
 | Ctrl+Shift+N | New folder |
 | Delete | Move to the trash |
 | Tab | Switch between the sidebar and the files |
