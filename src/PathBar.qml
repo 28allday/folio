@@ -138,8 +138,15 @@ Rectangle {
         }
         IconButton {
             id: sortButton
-            glyph: "sort"
-            text: qsTr("Sort (S)")
+            // Shows the order in use, and says it on hover.
+            readonly property string mode: backend.folder.sortMode
+            glyph: mode === "name" ? "sort-name" : mode === "kind" ? "sort-kind"
+                 : mode === "modified" ? "sort-newest" : mode === "oldest" ? "sort-oldest" : "sort-size"
+            text: mode === "name" ? qsTr("Sorted by name (S)")
+                : mode === "kind" ? qsTr("Sorted by kind (S)")
+                : mode === "modified" ? qsTr("Newest first (S)")
+                : mode === "oldest" ? qsTr("Oldest first (S)")
+                : qsTr("Biggest first (S)")
             active: sortMenu.visible
             onClicked: sortMenu.popup(sortButton, 0, sortButton.height + 4)
         }
