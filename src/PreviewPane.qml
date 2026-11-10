@@ -10,7 +10,9 @@ Rectangle {
     // The pane whose selected item this shows, and whose backend and file
     // work the button acts through: in a split, the one used last.
     property var folderPane: null
-    readonly property var item: folderPane ? folderPane.current : ({})
+    // Hidden, it shows nothing, so moving through files doesn't read them,
+    // look for their trash notes or make large thumbnails for nobody.
+    readonly property var item: visible && folderPane ? folderPane.current : ({})
     readonly property bool hasItem: item !== undefined && item.path !== undefined
     // An item in the trash shows where it came from and when it was
     // deleted, and offers Restore rather than Open.
