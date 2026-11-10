@@ -167,33 +167,24 @@ Item {
              + "V" + (88.5 - r) + "Q123.5 88.5 " + (123.5 - r) + " 88.5H" + (4.5 + r)
              + "Q4.5 88.5 4.5 " + (88.5 - r) + "Z"
     }
-    component FolderShape: Shape {
-        id: shape
-        property color fill: theme.lighterBackground
-        property color stroke: "transparent"
-        property real strokeWidth: 1
-        width: 128
-        height: 92
-        preferredRendererType: Shape.CurveRenderer
-        ShapePath {
-            fillColor: shape.fill
-            strokeColor: shape.stroke
-            strokeWidth: shape.strokeWidth
-            joinStyle: tile.iconRadius > 0 ? ShapePath.RoundJoin : ShapePath.MiterJoin
-            PathSvg { path: tile.folderPath(tile.iconRadius) }
-        }
-    }
 
     // Folders are a plain card, nothing on it; the name below says the rest.
     Component {
         id: folderArt
 
-        FolderShape {
-            fill: tile.current || folderDrop.containsDrag ? Qt.tint(theme.lighterBackground, tile.tint(theme.accent, 0.3))
-                : hover.hovered ? Qt.tint(theme.lighterBackground, tile.tint(theme.foreground, 0.06))
-                : theme.lighterBackground
-            stroke: tile.current || folderDrop.containsDrag ? theme.accent : "transparent"
-            strokeWidth: folderDrop.containsDrag ? 2.5 : 1.5
+        Shape {
+            width: 128
+            height: 92
+            preferredRendererType: Shape.CurveRenderer
+            ShapePath {
+                fillColor: tile.current || folderDrop.containsDrag ? Qt.tint(theme.lighterBackground, tile.tint(theme.accent, 0.3))
+                    : hover.hovered ? Qt.tint(theme.lighterBackground, tile.tint(theme.foreground, 0.06))
+                    : theme.lighterBackground
+                strokeColor: tile.current || folderDrop.containsDrag ? theme.accent : "transparent"
+                strokeWidth: folderDrop.containsDrag ? 2.5 : 1.5
+                joinStyle: tile.iconRadius > 0 ? ShapePath.RoundJoin : ShapePath.MiterJoin
+                PathSvg { path: tile.folderPath(tile.iconRadius) }
+            }
         }
     }
 
