@@ -8,7 +8,6 @@
 #include <QSaveFile>
 #include <QUrl>
 #include <QFileInfo>
-#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStandardPaths>

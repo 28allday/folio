@@ -8,7 +8,6 @@
 #include <QFileInfo>
 #include <QImageReader>
 #include <QMimeDatabase>
-#include <QStandardPaths>
 #include <QUrl>
 #include <unistd.h>
 

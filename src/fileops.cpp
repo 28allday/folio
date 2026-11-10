@@ -2,7 +2,6 @@
 
 #include <QClipboard>
 #include <QDir>
-#include <QDirIterator>
 #include <QFileInfo>
 #include <QFutureWatcher>
 #include <QGuiApplication>

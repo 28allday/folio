@@ -10,7 +10,6 @@
 #include <QFileInfo>
 #include <QFutureWatcher>
 #include <QMimeDatabase>
-#include <QPointer>
 #include <QtConcurrent>
 #include <algorithm>
 #include <sys/stat.h>

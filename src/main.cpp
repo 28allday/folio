@@ -12,9 +12,8 @@
 #include <QUrl>
 #include <cstdio>
 
-#include "backend.h"
 #include "filemanager1.h"
-#include "fileops.h"
+#include "foldermodel.h"
 #include "places.h"
 #include "previewer.h"
 #include "theme.h"
