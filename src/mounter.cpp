@@ -12,6 +12,7 @@ struct MounterCallbacks {
     // GMountOperation's own handlers run after these and answer
     // "unhandled" at once, which GVfs reports as a cancelled login; stopping
     // the emission leaves the operation waiting for the user's reply.
+
     // GVfs's SFTP backend asks two questions, about a host seen for the
     // first time and about a host whose key differs from the key for its IP
     // address, and both list "Log In Anyway" first. A tailnet machine is
