@@ -3,7 +3,8 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Controls.Material
 
-// The breadcrumb path from the left edge; history and view buttons on the right.
+// The breadcrumb path from the left edge; view buttons on the right. Back and
+// forward are keys (Alt+← / Alt+→) and the mouse's thumb buttons.
 Rectangle {
     id: bar
 
@@ -111,9 +112,6 @@ Rectangle {
         }
 
         Item { implicitWidth: 16 }
-        IconButton { glyph: "back"; text: qsTr("Back (Alt+←)"); enabled: backend.canBack; onClicked: backend.back() }
-        IconButton { glyph: "forward"; text: qsTr("Forward (Alt+→)"); enabled: backend.canForward; onClicked: backend.forward() }
-        Item { implicitWidth: 8 }
         // Shows the current view; clicking moves to the next one.
         IconButton {
             glyph: bar.viewMode
