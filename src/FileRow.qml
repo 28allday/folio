@@ -13,7 +13,6 @@ Item {
     required property bool isDir
     required property string kind
     required property string mime
-    required property string extension
     required property var size
     required property var modified
     required property int itemCount
@@ -30,11 +29,9 @@ Item {
 
     implicitHeight: 32
 
-    // Shared with the list's header so the columns line up. The name
-    // always gets room: in a narrow window the date goes first, then the
-    // size. (The icon says what kind a file is; there's no column for it.)
-    readonly property int sizeWidth: 96
-    readonly property int dateWidth: 96
+    // The name always gets room: in a narrow window the date goes first,
+    // then the size. (The icon says what kind a file is; there's no column
+    // for it.)
     readonly property bool showDate: detailed && width >= 480
     readonly property bool showSize: detailed && width >= 380
 
@@ -139,7 +136,7 @@ Item {
         }
         Text {
             visible: row.showSize
-            Layout.preferredWidth: row.sizeWidth
+            Layout.preferredWidth: 96
             horizontalAlignment: Text.AlignRight
             text: row.isDir ? (row.itemCount === 0 ? qsTr("Empty") : row.itemCount > 0 ? qsTr("%n items", "", row.itemCount) : "") : row.formatSize(row.size)
             color: theme.secondaryForeground
@@ -147,7 +144,7 @@ Item {
         }
         Text {
             visible: row.showDate
-            Layout.preferredWidth: row.dateWidth
+            Layout.preferredWidth: 96
             Layout.leftMargin: 12
             text: row.when(row.modified)
             color: theme.secondaryForeground
