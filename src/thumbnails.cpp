@@ -264,8 +264,7 @@ namespace {
 
 class ThumbnailResponse : public QQuickImageResponse, public QRunnable {
 public:
-    ThumbnailResponse(const Thumbnails *thumbnails, const QString &id, const QSize &requested)
-        : m_thumbnails(thumbnails), m_id(id), m_requested(requested) {
+    ThumbnailResponse(const Thumbnails *thumbnails, const QString &id) : m_thumbnails(thumbnails), m_id(id) {
         setAutoDelete(false);
     }
 
@@ -273,9 +272,7 @@ public:
         // id = <size>/<url-encoded mime>/<url-encoded path>
         const QStringList parts = m_id.split('/');
         if (parts.size() >= 3) {
-            int size = parts.at(0).toInt();
-            if (m_requested.isValid())
-                size = qMax(size, qMax(m_requested.width(), m_requested.height()));
+            const int size = parts.at(0).toInt();
             const QString mime = QUrl::fromPercentEncoding(parts.at(1).toUtf8());
             const QString path = QUrl::fromPercentEncoding(parts.mid(2).join('/').toUtf8());
             m_image = m_thumbnails->load(path, mime, qBound(64, size, 1024));
@@ -293,7 +290,6 @@ public:
 private:
     const Thumbnails *m_thumbnails;
     QString m_id;
-    QSize m_requested;
     QImage m_image;
     QString m_error;
 };
@@ -306,8 +302,9 @@ ThumbnailProvider::ThumbnailProvider(const Thumbnails *thumbnails) : m_thumbnail
     m_pool.setMaxThreadCount(qBound(2, QThread::idealThreadCount() / 2, 6));
 }
 
-QQuickImageResponse *ThumbnailProvider::requestImageResponse(const QString &id, const QSize &requestedSize) {
-    auto *response = new ThumbnailResponse(m_thumbnails, id, requestedSize);
+// The size comes in the id; no view sets a sourceSize to request one.
+QQuickImageResponse *ThumbnailProvider::requestImageResponse(const QString &id, const QSize &) {
+    auto *response = new ThumbnailResponse(m_thumbnails, id);
     m_pool.start(response);
     return response;
 }
