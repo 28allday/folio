@@ -95,6 +95,8 @@ public:
     // Synchronous building blocks, used by the background passes and tests.
     static QVector<Entry> list(const QString &path, bool showHidden, const QString &sort, QString *error);
     static Entry entryFor(const QFileInfo &info, const QMimeDatabase &mimes);
+    // An entry as QML reads it, by the names of its fields.
+    static QVariantMap toMap(const Entry &entry);
     static void summarize(Entry &entry, bool showHidden);
     static QStringList sortModes();
     static void sortEntries(QVector<Entry> &entries, const QString &sort);

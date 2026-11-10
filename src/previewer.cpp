@@ -42,25 +42,6 @@ QString Previewer::viewerFor(const QString &mime, bool isDir) {
     return "other";
 }
 
-FolderModel::Entry Previewer::entryFor(const QString &path) {
-    const QFileInfo info(path);
-    FolderModel::Entry e;
-    e.name = info.fileName();
-    e.path = info.absoluteFilePath();
-    e.isDir = info.isDir();
-    e.size = e.isDir ? 0 : info.size();
-    e.modified = info.lastModified();
-    // Matched the same way as the folder listing, so the preview and the
-    // grid always agree on what a file is.
-    e.mime = e.isDir ? QStringLiteral("inode/directory")
-                     : QMimeDatabase().mimeTypeForFile(info, QMimeDatabase::MatchExtension).name();
-    e.kind = FolderModel::kindForMime(e.mime);
-    e.extension = e.isDir ? QString() : info.suffix().toUpper();
-    if (e.isDir)
-        FolderModel::summarize(e, false);
-    return e;
-}
-
 QString Previewer::readText(const QString &path, qint64 limit) {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly))
@@ -88,7 +69,7 @@ void Previewer::show(const QString &path) {
     }
 
     // A file from another folder: show it alone, then fill in its siblings.
-    m_entries = {entryFor(absolute)};
+    m_entries = {FolderModel::entryFor(QFileInfo(absolute), QMimeDatabase())};
     setIndex(0, false);
 
     const quint64 generation = ++m_generation;
@@ -122,12 +103,7 @@ void Previewer::show(const QString &path) {
 QVariantMap Previewer::item() const {
     if (m_index < 0 || m_index >= m_entries.size())
         return {};
-    const FolderModel::Entry &e = m_entries.at(m_index);
-    return {
-        {"name", e.name}, {"path", e.path}, {"isDir", e.isDir}, {"size", e.size},
-        {"modified", e.modified}, {"kind", e.kind}, {"mime", e.mime},
-        {"extension", e.extension}, {"itemCount", e.itemCount}, {"peek", e.peek},
-    };
+    return FolderModel::toMap(m_entries.at(m_index));
 }
 
 QString Previewer::url() const {

@@ -482,10 +482,16 @@ QVariantMap FolderModel::get(int row) const {
     if (row < 0 || row >= m_entries.size())
         return {};
     const Entry &e = m_entries.at(row);
+    QVariantMap map = toMap(e);
+    map.insert("selected", m_selected.contains(e.path));
+    return map;
+}
+
+QVariantMap FolderModel::toMap(const Entry &entry) {
     return {
-        {"name", e.name}, {"path", e.path}, {"isDir", e.isDir}, {"size", e.size},
-        {"modified", e.modified}, {"kind", e.kind}, {"mime", e.mime},
-        {"extension", e.extension}, {"itemCount", e.itemCount}, {"selected", m_selected.contains(e.path)},
+        {"name", entry.name}, {"path", entry.path}, {"isDir", entry.isDir}, {"size", entry.size},
+        {"modified", entry.modified}, {"kind", entry.kind}, {"mime", entry.mime},
+        {"extension", entry.extension}, {"itemCount", entry.itemCount}, {"peek", entry.peek},
     };
 }
 

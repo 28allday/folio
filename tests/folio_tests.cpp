@@ -881,6 +881,18 @@ private slots:
         QVERIFY(changed.count() > 0);
     }
 
+    void previewerCountsHiddenFilesWhenTheyShow()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkdir("dots");
+        write(dir.filePath("dots/.config"), "c");
+
+        // The first folder shown counts what Folio's tile counts.
+        Previewer previewer;
+        previewer.start(dir.filePath("dots"), true, "name");
+        QCOMPARE(previewer.item().value("itemCount").toInt(), 1);
+    }
+
     void themeFallsBack()
     {
         QTemporaryDir dir;

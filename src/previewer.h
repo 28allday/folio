@@ -51,7 +51,6 @@ public:
     // Which view shows a type: image, animated, thumbnail, video, audio,
     // pdf, markdown, text, folder or other.
     static QString viewerFor(const QString &mime, bool isDir);
-    static FolderModel::Entry entryFor(const QString &path);
     // The opening part of a text file, or nothing when it looks binary.
     static QString readText(const QString &path, qint64 limit = 512 * 1024);
 
