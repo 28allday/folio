@@ -46,7 +46,7 @@ static void setUp(QGuiApplication &app) {
     app.setApplicationName("folio");
     // Settings (the chosen view) go to ~/.config/folio/folio.conf.
     app.setOrganizationName("folio");
-    app.setApplicationVersion("0.1.0");
+    app.setApplicationVersion("0.1.1");
     app.setWindowIcon(QIcon::fromTheme("folio"));
     QFont font("monospace");
     font.setStyleHint(QFont::Monospace);
