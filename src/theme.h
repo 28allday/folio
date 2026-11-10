@@ -38,7 +38,7 @@ public:
     QColor accentForeground() const;
     QColor background() const { return color("background"); }
     QColor darkBackground() const { return color("dark_background"); }
-    QColor lighterBackground() const { return color("lighter_background"); }
+    QColor lighterBackground() const;
     QColor foreground() const { return color("foreground"); }
     QColor brightForeground() const { return color("bright_foreground"); }
     QColor secondaryForeground() const;

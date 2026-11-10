@@ -541,6 +541,19 @@ private slots:
         QVERIFY(theme.light());
     }
 
+    void themeDerivesALighterBackgroundWhenItMatches()
+    {
+        QTemporaryDir dir;
+        write(dir.filePath("colors.toml"), "background = \"#101315\"\nforeground = \"#e0e0e0\"\nlighter_background = \"#101315\"\n");
+        Theme same(dir.path(), nullptr, "/nonexistent-hyprctl");
+        QVERIFY(same.lighterBackground() != same.background());
+        QVERIFY(same.lighterBackground().lightnessF() > same.background().lightnessF());
+
+        write(dir.filePath("colors.toml"), "background = \"#101315\"\nforeground = \"#e0e0e0\"\nlighter_background = \"#232329\"\n");
+        Theme distinct(dir.path(), nullptr, "/nonexistent-hyprctl");
+        QCOMPARE(distinct.lighterBackground(), QColor("#232329"));
+    }
+
     void themeFollowsHyprlandRounding()
     {
         QTemporaryDir dir;

@@ -119,6 +119,22 @@ QColor Theme::color(const QString &key) const {
     return fallbackColors().value(key, QColor("#888888"));
 }
 
+// Folder cards, tiles and panels are drawn in the lighter background. Some
+// themes set it to the background itself (or leave it out), which would make
+// them invisible, so then it's the background nudged toward the foreground.
+QColor Theme::lighterBackground() const {
+    const QColor lighter = color("lighter_background");
+    const QColor bg = background();
+    const double gap = qAbs(luminance(lighter) - luminance(bg));
+    if (gap > 0.004)
+        return lighter;
+    const QColor fg = foreground();
+    const double mix = 0.08;
+    return QColor::fromRgbF(bg.redF() * (1 - mix) + fg.redF() * mix,
+                            bg.greenF() * (1 - mix) + fg.greenF() * mix,
+                            bg.blueF() * (1 - mix) + fg.blueF() * mix);
+}
+
 // Black or white, whichever reads on the accent (WCAG relative luminance).
 QColor Theme::accentForeground() const {
     return luminance(accent()) > .179 ? QColor("black") : QColor("white");
