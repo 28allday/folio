@@ -22,8 +22,11 @@ FocusScope {
     property int barExtension: 0
     property int barLeft: 0
 
+    // Each pane has its own view. The window's own pane is the one
+    // remembered between launches; the right pane of a split starts with
+    // the view of the pane it was split from.
     property string viewMode: host ? host.viewMode : "grid"
-    onViewModeChanged: if (host && active) host.viewMode = viewMode
+    onViewModeChanged: if (host && !closable) host.viewMode = viewMode
     function cycleView() {
         viewMode = viewMode === "grid" ? "list" : viewMode === "list" ? "columns" : "grid"
     }

@@ -53,6 +53,7 @@ ApplicationWindow {
             rightPane.parent = splitHost
             rightPane.anchors.fill = splitHost
             rightPane.closable = true
+            rightPane.viewMode = activePane.viewMode
             rightPane.barExtension = Qt.binding(() => win.detailsWidth)
             rightPane.closeRequested.connect(closeSplit)
         }
