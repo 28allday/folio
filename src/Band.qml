@@ -14,12 +14,9 @@ MouseArea {
     property point start
     property point end
     property bool dragging: false
-    property bool adding: false
     property var before: []
 
     z: -1
-    x: 0
-    y: 0
     width: view.width
     height: Math.max(view.height, view.contentHeight)
     acceptedButtons: Qt.LeftButton
@@ -38,7 +35,7 @@ MouseArea {
         start = Qt.point(mouse.x, mouse.y)
         end = start
         dragging = false
-        adding = (mouse.modifiers & Qt.AltModifier) !== 0
+        const adding = (mouse.modifiers & Qt.AltModifier) !== 0
         before = []
         if (adding)
             for (let i = 0; i < view.count; ++i)
@@ -53,8 +50,10 @@ MouseArea {
         const area = Qt.rect(Math.min(start.x, end.x), Math.min(start.y, end.y),
                              Math.abs(end.x - start.x), Math.abs(end.y - start.y))
         const rows = before.slice()
+        // An item already in `before` may go in twice; selectRows takes
+        // each once.
         for (let i = 0; i < view.count; ++i)
-            if (hit(rectOf(i), area) && rows.indexOf(i) < 0)
+            if (hit(rectOf(i), area))
                 rows.push(i)
         backend.folder.selectRows(rows)
         // Dragging past the top or bottom edge scrolls.
