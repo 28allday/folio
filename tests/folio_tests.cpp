@@ -707,6 +707,12 @@ private slots:
         QVERIFY(places.isPinned(home.filePath("Work/folio")));
         QCOMPARE(places.pinned().size(), 2);
         QVERIFY(!places.pin(home.filePath("Downloads")).isEmpty()); // already under Home
+        // Hidden folders in home aren't listed under Home, so they can be
+        // pinned.
+        QCOMPARE(places.pin(home.filePath(".config")), QString());
+        QVERIFY(places.isPinned(home.filePath(".config")));
+        places.unpin(home.filePath(".config"));
+        QVERIFY(!places.isPinned(home.filePath(".config")));
 
         places.unpin(home.filePath("Work/hype"));
         QFile file(bookmarks);

@@ -16,6 +16,14 @@
 
 namespace {
 
+// Home's own folders, all but the hidden ones (as refreshPlaces lists them),
+// are already under Home.
+bool listedUnderHome(const QString &path, const QString &home) {
+    const QString clean = QDir::cleanPath(home);
+    const QFileInfo info(path);
+    return path == clean || (info.absolutePath() == clean && !info.isHidden());
+}
+
 // Omarchy's own folder reads as the name it goes by.
 QString displayName(const QString &name) {
     return name == "omarchy" ? QStringLiteral("Omarchy") : name;
@@ -40,8 +48,7 @@ QVariantList parseBookmarks(const QStringList &lines, const QString &home) {
         const QString path = QDir::cleanPath(url.toLocalFile());
         // Folders right in home are already under Home; Omarchy also seeds
         // a few of those as bookmarks for the file dialogs.
-        if (QFileInfo(path).absolutePath() == QDir::cleanPath(home) || path == QDir::cleanPath(home)
-            || seen.contains(path) || !QFileInfo(path).isDir())
+        if (listedUnderHome(path, home) || seen.contains(path) || !QFileInfo(path).isDir())
             continue;
         seen << path;
         pinned << QVariantMap{{"name", label.isEmpty() ? displayName(QFileInfo(path).fileName()) : label},
@@ -181,7 +188,7 @@ QString Places::pin(const QString &path) {
     const QFileInfo info(clean);
     if (!info.isDir())
         return tr("Only folders can be pinned.");
-    if (info.absolutePath() == QDir::cleanPath(m_home) || clean == QDir::cleanPath(m_home))
+    if (listedUnderHome(clean, m_home))
         return tr("%1 is already under Home.").arg(displayName(info.fileName()));
     if (isPinned(clean))
         return {};
