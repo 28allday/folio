@@ -1,8 +1,29 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <rect width="64" height="64" rx="14" fill="#FFD60A"/>
-  <path d="M13 17h14l3 4h21v28H13z" fill="#1a1a1a"/>
-  <rect x="19" y="23" width="13" height="10" fill="#FFD60A" opacity="0.55"/>
-  <rect x="31" y="25" width="13" height="10" fill="#FFD60A" opacity="0.8"/>
-  <path d="M13 32h38v17H13z" fill="#2b2b2b"/>
-  <path d="M13 32h38" stroke="#FFD60A" stroke-width="1.5"/>
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <title>Files</title>
+  <desc>A yellow folder, the same card-with-a-tab shape Files draws for folders, with a sheet of paper tucked inside, on a dark rounded square.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2c2c2f"/>
+      <stop offset="1" stop-color="#161618"/>
+    </linearGradient>
+    <linearGradient id="front" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFE45C"/>
+      <stop offset="1" stop-color="#FFD60A"/>
+    </linearGradient>
+  </defs>
+
+  <!-- App background, as Omacut's -->
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#bg)"/>
+
+  <!-- Back of the folder, with its tab on the top left edge -->
+  <path d="M100 136 H206 L230 166 H412 V376 H100 Z" fill="#b89600" stroke-linejoin="round"/>
+
+  <!-- A sheet of paper inside, peeking over the front -->
+  <rect x="140" y="182" width="232" height="150" rx="10" fill="#f4efe2"/>
+  <rect x="168" y="212" width="112" height="12" rx="6" fill="#c9c1ad"/>
+  <rect x="168" y="238" width="152" height="12" rx="6" fill="#ddd6c4"/>
+
+  <!-- Front of the folder -->
+  <rect x="100" y="250" width="312" height="140" rx="14" fill="url(#front)"/>
+  <rect x="100" y="250" width="312" height="6" fill="#fff3a6" opacity=".7"/>
 </svg>

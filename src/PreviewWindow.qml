@@ -14,7 +14,7 @@ ApplicationWindow {
     minimumWidth: 480
     minimumHeight: 360
     visible: true
-    title: previewer.item.name || "Folio"
+    title: previewer.item.name || "Files"
     color: theme.darkBackground
 
     Material.theme: theme.light ? Material.Light : Material.Dark

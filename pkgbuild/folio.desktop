@@ -1,7 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=Folio
-Comment=Browse and open your files
+Name=Files
+GenericName=File Manager
+Comment=Browse, preview and open your files
+Keywords=folder;file manager;explorer;browse;folio;
 Exec=folio %U
 Icon=folio
 Terminal=false

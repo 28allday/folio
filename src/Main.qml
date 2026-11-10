@@ -15,7 +15,7 @@ ApplicationWindow {
     minimumWidth: 720
     minimumHeight: 460
     visible: true
-    title: activePane && activePane.paneBackend.title.length > 0 ? activePane.paneBackend.title : "Folio"
+    title: activePane && activePane.paneBackend.title.length > 0 ? activePane.paneBackend.title : "Files"
     color: theme.background
 
     Material.theme: theme.light ? Material.Light : Material.Dark
