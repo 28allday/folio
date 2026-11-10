@@ -104,12 +104,13 @@ Rectangle {
         property string dropPath
         property bool dropTrashes: false
         readonly property bool dropHover: rowDrop.containsDrag
-        property bool dim: false
         property string status
-        property color statusColor: theme.green
+        property color statusColor
 
         Layout.fillWidth: true
         implicitHeight: 34
+        leftPadding: 14
+        rightPadding: 14
         hoverEnabled: true
         focusPolicy: Qt.NoFocus
         Accessible.name: text
@@ -143,16 +144,14 @@ Rectangle {
         }
         contentItem: RowLayout {
             spacing: 14
-            Item { implicitWidth: 0 }
-            Glyph { name: row.glyph; color: row.active ? theme.brightForeground : row.dim ? theme.secondaryForeground : theme.foreground }
+            Glyph { name: row.glyph; color: row.active ? theme.brightForeground : theme.foreground }
             Text {
                 Layout.fillWidth: true
                 text: row.text
                 elide: Text.ElideRight
-                color: row.active ? theme.brightForeground : row.dim ? theme.secondaryForeground : theme.foreground
+                color: row.active ? theme.brightForeground : theme.foreground
             }
             Text { visible: row.status.length > 0; text: row.status; color: row.statusColor; font.pixelSize: 11 }
-            Item { implicitWidth: 0 }
         }
     }
 
@@ -200,7 +199,7 @@ Rectangle {
                     glyph: modelData.icon
                     active: sidebar.activePath === modelData.path
                     status: sidebar.statusText(modelData.status)
-                    statusColor: modelData.status === "stopped" ? theme.red : modelData.status === "syncing" ? theme.yellow : theme.green
+                    statusColor: modelData.status === "stopped" ? theme.red : theme.yellow
                     onClicked: sidebar.target.navigate(modelData.path)
                 }
             }
