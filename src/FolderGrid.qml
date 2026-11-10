@@ -13,6 +13,13 @@ GridView {
     Selecting { id: selecting; view: grid }
     onCurrentIndexChanged: selecting.cursorMoved()
     Keys.onPressed: (event) => {
+        // With no cursor (after a click on empty space), Down starts at the
+        // first item, not a row's width on from before it.
+        if (event.key === Qt.Key_Down && currentIndex < 0 && count > 0) {
+            currentIndex = 0
+            event.accepted = true
+            return
+        }
         if (!(event.modifiers & Qt.ShiftModifier))
             return
         const step = event.key === Qt.Key_Left ? -1 : event.key === Qt.Key_Right ? 1
