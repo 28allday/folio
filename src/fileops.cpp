@@ -283,8 +283,7 @@ void FileOps::duplicate(const QString &path) {
     }));
 }
 
-QString FileOps::archiveName(const QStringList &paths) {
-    const QString folder = QFileInfo(paths.first()).absolutePath();
+QString FileOps::archiveName(const QStringList &paths, const QString &folder) {
     const QString base = paths.size() == 1 ? QFileInfo(paths.first()).fileName() : tr("Archive");
     return freeName(folder, base + ".zip");
 }
@@ -292,11 +291,20 @@ QString FileOps::archiveName(const QStringList &paths) {
 void FileOps::compress(const QStringList &paths) {
     if (paths.isEmpty() || !m_busy.isEmpty())
         return;
-    const QString folder = QFileInfo(paths.first()).absolutePath();
-    const QString archive = archiveName(paths);
+    // Search results and Recents can span folders, so the archive goes in
+    // the deepest folder holding them all, with their paths from there.
+    const auto holds = [](const QString &folder, const QString &path) {
+        const QString relative = QDir(folder).relativeFilePath(QFileInfo(path).absolutePath());
+        return relative != ".." && !relative.startsWith("../");
+    };
+    QString folder = QFileInfo(paths.first()).absolutePath();
+    for (const QString &path : paths)
+        while (!holds(folder, path))
+            folder = QFileInfo(folder).absolutePath();
+    const QString archive = archiveName(paths, folder);
     QStringList args{"-a", "-cf", archive, "-C", folder, "--"};
     for (const QString &path : paths)
-        args << QFileInfo(path).fileName();
+        args << QDir(folder).relativeFilePath(path);
     auto *process = new QProcess(this);
     process->setWorkingDirectory(folder);
     setBusy(tr("Compressing into %1…").arg(archive));

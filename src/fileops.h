@@ -96,9 +96,9 @@ public:
     // "name (copy).ext", "name (copy 2).ext"...
     static QString freeName(const QString &folder, const QString &name);
     static bool copyRecursively(const QString &from, const QString &to, QString *error);
-    // The archive name for compressing these: "name.zip" for one item,
-    // "Archive.zip" for several; never one that exists.
-    static QString archiveName(const QStringList &paths);
+    // The archive name for compressing these into `folder`: "name.zip" for
+    // one item, "Archive.zip" for several; never one that exists.
+    static QString archiveName(const QStringList &paths, const QString &folder);
     static bool sameDrive(const QString &a, const QString &b);
     // The trash folders: the home one, then each mounted drive's own.
     static QStringList trashDirs();

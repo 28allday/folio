@@ -6,7 +6,9 @@
 #include <QGuiApplication>
 #include <QImage>
 #include <QImageReader>
+#include <QProcess>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QUrl>
 #include <QtTest>
@@ -286,6 +288,38 @@ private slots:
         plain.setUrls({QUrl::fromLocalFile("/tmp/x.png")});
         QCOMPARE(FileOps::pathsFrom(&plain, &cut), QStringList({"/tmp/x.png"}));
         QVERIFY(!cut);
+    }
+
+    void fileOpsCompressAcrossFolders()
+    {
+        // Search results and Recents can hold items from different folders:
+        // the archive goes in the folder holding them all, with their paths.
+        if (QStandardPaths::findExecutable("bsdtar").isEmpty())
+            QSKIP("Compressing needs bsdtar.");
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("a/inner");
+        QDir(dir.path()).mkpath("b");
+        write(dir.filePath("a/inner/x.txt"), "x");
+        write(dir.filePath("b/y.txt"), "y");
+        FileOps ops;
+        QSignalSpy done(&ops, &FileOps::done);
+        const auto compress = [&](const QStringList &names) {
+            QStringList paths;
+            for (const QString &name : names)
+                paths << dir.filePath(name);
+            ops.compress(paths);
+            if (!done.wait(5000))
+                return QStringList();
+            const QList<QVariant> made = done.takeFirst();
+            QProcess list;
+            list.start("bsdtar", {"-tf", QDir(made[0].toString()).filePath(made[1].toString())});
+            list.waitForFinished();
+            return QStringList({made[0].toString(), made[1].toString()})
+                 + QString::fromUtf8(list.readAllStandardOutput()).split('\n', Qt::SkipEmptyParts);
+        };
+        QCOMPARE(compress({"a/inner/x.txt", "b/y.txt"}), QStringList({dir.path(), "Archive.zip", "a/inner/x.txt", "b/y.txt"}));
+        // A folder beside a file inside it: the archive holds the folder.
+        QCOMPARE(compress({"a/inner/x.txt", "a/inner"}), QStringList({dir.filePath("a"), "Archive.zip", "inner/x.txt", "inner/", "inner/x.txt"}));
     }
 
     void fileOpsLetGoOfOnlyThePastedCut()
