@@ -89,7 +89,6 @@ void Previewer::show(const QString &path) {
 
     // A file from another folder: show it alone, then fill in its siblings.
     m_entries = {entryFor(absolute)};
-    m_index = -1;
     setIndex(0, false);
 
     const quint64 generation = ++m_generation;
@@ -99,7 +98,7 @@ void Previewer::show(const QString &path) {
     auto *watcher = new QFutureWatcher<QVector<FolderModel::Entry>>(this);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation] {
         watcher->deleteLater();
-        if (generation != m_generation || m_index < 0)
+        if (generation != m_generation)
             return;
         const auto entries = watcher->result();
         const QString current = m_entries.at(m_index).path;

@@ -33,6 +33,8 @@ public:
     void start(const QString &path, bool showHidden, const QString &sort);
     // Reads paths from stdin and reports steps on stdout.
     void connectToFolio();
+    // Shows another file; one in the same folder keeps the list.
+    void show(const QString &path);
 
     int count() const { return m_entries.size(); }
     int index() const { return m_index; }
@@ -45,8 +47,6 @@ public:
     Q_INVOKABLE void next();
     Q_INVOKABLE void previous();
     Q_INVOKABLE void open();
-    // Shows another file; one in the same folder keeps the list.
-    Q_INVOKABLE void show(const QString &path);
 
     // Which view shows a type: image, animated, thumbnail, video, audio,
     // pdf, markdown, text, folder or other.
