@@ -135,23 +135,11 @@ Item {
 
                 TapHandler {
                     acceptedButtons: Qt.RightButton
-                    onTapped: (point) => {
-                        const index = here.indexAt(point.position.x + here.contentX, point.position.y + here.contentY)
-                        selecting.menuAt(index)
-                        view.contextMenu(index >= 0 ? backend.folder.get(index) : null, backend.path)
-                    }
+                    onTapped: (point) => view.contextMenu(selecting.menuAt(point), backend.path)
                 }
 
                 onCurrentIndexChanged: selecting.cursorMoved()
-                Keys.onPressed: (event) => {
-                    if (!(event.modifiers & Qt.ShiftModifier))
-                        return
-                    const step = event.key === Qt.Key_Up ? -1 : event.key === Qt.Key_Down ? 1 : 0
-                    if (step !== 0) {
-                        selecting.extendTo(here.currentIndex + step)
-                        event.accepted = true
-                    }
-                }
+                Keys.onPressed: (event) => selecting.extendBy(event, event.key === Qt.Key_Up ? -1 : event.key === Qt.Key_Down ? 1 : 0)
                 Keys.onRightPressed: if (view.selected.isDir) backend.navigate(view.selected.path)
                 Keys.onLeftPressed: backend.goUp()
 

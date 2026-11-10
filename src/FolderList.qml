@@ -13,15 +13,7 @@ ListView {
 
     Selecting { id: selecting; view: list }
     onCurrentIndexChanged: selecting.cursorMoved()
-    Keys.onPressed: (event) => {
-        if (!(event.modifiers & Qt.ShiftModifier))
-            return
-        const step = event.key === Qt.Key_Up ? -1 : event.key === Qt.Key_Down ? 1 : 0
-        if (step !== 0) {
-            selecting.extendTo(currentIndex + step)
-            event.accepted = true
-        }
-    }
+    Keys.onPressed: (event) => selecting.extendBy(event, event.key === Qt.Key_Up ? -1 : event.key === Qt.Key_Down ? 1 : 0)
 
     Band {
         view: list
@@ -40,11 +32,7 @@ ListView {
     signal contextMenu(var item, string folder)
     TapHandler {
         acceptedButtons: Qt.RightButton
-        onTapped: (point) => {
-            const index = list.indexAt(point.position.x + list.contentX, point.position.y + list.contentY)
-            selecting.menuAt(index)
-            list.contextMenu(index >= 0 ? backend.folder.get(index) : null, backend.path)
-        }
+        onTapped: (point) => list.contextMenu(selecting.menuAt(point), backend.path)
     }
 
     clip: true

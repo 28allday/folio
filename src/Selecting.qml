@@ -41,7 +41,16 @@ QtObject {
         moveTo(index)
     }
 
-    // Shift+arrow: extend from the anchor to where the cursor goes.
+    // Shift+arrow, `step` items on (0 for any other key): extends the
+    // selection from the anchor.
+    function extendBy(event, step) {
+        if (!(event.modifiers & Qt.ShiftModifier) || step === 0)
+            return
+        extendTo(view.currentIndex + step)
+        event.accepted = true
+    }
+
+    // Extends from the anchor to where the cursor goes.
     function extendTo(index) {
         if (index < 0 || index >= view.count)
             return
@@ -67,9 +76,12 @@ QtObject {
     }
 
     // Right-click on an item outside the selection selects just it, so
-    // the menu acts on what was clicked.
-    function menuAt(index) {
+    // the menu acts on what was clicked. Returns the item, or null for
+    // empty space.
+    function menuAt(point) {
+        const index = view.indexAt(point.position.x + view.contentX, point.position.y + view.contentY)
         if (index >= 0 && !backend.folder.isSelected(index))
             click(index, 0)
+        return index >= 0 ? backend.folder.get(index) : null
     }
 }

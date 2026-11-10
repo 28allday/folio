@@ -20,14 +20,8 @@ GridView {
             event.accepted = true
             return
         }
-        if (!(event.modifiers & Qt.ShiftModifier))
-            return
-        const step = event.key === Qt.Key_Left ? -1 : event.key === Qt.Key_Right ? 1
-                   : event.key === Qt.Key_Up ? -columns : event.key === Qt.Key_Down ? columns : 0
-        if (step !== 0) {
-            selecting.extendTo(currentIndex + step)
-            event.accepted = true
-        }
+        selecting.extendBy(event, event.key === Qt.Key_Left ? -1 : event.key === Qt.Key_Right ? 1
+                                : event.key === Qt.Key_Up ? -columns : event.key === Qt.Key_Down ? columns : 0)
     }
 
     Band {
@@ -40,11 +34,7 @@ GridView {
     signal contextMenu(var item, string folder)
     TapHandler {
         acceptedButtons: Qt.RightButton
-        onTapped: (point) => {
-            const index = grid.indexAt(point.position.x + grid.contentX, point.position.y + grid.contentY)
-            selecting.menuAt(index)
-            grid.contextMenu(index >= 0 ? backend.folder.get(index) : null, backend.path)
-        }
+        onTapped: (point) => grid.contextMenu(selecting.menuAt(point), backend.path)
     }
 
     clip: true
