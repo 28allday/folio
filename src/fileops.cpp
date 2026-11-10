@@ -503,12 +503,23 @@ void FileOps::restore(const QStringList &paths) {
 }
 
 void FileOps::deleteForever(const QStringList &paths) {
-    int failures = 0;
-    for (const QString &path : paths)
-        if (!deleteTrashed(path))
-            ++failures;
-    if (failures > 0)
-        emit failed(tr("Couldn't delete %n items.", "", failures));
+    if (paths.isEmpty() || !m_busy.isEmpty())
+        return;
+    setBusy(tr("Deleting %n items…", "", paths.size()));
+    auto *watcher = new QFutureWatcher<int>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher] {
+        watcher->deleteLater();
+        setBusy({});
+        if (const int failures = watcher->result(); failures > 0)
+            emit failed(tr("Couldn't delete %n items.", "", failures));
+    });
+    watcher->setFuture(QtConcurrent::run([paths] {
+        int failures = 0;
+        for (const QString &path : paths)
+            if (!deleteTrashed(path))
+                ++failures;
+        return failures;
+    }));
 }
 
 void FileOps::emptyTrash() {
