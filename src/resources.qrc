@@ -15,6 +15,12 @@
         <file alias="HelpOverlay.qml">HelpOverlay.qml</file>
         <file alias="Selecting.qml">Selecting.qml</file>
         <file alias="Band.qml">Band.qml</file>
+        <file alias="FolioMenu.qml">FolioMenu.qml</file>
+        <file alias="FolioMenuItem.qml">FolioMenuItem.qml</file>
+        <file alias="MenuLine.qml">MenuLine.qml</file>
+        <file alias="FolioScrollBar.qml">FolioScrollBar.qml</file>
+        <file alias="PlainButton.qml">PlainButton.qml</file>
+        <file alias="PlainField.qml">PlainField.qml</file>
         <file alias="SortMenu.qml">SortMenu.qml</file>
         <file alias="FileMenu.qml">FileMenu.qml</file>
         <file alias="RenameDialog.qml">RenameDialog.qml</file>

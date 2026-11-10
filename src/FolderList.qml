@@ -13,6 +13,7 @@ ColumnLayout {
 
     Selecting { id: selecting; view: list }
     function focusView() { list.forceActiveFocus() }
+    function menuAnchor() { return list.currentItem }
 
     signal contextMenu(var item, string folder)
 
@@ -31,7 +32,7 @@ ColumnLayout {
         boundsBehavior: Flickable.StopAtBounds
         highlightFollowsCurrentItem: false
         model: backend.folder
-        ScrollBar.vertical: ScrollBar { }
+        ScrollBar.vertical: FolioScrollBar { }
 
         onCurrentIndexChanged: selecting.cursorMoved()
         Keys.onPressed: (event) => {

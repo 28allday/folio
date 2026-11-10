@@ -54,10 +54,9 @@ Rectangle {
                 font.pixelSize: 16
                 font.weight: Font.DemiBold
             }
-            TextField {
+            PlainField {
                 id: field
                 Layout.fillWidth: true
-                Material.accent: theme.accent
                 onAccepted: dialog.submit()
                 Keys.onEscapePressed: dialog.close()
             }
@@ -71,17 +70,13 @@ Rectangle {
             RowLayout {
                 Layout.alignment: Qt.AlignRight
                 spacing: 10
-                Button {
+                PlainButton {
                     text: qsTr("Cancel")
-                    flat: true
-                    Material.roundedScale: theme.radius
                     onClicked: dialog.close()
                 }
-                Button {
+                PlainButton {
                     text: qsTr("Rename")
-                    highlighted: true
-                    Material.accent: theme.accent
-                    Material.roundedScale: theme.radius
+                    primary: true
                     onClicked: dialog.submit()
                 }
             }

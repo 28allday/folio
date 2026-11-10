@@ -56,14 +56,14 @@ Rectangle {
                 textFormat: Text.PlainText
             }
 
-            TextField {
+            PlainField {
                 id: user
                 Layout.fillWidth: true
                 visible: prompt.mounter.wantsPassword
                 placeholderText: qsTr("User")
                 text: prompt.mounter.user
             }
-            TextField {
+            PlainField {
                 id: password
                 Layout.fillWidth: true
                 visible: prompt.mounter.wantsPassword
@@ -80,29 +80,23 @@ Rectangle {
                 // the plain look, the other choices the accent.
                 Repeater {
                     model: prompt.mounter.wantsPassword ? [] : prompt.mounter.choices
-                    delegate: Button {
+                    delegate: PlainButton {
                         required property string modelData
                         required property int index
                         text: modelData
-                        highlighted: index < prompt.mounter.choices.length - 1
-                        Material.accent: theme.accent
-                        Material.roundedScale: theme.radius
+                        primary: index < prompt.mounter.choices.length - 1
                         onClicked: prompt.mounter.choose(index)
                     }
                 }
-                Button {
+                PlainButton {
                     visible: prompt.mounter.wantsPassword
                     text: qsTr("Cancel")
-                    flat: true
-                    Material.roundedScale: theme.radius
                     onClicked: prompt.mounter.cancel()
                 }
-                Button {
+                PlainButton {
                     visible: prompt.mounter.wantsPassword
                     text: qsTr("Connect")
-                    highlighted: true
-                    Material.accent: theme.accent
-                    Material.roundedScale: theme.radius
+                    primary: true
                     onClicked: prompt.submit()
                 }
             }

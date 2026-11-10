@@ -4,21 +4,8 @@ import QtQuick.Controls.Material
 
 // The orders a folder can be in. Folders stay first in each; S steps
 // through them from the keyboard.
-Menu {
+FolioMenu {
     id: menu
-
-    Material.background: theme.background
-    Material.foreground: theme.foreground
-    Material.accent: theme.accent
-    Material.roundedScale: theme.radius
-
-    background: Rectangle {
-        implicitWidth: 180
-        color: theme.background
-        border.width: 1
-        border.color: Qt.rgba(theme.foreground.r, theme.foreground.g, theme.foreground.b, 0.16)
-        radius: Math.min(6, theme.radius)
-    }
 
     readonly property var orders: [
         { mode: "name", label: qsTr("Name") },
@@ -30,7 +17,7 @@ Menu {
 
     Repeater {
         model: menu.orders
-        MenuItem {
+        FolioMenuItem {
             required property var modelData
             text: modelData.label
             checkable: true

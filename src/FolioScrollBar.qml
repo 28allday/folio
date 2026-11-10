@@ -1,0 +1,17 @@
+import QtQuick
+import QtQuick.Controls
+
+// A thin scroll bar that shows while scrolling or hovered, and simply
+// appears and disappears: no fading.
+ScrollBar {
+    id: bar
+    padding: 2
+    contentItem: Rectangle {
+        implicitWidth: 4
+        implicitHeight: 4
+        radius: Math.min(2, theme.radius)
+        color: Qt.rgba(theme.foreground.r, theme.foreground.g, theme.foreground.b, bar.pressed ? 0.5 : 0.28)
+        visible: bar.size < 1 && (bar.active || bar.hovered)
+    }
+    background: null
+}

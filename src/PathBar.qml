@@ -44,25 +44,11 @@ Rectangle {
         spacing: 4
 
 
-        TextField {
+        PlainField {
             id: pathField
             Layout.fillWidth: true
             visible: bar.editing
             font.pixelSize: 14
-            color: theme.brightForeground
-            selectionColor: theme.accent
-            selectedTextColor: theme.accentForeground
-            leftPadding: 12
-            rightPadding: 12
-            topPadding: 8
-            bottomPadding: 8
-            background: Rectangle {
-                implicitHeight: 36
-                color: theme.darkBackground
-                border.width: 1
-                border.color: theme.accent
-                radius: Math.min(4, theme.radius)
-            }
             onAccepted: {
                 if (backend.goTyped(text))
                     bar.stopEditing()

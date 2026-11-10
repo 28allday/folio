@@ -96,6 +96,15 @@ FocusScope {
         enabled: pane.keys && backend.folder.selectedCount > 1
         onActivated: backend.folder.selectOnly(view.item ? view.item.currentIndex : -1)
     }
+    // The right-click menu from the keyboard, beside the selected item.
+    Shortcut {
+        sequences: ["Alt+Return", "Alt+Enter", "Menu", "Shift+F10"]
+        enabled: pane.keys
+        onActivated: {
+            const anchor = view.item && view.item.menuAnchor ? view.item.menuAnchor() : null
+            fileMenu.show(pane.current.path ? pane.current : null, backend.path, anchor)
+        }
+    }
     Shortcut { sequence: "Ctrl+Shift+D"; enabled: pane.keys; onActivated: if (pane.current.path) fileOps.duplicate(pane.current.path) }
     Shortcut { sequences: [StandardKey.New]; enabled: pane.keys; onActivated: backend.newWindow() }
     Shortcut { sequence: "Ctrl+Shift+N"; enabled: pane.keys; onActivated: fileOps.newFolder(backend.path) }

@@ -8,7 +8,7 @@ import QtQuick.Controls.Material
 // Terminal, Delete. On empty
 // space: Paste, New Folder, Copy Path, Terminal, hidden files. Entries show
 // their keys, so the menu also teaches the shortcuts.
-Menu {
+FolioMenu {
     id: menu
 
     // What was clicked ({path, name, isDir}), or null for empty space.
@@ -27,27 +27,10 @@ Menu {
                                         && backend.folder.indexOf(target.name) >= 0
     readonly property var paths: !onItem ? [] : onSelection ? backend.folder.selectedPaths() : [target.path]
 
-    Material.background: theme.background
-    Material.foreground: theme.foreground
-    Material.accent: theme.accent
-    Material.roundedScale: theme.radius
-    Material.elevation: 2
 
-    function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
-
-    // Submenu entries (Open With, Share) match the rest in size.
-    font.pixelSize: 13
-    delegate: MenuItem { implicitHeight: 34 }
-
-    background: Rectangle {
-        implicitWidth: 260
-        color: theme.background
-        border.width: 1
-        border.color: menu.tint(theme.foreground, 0.16)
-        radius: Math.min(6, theme.radius)
-    }
-
-    function show(clicked, where) {
+    // Opens at the pointer, or (from the keyboard, Alt+Return) beside the
+    // item it's about.
+    function show(clicked, where, near) {
         target = clicked
         folder = where
         // Submenus (Open With, Share) only make sense on an item; their
@@ -60,128 +43,83 @@ Menu {
                 entry.height = shown ? entry.implicitHeight : 0
             }
         }
-        popup()
+        if (near)
+            popup(near, Math.min(near.width / 2, 120), near.height / 2)
+        else
+            popup()
     }
 
-    // A menu entry with its key on the right. Hidden entries take no room.
-    component Entry: MenuItem {
-        id: entry
-        property string keys
-        property bool shown: true
-        visible: shown
-        height: shown ? implicitHeight : 0
-        implicitHeight: 34
-        contentItem: Item {
-            implicitWidth: label.implicitWidth + hint.implicitWidth + 48
-            Text {
-                id: label
-                anchors.verticalCenter: parent.verticalCenter
-                text: entry.text
-                color: entry.enabled ? theme.foreground : theme.secondaryForeground
-            }
-            Text {
-                id: hint
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                text: entry.keys
-                color: theme.secondaryForeground
-                font.pixelSize: 11
-            }
-        }
-    }
-    component Line: MenuSeparator {
-        property bool shown: true
-        visible: shown
-        height: shown ? implicitHeight : 0
-    }
-    component SubMenu: Menu {
-        id: sub
-        font.pixelSize: 13
-        background: Rectangle {
-            implicitWidth: 240
-            color: theme.background
-            border.width: 1
-            border.color: Qt.rgba(theme.foreground.r, theme.foreground.g, theme.foreground.b, 0.16)
-            radius: Math.min(6, theme.radius)
-        }
-        Material.background: theme.background
-        Material.foreground: theme.foreground
-        Material.accent: theme.accent
-        Material.roundedScale: theme.radius
-    }
-
-    Entry {
+    FolioMenuItem {
         shown: menu.onItem
         text: menu.onFolder ? qsTr("Open Folder") : qsTr("Open")
         keys: "⏎"
         onTriggered: backend.open(menu.target.path)
     }
     // Every app that says it can open this type, the default first.
-    SubMenu {
+    FolioMenu {
         id: openWith
         title: qsTr("Open With")
         enabled: menu.apps.length > 0
         Repeater {
             model: menu.apps
-            MenuItem {
+            FolioMenuItem {
                 required property var modelData
-                implicitHeight: 34
                 text: modelData.isDefault ? qsTr("%1 (default)").arg(modelData.name) : modelData.name
                 onTriggered: fileOps.openWith(menu.target.path, modelData.id)
             }
         }
     }
-    Entry {
+    FolioMenuItem {
         shown: menu.onItem
         text: qsTr("Preview")
         keys: "Space"
         onTriggered: backend.togglePreview(menu.target.path)
     }
-    Line { shown: menu.onItem }
-    Entry {
+    MenuLine { shown: menu.onItem }
+    FolioMenuItem {
         shown: menu.onItem
         text: qsTr("Rename…")
         keys: "F2"
         onTriggered: menu.renameRequested(menu.target)
     }
-    Entry {
+    FolioMenuItem {
         shown: menu.onItem
         text: qsTr("Duplicate")
         keys: "Ctrl+Shift+D"
         onTriggered: fileOps.duplicate(menu.target.path)
     }
-    Entry {
+    FolioMenuItem {
         shown: menu.onItem
         text: qsTr("Copy")
         keys: "Ctrl+C"
         onTriggered: fileOps.copy(menu.paths)
     }
-    Entry {
+    FolioMenuItem {
         shown: menu.onItem
         text: qsTr("Cut")
         keys: "Ctrl+X"
         onTriggered: fileOps.cut(menu.paths)
     }
-    Entry {
+    FolioMenuItem {
         shown: !menu.onItem || menu.onFolder
         text: menu.onFolder ? qsTr("Paste Into Folder") : qsTr("Paste")
         keys: menu.onItem ? "" : "Ctrl+V"
         enabled: fileOps.canPaste
         onTriggered: fileOps.paste(menu.onItem ? menu.target.path : menu.folder)
     }
-    Entry {
+    FolioMenuItem {
         text: qsTr("Copy Path")
         keys: "Ctrl+Shift+C"
         onTriggered: fileOps.yank(menu.onItem ? menu.paths : [menu.folder])
     }
-    Entry {
+    FolioMenuItem {
         shown: !menu.onItem
         text: qsTr("New Folder")
         keys: "Ctrl+Shift+N"
         onTriggered: fileOps.newFolder(menu.folder)
     }
-    Line { }
-    Entry {
+    MenuLine { }
+    FolioMenuItem {
         shown: menu.onItem
         text: qsTr("Compress")
         onTriggered: fileOps.compress(menu.paths)
@@ -196,21 +134,19 @@ Menu {
     readonly property bool canLocalSend: onItem && fileOps.hasLocalSend()
     readonly property bool canShare: canDropbox || canTaildrop || canLocalSend
 
-    SubMenu {
+    FolioMenu {
         id: shareMenu
         title: qsTr("Share")
         Repeater {
             model: menu.canDropbox ? 1 : 0
-            MenuItem {
-                implicitHeight: 34
+            FolioMenuItem {
                 text: qsTr("Dropbox Link")
                 onTriggered: fileOps.dropboxLink(menu.target.path)
             }
         }
         Repeater {
             model: menu.canLocalSend ? 1 : 0
-            MenuItem {
-                implicitHeight: 34
+            FolioMenuItem {
                 text: qsTr("LocalSend…")
                 onTriggered: fileOps.shareLocalSend(menu.paths)
             }
@@ -220,14 +156,13 @@ Menu {
     // added only while there are machines to send to.
     Instantiator {
         model: menu.canTaildrop ? 1 : 0
-        delegate: SubMenu {
+        delegate: FolioMenu {
             title: qsTr("Taildrop")
             Repeater {
                 model: places.peers
-                MenuItem {
+                FolioMenuItem {
                     required property var modelData
-                    implicitHeight: 34
-                    text: modelData.name
+                        text: modelData.name
                     onTriggered: fileOps.shareTaildrop(menu.paths, modelData.host)
                 }
             }
@@ -235,7 +170,7 @@ Menu {
         onObjectAdded: (index, object) => shareMenu.insertMenu(0, object)
         onObjectRemoved: (index, object) => shareMenu.removeMenu(object)
     }
-    Entry {
+    FolioMenuItem {
         shown: menu.onFolder
         text: menu.onFolder && places.isPinned(menu.target.path) ? qsTr("Unpin") : qsTr("Pin")
         keys: "Ctrl+D"
@@ -249,20 +184,20 @@ Menu {
                 backend.showMessage(problem)
         }
     }
-    Entry {
+    FolioMenuItem {
         shown: !menu.onItem || menu.onFolder
         text: qsTr("Open Terminal Here")
         onTriggered: fileOps.openTerminal(menu.onItem ? menu.target.path : menu.folder)
     }
-    Entry {
+    FolioMenuItem {
         shown: !menu.onItem
         text: backend.folder.showHidden ? qsTr("Hide Hidden Files") : qsTr("Show Hidden Files")
         keys: "Ctrl+H"
         onTriggered: backend.folder.showHidden = !backend.folder.showHidden
     }
-    Line { shown: menu.onItem }
+    MenuLine { shown: menu.onItem }
     // Delete moves to the trash; Restore in any file manager brings it back.
-    Entry {
+    FolioMenuItem {
         shown: menu.onItem
         text: menu.onSelection ? qsTr("Delete %n Items", "", menu.paths.length) : qsTr("Delete")
         keys: "Delete"

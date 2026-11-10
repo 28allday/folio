@@ -16,6 +16,7 @@ Item {
 
     Selecting { id: selecting; view: here }
     function focusView() { here.forceActiveFocus() }
+    function menuAnchor() { return here.currentItem }
 
     // Every column has a menu: on an item there, or on the column's folder.
     signal contextMenu(var item, string folder)
@@ -64,7 +65,7 @@ Item {
         boundsBehavior: Flickable.StopAtBounds
         onContentWidthChanged: view.revealEnd()
         onWidthChanged: view.revealEnd()
-        ScrollBar.horizontal: ScrollBar { }
+        ScrollBar.horizontal: FolioScrollBar { }
 
         Row {
             id: row
@@ -86,7 +87,7 @@ Item {
                         clip: true
                         interactive: false
                         boundsBehavior: Flickable.StopAtBounds
-                        ScrollBar.vertical: ScrollBar { }
+                        ScrollBar.vertical: FolioScrollBar { }
                         model: FolderModel {
                             id: folder
                             path: ancestor.path
@@ -130,7 +131,7 @@ Item {
                 boundsBehavior: Flickable.StopAtBounds
                 highlightFollowsCurrentItem: false
                 model: backend.folder
-                ScrollBar.vertical: ScrollBar { }
+                ScrollBar.vertical: FolioScrollBar { }
 
                 TapHandler {
                     acceptedButtons: Qt.RightButton
@@ -182,7 +183,7 @@ Item {
                 clip: true
                 interactive: false
                 boundsBehavior: Flickable.StopAtBounds
-                ScrollBar.vertical: ScrollBar { }
+                ScrollBar.vertical: FolioScrollBar { }
                 TapHandler {
                     acceptedButtons: Qt.RightButton
                     onTapped: (point) => {

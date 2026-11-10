@@ -7,6 +7,8 @@ GridView {
 
     function select(name, keep) { selecting.select(name, keep) }
     function focusView() { forceActiveFocus() }
+    // Where the keyboard's menu (Alt+Return) opens: beside the cursor's item.
+    function menuAnchor() { return currentItem }
 
     Selecting { id: selecting; view: grid }
     onCurrentIndexChanged: selecting.cursorMoved()
@@ -50,7 +52,7 @@ GridView {
     cellWidth: Math.floor(width / columns)
     cellHeight: 192
     highlightFollowsCurrentItem: false
-    ScrollBar.vertical: ScrollBar { }
+    ScrollBar.vertical: FolioScrollBar { }
 
     delegate: FileTile {
         width: grid.cellWidth

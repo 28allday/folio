@@ -15,9 +15,14 @@ AbstractButton {
     hoverEnabled: true
 
     Accessible.name: text
-    ToolTip.visible: hovered && text.length > 0
-    ToolTip.delay: 600
-    ToolTip.text: text
+    // Its own tooltip, so it can appear without fading in or out.
+    ToolTip {
+        visible: button.hovered && button.text.length > 0
+        delay: 600
+        text: button.text
+        enter: null
+        exit: null
+    }
 
     function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
 

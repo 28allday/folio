@@ -256,8 +256,8 @@ ApplicationWindow {
                 color: theme.foreground
             }
 
-            ScrollBar.vertical: ScrollBar { }
-            ScrollBar.horizontal: ScrollBar { }
+            ScrollBar.vertical: FolioScrollBar { }
+            ScrollBar.horizontal: FolioScrollBar { }
         }
     }
 
@@ -297,7 +297,7 @@ ApplicationWindow {
                 font.pixelSize: 13
             }
 
-            ScrollBar.vertical: ScrollBar { }
+            ScrollBar.vertical: FolioScrollBar { }
         }
     }
 
