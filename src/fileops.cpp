@@ -235,11 +235,14 @@ QStringList FileOps::localPaths(const QList<QUrl> &urls) const {
 void FileOps::transferInBackground(const QStringList &paths, const QString &folder, bool move, bool releaseClipboard) {
     setBusy(move ? tr("Moving %n items…", "", paths.size()) : tr("Copying %n items…", "", paths.size()));
     auto *watcher = new QFutureWatcher<QPair<QStringList, QString>>(this);
-    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, folder, releaseClipboard] {
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, paths, folder, releaseClipboard] {
         watcher->deleteLater();
         const auto [made, error] = watcher->result();
         setBusy({});
-        if (releaseClipboard && error.isEmpty())
+        // Only the cut that was pasted is let go of; something copied while
+        // it moved stays on the clipboard.
+        bool cut = false;
+        if (releaseClipboard && error.isEmpty() && pathsFrom(QGuiApplication::clipboard()->mimeData(), &cut) == paths && cut)
             QGuiApplication::clipboard()->clear();
         if (!error.isEmpty())
             emit failed(error);

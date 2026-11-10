@@ -1,7 +1,9 @@
+#include <QClipboard>
 #include <QDir>
 #include <QMimeData>
 #include <memory>
 #include <QFile>
+#include <QGuiApplication>
 #include <QImage>
 #include <QImageReader>
 #include <QSignalSpy>
@@ -266,6 +268,29 @@ private slots:
         plain.setUrls({QUrl::fromLocalFile("/tmp/x.png")});
         QCOMPARE(FileOps::pathsFrom(&plain, &cut), QStringList({"/tmp/x.png"}));
         QVERIFY(!cut);
+    }
+
+    void fileOpsLetGoOfOnlyThePastedCut()
+    {
+        // Cut files are gone once pasted, so the clipboard lets go of them,
+        // but not of something copied while they moved.
+        QTemporaryDir from, to;
+        write(from.filePath("a.txt"), "a");
+        write(from.filePath("b.txt"), "b");
+        FileOps ops;
+        QSignalSpy done(&ops, &FileOps::done);
+        ops.cut({from.filePath("a.txt")});
+        ops.paste(to.path());
+        ops.copy({from.filePath("b.txt")});
+        QVERIFY(done.wait(3000));
+        bool cut = true;
+        QCOMPARE(FileOps::pathsFrom(QGuiApplication::clipboard()->mimeData(), &cut), QStringList({from.filePath("b.txt")}));
+        QVERIFY(!cut);
+
+        ops.cut({from.filePath("b.txt")});
+        ops.paste(to.path());
+        QVERIFY(done.wait(3000));
+        QVERIFY(!ops.canPaste());
     }
 
     void fileOpsDragUriLists()
