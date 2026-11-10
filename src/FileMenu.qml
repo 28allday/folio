@@ -4,7 +4,8 @@ import QtQuick.Controls.Material
 
 // The right-click menu. On an item: Open, Open With (each app that can),
 // Preview, Rename, Duplicate, Copy, Cut, Paste Into, Copy Path, Compress,
-// Share (LocalSend or a tailnet machine), Pin, Terminal, Delete. On empty
+// Share (Dropbox link, Taildrop, LocalSend: whichever are available), Pin,
+// Terminal, Delete. On empty
 // space: Paste, New Folder, Copy Path, Terminal, hidden files. Entries show
 // their keys, so the menu also teaches the shortcuts.
 Menu {
@@ -50,8 +51,9 @@ Menu {
         for (let i = 0; i < count; ++i) {
             const entry = itemAt(i)
             if (entry && entry.subMenu) {
-                entry.visible = onItem
-                entry.height = onItem ? entry.implicitHeight : 0
+                const shown = entry.subMenu === shareMenu ? canShare : onItem
+                entry.visible = shown
+                entry.height = shown ? entry.implicitHeight : 0
             }
         }
         popup()
@@ -180,23 +182,54 @@ Menu {
         text: qsTr("Compress")
         onTriggered: fileOps.compress(menu.paths)
     }
+    // Share offers only what this machine has: a Dropbox link for things in
+    // the Dropbox folder (while Dropbox runs), Taildrop to the online
+    // tailnet machines, and LocalSend when it's installed. With none of
+    // them, there's no Share at all.
+    readonly property bool canDropbox: onItem && target.path.startsWith(places.home + "/Dropbox/")
+                                       && places.dropboxStatus !== "" && places.dropboxStatus !== "stopped"
+    readonly property bool canTaildrop: onItem && places.peers.length > 0
+    readonly property bool canLocalSend: onItem && fileOps.hasLocalSend()
+    readonly property bool canShare: canDropbox || canTaildrop || canLocalSend
+
     SubMenu {
+        id: shareMenu
         title: qsTr("Share")
-        enabled: menu.onItem
-        MenuItem {
-            implicitHeight: 34
-            text: qsTr("Nearby with LocalSend…")
-            onTriggered: fileOps.shareLocalSend(menu.paths)
-        }
         Repeater {
-            model: places.peers
+            model: menu.canDropbox ? 1 : 0
             MenuItem {
-                required property var modelData
                 implicitHeight: 34
-                text: qsTr("To %1 (Taildrop)").arg(modelData.name)
-                onTriggered: fileOps.shareTaildrop(menu.paths, modelData.host)
+                text: qsTr("Dropbox Link")
+                onTriggered: fileOps.dropboxLink(menu.target.path)
             }
         }
+        Repeater {
+            model: menu.canLocalSend ? 1 : 0
+            MenuItem {
+                implicitHeight: 34
+                text: qsTr("LocalSend…")
+                onTriggered: fileOps.shareLocalSend(menu.paths)
+            }
+        }
+    }
+    // Taildrop is its own menu inside Share, one entry per machine; it's
+    // added only while there are machines to send to.
+    Instantiator {
+        model: menu.canTaildrop ? 1 : 0
+        delegate: SubMenu {
+            title: qsTr("Taildrop")
+            Repeater {
+                model: places.peers
+                MenuItem {
+                    required property var modelData
+                    implicitHeight: 34
+                    text: modelData.name
+                    onTriggered: fileOps.shareTaildrop(menu.paths, modelData.host)
+                }
+            }
+        }
+        onObjectAdded: (index, object) => shareMenu.insertMenu(0, object)
+        onObjectRemoved: (index, object) => shareMenu.removeMenu(object)
     }
     Entry {
         shown: menu.onFolder

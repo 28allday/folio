@@ -9,6 +9,7 @@
 #include <QMimeData>
 #include <QMimeDatabase>
 #include <QProcess>
+#include <QStandardPaths>
 #include <QUrl>
 #include <QtConcurrent>
 
@@ -267,6 +268,38 @@ void FileOps::shareLocalSend(const QStringList &paths) {
         return;
     if (!QProcess::startDetached("localsend", QStringList{"--headless", "send"} + paths))
         emit failed(tr("Sharing nearby needs LocalSend, which isn't installed."));
+}
+
+bool FileOps::hasLocalSend() const {
+    return !QStandardPaths::findExecutable("localsend").isEmpty();
+}
+
+void FileOps::dropboxLink(const QString &path) {
+    auto *process = new QProcess(this);
+    const QString name = QFileInfo(path).fileName();
+    setBusy(tr("Getting a Dropbox link for %1…").arg(name));
+    connect(process, &QProcess::finished, this, [this, process, name](int code, QProcess::ExitStatus) {
+        process->deleteLater();
+        setBusy({});
+        const QString out = QString::fromUtf8(process->readAllStandardOutput()).trimmed();
+        // dropbox-cli prints the link, or a sentence saying why not.
+        const QString link = out.section('\n', -1).trimmed();
+        if (code != 0 || !link.startsWith("https://")) {
+            const QString why = out.isEmpty() ? QString::fromUtf8(process->readAllStandardError()).trimmed() : out;
+            emit failed(tr("Couldn't get a Dropbox link for %1: %2").arg(name, why));
+            return;
+        }
+        QGuiApplication::clipboard()->setText(link);
+        emit notice(tr("Dropbox link for %1 copied.").arg(name));
+    });
+    connect(process, &QProcess::errorOccurred, this, [this, process](QProcess::ProcessError error) {
+        if (error != QProcess::FailedToStart)
+            return;
+        process->deleteLater();
+        setBusy({});
+        emit failed(tr("Dropbox links need dropbox-cli, which isn't installed."));
+    });
+    process->start("dropbox-cli", {"sharelink", path});
 }
 
 void FileOps::shareTaildrop(const QStringList &paths, const QString &host) {

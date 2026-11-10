@@ -37,6 +37,10 @@ public:
     // Sends with LocalSend to a nearby device, or with Taildrop to a
     // machine on the tailnet.
     Q_INVOKABLE void shareLocalSend(const QStringList &paths);
+    Q_INVOKABLE bool hasLocalSend() const;
+    // Asks Dropbox for a share link to a file in the Dropbox folder and
+    // puts it on the clipboard.
+    Q_INVOKABLE void dropboxLink(const QString &path);
     Q_INVOKABLE void shareTaildrop(const QStringList &paths, const QString &host);
 
     Q_INVOKABLE void trash(const QStringList &paths);
