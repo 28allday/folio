@@ -102,7 +102,7 @@ ApplicationWindow {
                         Text {
                             Layout.fillWidth: true
                             text: !win.item.path ? ""
-                                : win.item.isDir ? (win.item.itemCount >= 0 ? qsTr("Folder · %n items", "", win.item.itemCount) : qsTr("Folder"))
+                                : win.item.isDir ? (win.item.itemCount === 0 ? qsTr("Folder · Empty") : win.item.itemCount > 0 ? qsTr("Folder · %n items", "", win.item.itemCount) : qsTr("Folder"))
                                 : (previewer.type || win.item.mime) + " · " + win.formatSize(win.item.size)
                             color: theme.secondaryForeground
                             font.pixelSize: 12
@@ -334,7 +334,7 @@ ApplicationWindow {
             }
             Text {
                 Layout.alignment: Qt.AlignHCenter
-                text: win.item.itemCount === 0 ? qsTr("Empty folder") : qsTr("%n items", "", Math.max(0, win.item.itemCount))
+                text: win.item.itemCount === 0 ? qsTr("Empty") : qsTr("%n items", "", Math.max(0, win.item.itemCount))
                 color: theme.secondaryForeground
             }
             Item { Layout.fillHeight: true }

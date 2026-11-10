@@ -124,7 +124,7 @@ Item {
             visible: row.showSize
             Layout.preferredWidth: row.sizeWidth
             horizontalAlignment: Text.AlignRight
-            text: row.isDir ? (row.itemCount >= 0 ? qsTr("%n items", "", row.itemCount) : "") : row.formatSize(row.size)
+            text: row.isDir ? (row.itemCount === 0 ? qsTr("Empty") : row.itemCount > 0 ? qsTr("%n items", "", row.itemCount) : "") : row.formatSize(row.size)
             color: theme.secondaryForeground
             font.pixelSize: 12
         }

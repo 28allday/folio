@@ -107,7 +107,7 @@ Item {
         width: parent.width - 28
         text: {
             translator.language
-            const size = tile.isDir ? (tile.itemCount >= 0 ? qsTr("%n items", "", tile.itemCount) : "")
+            const size = tile.isDir ? (tile.itemCount === 0 ? qsTr("Empty") : tile.itemCount > 0 ? qsTr("%n items", "", tile.itemCount) : "")
                                     : tile.formatSize(tile.size)
             const date = tile.when(tile.modified)
             return [size, date].filter(part => part.length > 0).join(" · ")

@@ -94,7 +94,7 @@ Rectangle {
             Text {
                 Layout.fillWidth: true
                 text: !pane.hasItem ? ""
-                    : pane.item.isDir ? (pane.item.itemCount >= 0 ? qsTr("Folder · %n items", "", pane.item.itemCount) : qsTr("Folder"))
+                    : pane.item.isDir ? (pane.item.itemCount === 0 ? qsTr("Folder · Empty") : pane.item.itemCount > 0 ? qsTr("Folder · %n items", "", pane.item.itemCount) : qsTr("Folder"))
                     : (pane.info.type || pane.item.mime) + " · " + pane.formatSize(pane.item.size)
                 color: theme.secondaryForeground
                 font.pixelSize: 12
