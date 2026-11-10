@@ -19,14 +19,14 @@ Backend::Backend(const QString &home, QObject *parent)
         m_notice.clear();
         emit noticeChanged();
     });
-    connect(&m_mounter, &Mounter::mounted, this, [this](const QString &, const QString &root) {
+    connect(&m_mounter, &Mounter::mounted, this, [this](const QString &root) {
         setBusy({});
         // Land in the matching home folder when the other machine has one,
         // which on a tailnet of one person's machines it usually does.
         const QString remoteHome = root + QDir::homePath();
         navigate(QFileInfo(remoteHome).isDir() ? remoteHome : root);
     });
-    connect(&m_mounter, &Mounter::failed, this, [this](const QString &, const QString &error) {
+    connect(&m_mounter, &Mounter::failed, this, [this](const QString &error) {
         setBusy({});
         // An empty error is the user saying no to a question: nothing to report.
         if (!error.isEmpty())

@@ -5,7 +5,6 @@
 #include <QStringList>
 
 typedef struct _GMountOperation GMountOperation;
-typedef struct _GFile GFile;
 
 // Mounts remote locations (a tailnet machine over SFTP) through GIO, the way
 // Nautilus does, so they land under GVfs where every app can see them. GVfs
@@ -48,8 +47,8 @@ public:
 
 signals:
     void askingChanged();
-    void mounted(const QString &uri, const QString &path);
-    void failed(const QString &uri, const QString &error);
+    void mounted(const QString &path);
+    void failed(const QString &error);
 
 private:
     // GIO's C callbacks, in mounter.cpp.
@@ -58,8 +57,6 @@ private:
     void finish();
 
     GMountOperation *m_operation = nullptr;
-    GFile *m_file = nullptr;
-    QString m_uri;
     bool m_trustNewHost = false;
     bool m_asking = false;
     QString m_prompt;
