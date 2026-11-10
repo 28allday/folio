@@ -92,7 +92,9 @@ signals:
 private:
     static QString gvfsRoot();
     QString trashPath() const;
-    void go(const QString &path, bool record);
+    // False when `path` isn't a folder (any more), which is said in the
+    // window and leaves everything as it was.
+    bool go(const QString &path, bool record);
     void setMessage(const QString &message);
     void setBusy(const QString &busy);
 

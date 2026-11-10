@@ -570,6 +570,36 @@ private slots:
         QVERIFY(backend.canForward());
     }
 
+    void backendStaysPutWhenTheHistoryIsGone()
+    {
+        QTemporaryDir home;
+        QDir(home.path()).mkpath("Old");
+        QDir(home.path()).mkpath("New");
+        Backend backend(home.path());
+        backend.navigate(home.filePath("Old"));
+        backend.navigate(home.filePath("New"));
+        QDir(home.filePath("Old")).removeRecursively();
+
+        // Going back to a folder that's gone says so and leaves the history
+        // on the folder shown, with what it was to select next untouched.
+        backend.expectSelection("pasted.txt");
+        backend.back();
+        QCOMPARE(backend.path(), home.filePath("New"));
+        QVERIFY(!backend.message().isEmpty());
+        QVERIFY(backend.canBack());
+        QVERIFY(!backend.canForward());
+        QCOMPARE(backend.takeSelection(), QString("pasted.txt"));
+
+        QDir(home.path()).mkpath("Old");
+        backend.back();
+        QCOMPARE(backend.path(), home.filePath("Old"));
+        QDir(home.filePath("New")).removeRecursively();
+        backend.forward();
+        QCOMPARE(backend.path(), home.filePath("Old"));
+        QVERIFY(!backend.canBack());
+        QVERIFY(backend.canForward());
+    }
+
     void backendCompletesTypedPaths()
     {
         QTemporaryDir home;

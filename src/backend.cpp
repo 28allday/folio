@@ -106,7 +106,7 @@ void Backend::navigate(const QString &path) {
     go(path, true);
 }
 
-void Backend::go(const QString &path, bool record) {
+bool Backend::go(const QString &path, bool record) {
     const QString clean = path == FolderModel::recentPath() ? path : QDir::cleanPath(path);
     // The trash folder only exists once something has been trashed; the
     // spec lets anyone create it, so Trash always opens.
@@ -114,17 +114,18 @@ void Backend::go(const QString &path, bool record) {
         QDir().mkpath(clean);
     if (clean != FolderModel::recentPath() && !QFileInfo(clean).isDir()) {
         setMessage(tr("%1 isn't a folder.").arg(clean));
-        return;
+        return false;
     }
     if (record) {
         if (m_index >= 0 && m_history.value(m_index) == clean)
-            return;
+            return true;
         m_history = m_history.mid(0, m_index + 1);
         m_history << clean;
         m_index = m_history.size() - 1;
     }
     m_folder.setPath(clean);
     emit pathChanged();
+    return true;
 }
 
 void Backend::open(const QString &path) {
@@ -152,19 +153,26 @@ void Backend::goUp() {
     navigate(parent);
 }
 
+// A folder in the history that's gone (deleted, or on a machine that went
+// away) is said in the window, and the history stays on the folder shown.
 void Backend::back() {
     if (!canBack())
         return;
+    const QString pending = m_pendingSelection;
     m_pendingSelection = QFileInfo(path()).fileName();
     --m_index;
-    go(m_history.at(m_index), false);
+    if (!go(m_history.at(m_index), false)) {
+        ++m_index;
+        m_pendingSelection = pending;
+    }
 }
 
 void Backend::forward() {
     if (!canForward())
         return;
     ++m_index;
-    go(m_history.at(m_index), false);
+    if (!go(m_history.at(m_index), false))
+        --m_index;
 }
 
 void Backend::openPeer(const QString &host) {
