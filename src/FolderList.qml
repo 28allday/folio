@@ -2,8 +2,8 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 
-// The folder as a list: name, kind, size and date in columns. Clicking Name
-// or Modified sorts by it.
+// The folder as a list: name, size and date in columns (the date, then the
+// size, step aside in a narrow window). Clicking a heading sorts by it.
 ColumnLayout {
     id: view
 
@@ -48,10 +48,10 @@ ColumnLayout {
         Layout.rightMargin: 14
         Layout.bottomMargin: 8
         spacing: 12
-        HeaderLabel { Layout.fillWidth: true; text: qsTr("Name"); sort: "name" }
-        HeaderLabel { Layout.preferredWidth: 120; text: qsTr("Kind"); sort: "kind" }
-        HeaderLabel { Layout.preferredWidth: 96; horizontalAlignment: Text.AlignRight; text: qsTr("Size"); sort: "size" }
+        HeaderLabel { Layout.fillWidth: true; Layout.minimumWidth: 120; text: qsTr("Name"); sort: "name" }
+        HeaderLabel { visible: list.width >= 380; Layout.preferredWidth: 96; horizontalAlignment: Text.AlignRight; text: qsTr("Size"); sort: "size" }
         HeaderLabel {
+            visible: list.width >= 560
             Layout.preferredWidth: 168
             Layout.leftMargin: 12
             text: backend.folder.sortMode === "oldest" ? qsTr("Modified ↑") : qsTr("Modified")

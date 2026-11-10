@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 
 // One item as a row, for the list and column views: a small picture or
-// glyph, the name, and in the list the kind, size and date beside it.
+// glyph, the name, and in the list the size and date beside it.
 Item {
     id: row
 
@@ -28,10 +28,13 @@ Item {
 
     implicitHeight: 32
 
-    // Shared with the list's header so the columns line up.
-    readonly property int kindWidth: 120
+    // Shared with the list's header so the columns line up. The name
+    // always gets room: in a narrow window the date goes first, then the
+    // size. (The icon says what kind a file is; there's no column for it.)
     readonly property int sizeWidth: 96
     readonly property int dateWidth: 168
+    readonly property bool showDate: detailed && width >= 560
+    readonly property bool showSize: detailed && width >= 380
 
     function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
 
@@ -41,19 +44,6 @@ Item {
         let value = bytes
         while (value >= 1000 && i < units.length - 1) { value /= 1000; ++i }
         return value.toLocaleString(Qt.locale(), "f", i === 0 ? 0 : 1) + " " + units[i]
-    }
-
-    function kindLabel() {
-        if (row.isDir) return qsTr("Folder")
-        switch (row.kind) {
-        case "image": return qsTr("Image")
-        case "video": return qsTr("Video")
-        case "audio": return qsTr("Audio")
-        case "pdf": return "PDF"
-        case "text": return qsTr("Text")
-        case "archive": return qsTr("Archive")
-        }
-        return row.extension.length > 0 ? row.extension : qsTr("File")
     }
 
     readonly property string glyph: row.isDir ? "folder"
@@ -102,20 +92,13 @@ Item {
         }
         Text {
             Layout.fillWidth: true
+            Layout.minimumWidth: 120
             text: row.name
             color: row.current ? theme.accent : theme.foreground
             elide: Text.ElideMiddle
         }
         Text {
-            visible: row.detailed
-            Layout.preferredWidth: row.kindWidth
-            text: row.kindLabel()
-            color: theme.secondaryForeground
-            font.pixelSize: 12
-            elide: Text.ElideRight
-        }
-        Text {
-            visible: row.detailed
+            visible: row.showSize
             Layout.preferredWidth: row.sizeWidth
             horizontalAlignment: Text.AlignRight
             text: row.isDir ? (row.itemCount >= 0 ? qsTr("%n items", "", row.itemCount) : "") : row.formatSize(row.size)
@@ -123,7 +106,7 @@ Item {
             font.pixelSize: 12
         }
         Text {
-            visible: row.detailed
+            visible: row.showDate
             Layout.preferredWidth: row.dateWidth
             Layout.leftMargin: 12
             text: row.modified ? row.modified.toLocaleString(Qt.locale(translator.language), Locale.ShortFormat) : ""
