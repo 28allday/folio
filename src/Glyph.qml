@@ -70,13 +70,15 @@ Item {
         "columns": box(3, 4, 18, 16, r) + "M9 4v16M15 4v16",
         "preview": box(3, 5, 18, 14, r) + "M14 5v14",
         "hidden": "M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" + circle(12, 12, 3),
-        // One per sort order, an arrow beside what it sorts by.
-        "sort": "M7 4v16M3 16l4 4 4-4M14 6h7M14 12h5M14 18h3",
-        "sort-name": "M7 4v16M3 16l4 4 4-4M14 11l2.5-7 2.5 7M14.8 8.6h3.4M14 14h5l-5 6h5",
-        "sort-kind": "M7 4v16M3 16l4 4 4-4" + box(14.5, 14, 5, 5, r / 2) + circle(17, 7.5, 2.5),
-        "sort-newest": "M7 4v16M3 16l4 4 4-4" + circle(17, 12, 4.5) + "M17 9.5v2.5l1.8 1.2",
-        "sort-oldest": "M7 20V4M3 8l4-4 4 4" + circle(17, 12, 4.5) + "M17 9.5v2.5l1.8 1.2",
-        "sort-size": "M7 4v16M3 16l4 4 4-4M14 6h7M14 12h5M14 18h3",
+        // One per sort order: a slim arrow on the left (down for the usual
+        // direction, up for oldest first), and what it sorts by on the right,
+        // kept apart so both read at toolbar size.
+        "sort": "M6 4v16M3 17l3 3 3-3M12 6h9M12 12h6.5M12 18h4",
+        "sort-name": "M6 4v16M3 17l3 3 3-3M12 11l3-7 3 7M13.2 8.4h3.6M12 14h6l-6 6h6",
+        "sort-kind": "M6 4v16M3 17l3 3 3-3" + circle(16.5, 7.5, 3) + box(13.5, 14, 6, 6, r / 2),
+        "sort-newest": "M6 4v16M3 17l3 3 3-3" + circle(16.5, 12, 5) + "M16.5 9v3.2l2.2 1.4",
+        "sort-oldest": "M6 20V4M3 7l3-3 3 3" + circle(16.5, 12, 5) + "M16.5 9v3.2l2.2 1.4",
+        "sort-size": "M6 4v16M3 17l3 3 3-3M12 6h9M12 12h6.5M12 18h4",
         "play": "M8 5v14l11-7z",
         "pause": "M8 5v14M16 5v14",
         "open": "M14 4h6v6M20 4l-9 9M18 14v6H4V6h6",
