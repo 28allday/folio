@@ -15,6 +15,8 @@ Item {
     required property string mime
     required property string extension
     required property int itemCount
+    required property var size
+    required property var modified
     required property bool selected
     required property var peek
 
@@ -24,6 +26,14 @@ Item {
     signal activated()
 
     function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
+
+    function formatSize(bytes) {
+        const units = [qsTr("B"), qsTr("KB"), qsTr("MB"), qsTr("GB"), qsTr("TB")]
+        let i = 0
+        let value = bytes
+        while (value >= 1000 && i < units.length - 1) { value /= 1000; ++i }
+        return value.toLocaleString(Qt.locale(), "f", i === 0 ? 0 : 1) + " " + units[i]
+    }
 
     function thumbUrl(file, type, size) {
         return "image://thumb/" + size + "/" + encodeURIComponent(type) + "/" + encodeURIComponent(file)
@@ -63,6 +73,7 @@ Item {
     }
 
     Text {
+        id: label
         anchors.top: art.bottom
         anchors.topMargin: 12
         anchors.horizontalCenter: parent.horizontalCenter
@@ -75,6 +86,26 @@ Item {
         maximumLineCount: 2
         elide: Text.ElideRight
         lineHeight: 1.15
+    }
+
+    // Size and date, quietly, under the name: "28.0 KB · 11/10/26", or the
+    // item count for a folder.
+    Text {
+        anchors.top: label.bottom
+        anchors.topMargin: 3
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: parent.width - 28
+        text: {
+            translator.language
+            const size = tile.isDir ? (tile.itemCount >= 0 ? qsTr("%n items", "", tile.itemCount) : "")
+                                    : tile.formatSize(tile.size)
+            const date = tile.modified ? tile.modified.toLocaleDateString(Qt.locale(translator.language), Locale.ShortFormat) : ""
+            return [size, date].filter(part => part.length > 0).join(" · ")
+        }
+        color: theme.secondaryForeground
+        font.pixelSize: 10
+        horizontalAlignment: Text.AlignHCenter
+        elide: Text.ElideRight
     }
 
     HoverHandler {

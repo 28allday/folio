@@ -48,7 +48,7 @@ GridView {
     model: backend.folder
     readonly property int columns: Math.max(1, Math.floor(width / 168))
     cellWidth: Math.floor(width / columns)
-    cellHeight: 176
+    cellHeight: 192
     highlightFollowsCurrentItem: false
     ScrollBar.vertical: ScrollBar { }
 
