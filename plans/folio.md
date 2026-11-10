@@ -2,7 +2,7 @@
 
 ## Why
 
-Omarchy ships Nautilus, and Nautilus hard-depends on LocalSearch, GNOME's indexer. The first time someone opens the file manager, LocalSearch starts crawling all of `$HOME`, model weights and build trees included, and opens every file it can parse in-process. On 2026-11-10 that crashed `localsearch-extractor-3` (SIGSEGV in gupnp-dlna's audio profile guesser) on a voice memo Dropbox had just synced. On Hyprland it buys little: faster Nautilus search and full-text search, both of which Omarchy users rarely reach for.
+Omarchy ships Nautilus, and Nautilus hard-depends on LocalSearch, GNOME's indexer. The first time someone opens the file manager, LocalSearch starts crawling all of `$HOME`, model weights and build trees included, and opens every file it can parse in-process. On 2026-11-10 that crashed `localsearch-extractor-3` (SIGSEGV in gupnp-dlna's audio profile guesser) on an audio file. On Hyprland it buys little: faster Nautilus search and full-text search, both of which Omarchy users rarely reach for.
 
 Nautilus is also the one big GTK app in an otherwise Qt Quick and terminal desktop. It doesn't follow the Omarchy theme the way the shell and the Omarchy apps do, and its extension points (nautilus-python) are how Omarchy bolts on LocalSend and transcoding.
 
