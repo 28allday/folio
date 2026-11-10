@@ -86,6 +86,7 @@ Rectangle {
     }
 
     component SectionLabel: Text {
+        Layout.topMargin: 21
         Layout.leftMargin: 14
         Layout.bottomMargin: 6
         color: theme.secondaryForeground
@@ -179,6 +180,7 @@ Rectangle {
 
             // The section's label is home itself: click it to go there.
             SectionLabel {
+                Layout.topMargin: 0
                 text: qsTr("Home")
                 color: sidebar.target.path === places.home ? theme.accent
                      : homeHover.hovered ? theme.foreground : theme.secondaryForeground
@@ -207,7 +209,6 @@ Rectangle {
             // Pinned folders from anywhere, kept in GTK's bookmarks. While a
             // folder is dragged over the sidebar, the section shows (even
             // empty) as the place to drop it.
-            Item { implicitHeight: 20; visible: places.pinned.length > 0 || sidebar.dragging }
             SectionLabel { text: qsTr("Pinned"); visible: places.pinned.length > 0 || sidebar.dragging }
             Repeater {
                 model: places.pinned
@@ -265,7 +266,6 @@ Rectangle {
             }
 
             // Views: lists that aren't a folder of their own.
-            Item { implicitHeight: 20 }
             SectionLabel { text: qsTr("Views") }
             Repeater {
                 model: places.views
@@ -283,7 +283,6 @@ Rectangle {
                 }
             }
 
-            Item { implicitHeight: 20; visible: places.devices.length > 0 }
             SectionLabel { text: qsTr("Devices"); visible: places.devices.length > 0 }
             Repeater {
                 model: places.devices
@@ -301,7 +300,6 @@ Rectangle {
                 }
             }
 
-            Item { implicitHeight: 20; visible: places.peers.length > 0 }
             SectionLabel { text: qsTr("Tailnet"); visible: places.peers.length > 0 }
             Repeater {
                 model: places.peers
