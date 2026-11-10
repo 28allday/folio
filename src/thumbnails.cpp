@@ -24,10 +24,6 @@ QString fileUri(const QString &path) {
     return QUrl::fromLocalFile(path).toString(QUrl::FullyEncoded);
 }
 
-QString mtimeOf(const QString &path) {
-    return QString::number(QFileInfo(path).lastModified().toSecsSinceEpoch());
-}
-
 // Qt writes longer PNG text values as compressed zTXt chunks. The thumbnail
 // spec's keys belong in plain tEXt, which is all some thumbnail readers look
 // at, so re-encode them after Qt writes the image.
@@ -142,6 +138,10 @@ QString Thumbnails::cachePath(const QString &path, int size) const {
     return m_cache + "/" + bucketFor(size) + "/" + cacheKey(path);
 }
 
+QString Thumbnails::failPath(const QString &path) const {
+    return m_cache + "/fail/folio/" + cacheKey(path);
+}
+
 QImage Thumbnails::load(const QString &path, const QString &mime, int size) const {
     const QFileInfo info(path);
     if (!info.isFile())
@@ -152,23 +152,23 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
         return {};
 
     const QString cached = cachePath(path, size);
-    const QString mtime = mtimeOf(path);
+    const QString mtime = QString::number(info.lastModified().toSecsSinceEpoch());
     // QImageReader::text() splits keys at ':', so "Thumb::MTime" is only
     // readable from the decoded image.
     if (const QImage image(cached); !image.isNull() && image.text("Thumb::MTime") == mtime)
         return image;
-    if (failedBefore(path))
+    if (failedBefore(path, mtime))
         return {};
 
     const int pixels = bucketPixels(bucketFor(size));
     QImage image = generate(path, mime, pixels);
     if (image.isNull()) {
-        rememberFailure(path);
+        rememberFailure(path, mtime);
         return {};
     }
     if (image.width() > pixels || image.height() > pixels)
         image = image.scaled(pixels, pixels, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-    remember(image, path, size);
+    remember(image, path, size, mtime);
     return image;
 }
 
@@ -217,48 +217,40 @@ QImage Thumbnails::runThumbnailer(const QString &command, const QString &path, i
     return QImage(output);
 }
 
-void Thumbnails::remember(const QImage &image, const QString &path, int size) const {
-    const QString target = cachePath(path, size);
+void Thumbnails::remember(QImage image, const QString &path, int size, const QString &mtime) const {
+    image.setText("Software", "folio");
+    save(std::move(image), cachePath(path, size), path, mtime);
+}
+
+void Thumbnails::rememberFailure(const QString &path, const QString &mtime) const {
+    QImage marker(1, 1, QImage::Format_ARGB32);
+    marker.fill(Qt::transparent);
+    save(std::move(marker), failPath(path), path, mtime);
+}
+
+bool Thumbnails::failedBefore(const QString &path, const QString &mtime) const {
+    const QImage marker(failPath(path));
+    return !marker.isNull() && marker.text("Thumb::MTime") == mtime;
+}
+
+void Thumbnails::save(QImage image, const QString &target, const QString &path, const QString &mtime) const {
     QDir().mkpath(QFileInfo(target).absolutePath());
     QFile::setPermissions(m_cache, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
 
-    QImage tagged = image;
-    tagged.setText("Thumb::URI", fileUri(path));
-    tagged.setText("Thumb::MTime", mtimeOf(path));
-    tagged.setText("Software", "folio");
+    image.setText("Thumb::URI", fileUri(path));
+    image.setText("Thumb::MTime", mtime);
 
     // Written beside the target and renamed, so another app never reads half
     // a thumbnail.
     QByteArray png;
     QBuffer buffer(&png);
-    if (!buffer.open(QIODevice::WriteOnly) || !tagged.save(&buffer, "PNG"))
+    if (!buffer.open(QIODevice::WriteOnly) || !image.save(&buffer, "PNG"))
         return;
     QSaveFile file(target);
     if (file.open(QIODevice::WriteOnly) && file.write(withPlainText(png)) > 0) {
         file.setPermissions(QFile::ReadOwner | QFile::WriteOwner);
         file.commit();
     }
-}
-
-void Thumbnails::rememberFailure(const QString &path) const {
-    const QString target = m_cache + "/fail/folio/" + cacheKey(path);
-    QDir().mkpath(QFileInfo(target).absolutePath());
-    QImage marker(1, 1, QImage::Format_ARGB32);
-    marker.fill(Qt::transparent);
-    marker.setText("Thumb::URI", fileUri(path));
-    marker.setText("Thumb::MTime", mtimeOf(path));
-    QByteArray png;
-    QBuffer buffer(&png);
-    if (!buffer.open(QIODevice::WriteOnly) || !marker.save(&buffer, "PNG"))
-        return;
-    QSaveFile file(target);
-    if (file.open(QIODevice::WriteOnly) && file.write(withPlainText(png)) > 0)
-        file.commit();
-}
-
-bool Thumbnails::failedBefore(const QString &path) const {
-    const QImage marker(m_cache + "/fail/folio/" + cacheKey(path));
-    return !marker.isNull() && marker.text("Thumb::MTime") == mtimeOf(path);
 }
 
 namespace {

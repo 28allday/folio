@@ -23,15 +23,17 @@ public:
 
     static QString cacheKey(const QString &path);
     static QString bucketFor(int size);
-    QString cachePath(const QString &path, int size) const;
     QString thumbnailerFor(const QString &mime) const { return m_thumbnailers.value(mime); }
 
 private:
+    QString cachePath(const QString &path, int size) const;
+    QString failPath(const QString &path) const;
     QImage generate(const QString &path, const QString &mime, int pixels) const;
     QImage runThumbnailer(const QString &command, const QString &path, int pixels) const;
-    void remember(const QImage &image, const QString &path, int size) const;
-    void rememberFailure(const QString &path) const;
-    bool failedBefore(const QString &path) const;
+    void remember(QImage image, const QString &path, int size, const QString &mtime) const;
+    void rememberFailure(const QString &path, const QString &mtime) const;
+    bool failedBefore(const QString &path, const QString &mtime) const;
+    void save(QImage image, const QString &target, const QString &path, const QString &mtime) const;
 
     QString m_cache;
     QHash<QString, QString> m_thumbnailers;
