@@ -856,8 +856,12 @@ private slots:
         QCOMPARE(previewer.item().value("name").toString(), QString("b.txt"));
         QCOMPARE(previewer.text(), QString("b"));
 
+        // The listing moves the index without touching what's shown, which
+        // would restart a playing video.
+        const int shown = changed.count();
         QTRY_COMPARE(previewer.count(), 4);
         QCOMPARE(previewer.index(), 2);
+        QCOMPARE(changed.count(), shown);
         previewer.previous();
         QCOMPARE(previewer.viewer(), QString("markdown"));
         previewer.previous();

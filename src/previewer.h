@@ -17,8 +17,11 @@
 // the item it steps to, and each side follows the other.
 class Previewer : public QObject {
     Q_OBJECT
-    Q_PROPERTY(int count READ count NOTIFY changed)
-    Q_PROPERTY(int index READ index NOTIFY changed)
+    // Listing the folder only changes where the item sits among its
+    // siblings, so it has a signal of its own: re-reading the item would set
+    // a playing video's source again, which stops it.
+    Q_PROPERTY(int count READ count NOTIFY listed)
+    Q_PROPERTY(int index READ index NOTIFY listed)
     Q_PROPERTY(QVariantMap item READ item NOTIFY changed)
     Q_PROPERTY(QString viewer READ viewer NOTIFY changed)
     Q_PROPERTY(QString url READ url NOTIFY changed)
@@ -56,6 +59,7 @@ public:
 
 signals:
     void changed();
+    void listed();
 
 private:
     void setIndex(int index, bool report);

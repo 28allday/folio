@@ -90,7 +90,7 @@ void Previewer::show(const QString &path) {
                 m_entries = entries;
                 m_entries[i] = shown;
                 m_index = i;
-                emit changed();
+                emit listed();
                 return;
             }
         }
@@ -147,6 +147,7 @@ void Previewer::setIndex(int index, bool report) {
             m_viewer = "other";
     }
     emit changed();
+    emit listed();
 
     if (report && m_reporting) {
         std::fprintf(stdout, "%s\n", e.path.toUtf8().constData());
