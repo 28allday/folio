@@ -79,6 +79,7 @@ public:
     void showItem(const QString &path);
 
     static QString gvfsRoot();
+    QString trashPath() const;
     static QString expandTyped(const QString &text, const QString &home, const QString &current);
     static QString complete(const QString &text, const QString &home, const QString &current);
 

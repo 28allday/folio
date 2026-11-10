@@ -9,6 +9,10 @@ Rectangle {
 
     property var item: ({})
     readonly property bool hasItem: item !== undefined && item.path !== undefined
+    // An item in the trash shows where it came from and when it was
+    // deleted, and offers Restore rather than Open.
+    readonly property bool trashed: hasItem && fileOps.inTrash(item.path) && fileOps.originalPath(item.path).length > 0
+    function homeless(path) { return path.startsWith(places.home + "/") ? "~" + path.slice(places.home.length) : path }
     readonly property var info: hasItem ? backend.details(item.path, item.kind, item.mime) : ({})
 
     color: theme.darkBackground
@@ -108,11 +112,22 @@ Rectangle {
             rowSpacing: 12
             columnSpacing: 16
 
-            Text { text: qsTr("Modified"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            Text { visible: pane.trashed; text: qsTr("From"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            Text {
+                visible: pane.trashed
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignRight
+                text: pane.trashed ? pane.homeless(fileOps.originalPath(pane.item.path).replace(/\/[^\/]*$/, "") || "/") : ""
+                color: theme.foreground
+                font.pixelSize: 12
+                elide: Text.ElideMiddle
+            }
+            Text { text: pane.trashed ? qsTr("Deleted") : qsTr("Modified"); color: theme.secondaryForeground; font.pixelSize: 12 }
             Text {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignRight
-                text: pane.hasItem ? pane.item.modified.toLocaleString(Qt.locale(translator.language), Locale.ShortFormat) : ""
+                text: !pane.hasItem ? ""
+                    : (pane.trashed ? fileOps.deletedAt(pane.item.path) : pane.item.modified).toLocaleString(Qt.locale(translator.language), Locale.ShortFormat)
                 color: theme.foreground
                 font.pixelSize: 12
             }
@@ -135,9 +150,9 @@ Rectangle {
             implicitHeight: 40
             focusPolicy: Qt.NoFocus
             hoverEnabled: true
-            text: pane.hasItem && pane.item.isDir ? qsTr("Open folder") : qsTr("Open")
+            text: pane.trashed ? qsTr("Restore") : pane.hasItem && pane.item.isDir ? qsTr("Open folder") : qsTr("Open")
             Accessible.name: text
-            onClicked: backend.open(pane.item.path)
+            onClicked: pane.trashed ? fileOps.restore([pane.item.path]) : backend.open(pane.item.path)
             background: Rectangle {
                 radius: Math.min(4, theme.radius)
                 color: openButton.hovered ? Qt.lighter(theme.accent, 1.08) : theme.accent

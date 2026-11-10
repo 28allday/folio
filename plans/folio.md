@@ -25,7 +25,7 @@ Done, tested (19 Qt Test cases), and verified offscreen:
 - Grid tiles show size (or item count) and date under the name; no status bar.
 - Folder tiles as plain cards, selection shown as color on the item itself; file tiles with real thumbnails (in-process for common images, installed thumbnailers for video, PDF, HEIC, office files), drawn stand-ins otherwise.
 - Shared thumbnail cache per the spec, with failure markers so broken files aren't retried.
-- Sidebar sections Views (Recents from GTK's recently-used.xbel, Trash); Tab moves the keyboard between sidebar and files.
+- Sidebar sections Views (Recents from GTK's recently-used.xbel, Trash with Restore, Delete Permanently and Empty Trash per the freedesktop spec, details showing origin and deletion date); Tab moves the keyboard between sidebar and files.
 - Right-click menus everywhere (Open, Open With, Preview, Rename, Duplicate, Copy, Cut, Paste, Copy Path, Compress, Share via LocalSend or Taildrop, Pin, Terminal, Delete to trash); clipboard interoperable with GNOME/KDE apps; pastes never overwrite.
 - Sort by name, kind, newest, oldest or size.
 - Split view (Ctrl+Alt+N, Ctrl+W closes): two folder panes side by side, each with its own path, history and selection; sidebar and details follow the active pane. New windows (Ctrl+N) open in the running process.
@@ -46,7 +46,6 @@ Done, tested (19 Qt Test cases), and verified offscreen:
 
 - Identify files by GIO URI rather than local path, so SFTP, MTP and Trash entries behave the same as local ones once operations exist.
 - Design operation safety first: the queue, undo log and conflict handling in phase 1 build on it.
-- Trash is a view over the freedesktop Trash spec (`files/` plus `info/`), not an ordinary folder.
 - Run thumbnailers in a separate, resource-limited process, the way the preview already runs apart.
 - Thumbnail cache fixes: validate `Thumb::URI` on a cache hit, version the failure directory (`fail/folio-<version>`), and don't record a missing thumbnailer as a failure.
 - Responsiveness: summarize subfolders lazily (visible tiles first), and move `details()` off the UI thread.

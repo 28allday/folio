@@ -248,6 +248,45 @@ private slots:
         QCOMPARE(model.selectedCount(), 0);
     }
 
+    void trashRestoresAndEmpties()
+    {
+        QTemporaryDir home;
+        const QString trash = home.filePath("Trash");
+        QDir().mkpath(trash + "/files");
+        QDir().mkpath(trash + "/info");
+        QDir().mkpath(home.filePath("Docs"));
+        auto trashed = [&](const QString &name, const QString &from) {
+            write(trash + "/files/" + name, "x");
+            write(trash + "/info/" + name + ".trashinfo",
+                  "[Trash Info]\nPath=" + QUrl::toPercentEncoding(from, "/") + "\nDeletionDate=2026-11-10T12:00:00\n");
+        };
+        trashed("notes 1.txt", home.filePath("Docs/notes 1.txt"));
+        trashed("gone.txt", home.filePath("Gone/Deep/gone.txt"));
+        trashed("clash.txt", home.filePath("Docs/clash.txt"));
+        write(home.filePath("Docs/clash.txt"), "newer");
+
+        QCOMPARE(FileOps::readOriginalPath(trash + "/files/notes 1.txt"), home.filePath("Docs/notes 1.txt"));
+        QCOMPARE(FileOps::readDeletionDate(trash + "/files/notes 1.txt"), QDateTime(QDate(2026, 11, 10), QTime(12, 0)));
+
+        QString error;
+        QCOMPARE(FileOps::restoreOne(trash + "/files/notes 1.txt", &error), home.filePath("Docs/notes 1.txt"));
+        QVERIFY(!QFile::exists(trash + "/info/notes 1.txt.trashinfo"));
+        // A folder that's gone is made again; a name that's taken isn't overwritten.
+        QCOMPARE(FileOps::restoreOne(trash + "/files/gone.txt", &error), home.filePath("Gone/Deep/gone.txt"));
+        QCOMPARE(FileOps::restoreOne(trash + "/files/clash.txt", &error), home.filePath("Docs/clash (copy).txt"));
+        QFile kept(home.filePath("Docs/clash.txt"));
+        QVERIFY(kept.open(QIODevice::ReadOnly));
+        QCOMPARE(kept.readAll(), QByteArray("newer"));
+
+        trashed("a.txt", home.filePath("a.txt"));
+        QDir().mkpath(trash + "/files/folder/inner");
+        write(trash + "/info/folder.trashinfo", "[Trash Info]\nPath=" + home.filePath("folder").toUtf8() + "\n");
+        write(trash + "/info/orphan.trashinfo", "[Trash Info]\nPath=/nowhere\n");
+        QCOMPARE(FileOps::emptyTrashDir(trash), 2);
+        QVERIFY(QDir(trash + "/files").isEmpty());
+        QVERIFY(QDir(trash + "/info").isEmpty());
+    }
+
     void kindsFromMimeTypes()
     {
         QCOMPARE(FolderModel::kindForMime("application/pdf"), QString("pdf"));

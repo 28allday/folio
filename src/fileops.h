@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QDateTime>
 #include <QObject>
 #include <QStringList>
 #include <QUrl>
@@ -51,6 +52,21 @@ public:
     Q_INVOKABLE void shareTaildrop(const QStringList &paths, const QString &host);
 
     Q_INVOKABLE void trash(const QStringList &paths);
+
+    // The trash, per the freedesktop Trash spec: each item in Trash/files
+    // has a note in Trash/info saying where it came from.
+    Q_INVOKABLE bool inTrash(const QString &path) const;
+    // Where a trashed item came from, or empty if its note is missing.
+    Q_INVOKABLE QString originalPath(const QString &path) const;
+    // When it was trashed, from its note.
+    Q_INVOKABLE QDateTime deletedAt(const QString &path) const;
+    // Puts items back where they came from (recreating the folder if it's
+    // gone, and never overwriting what's there now).
+    Q_INVOKABLE void restore(const QStringList &paths);
+    // Deletes trashed items for good, and empties the whole trash.
+    Q_INVOKABLE void deleteForever(const QStringList &paths);
+    Q_INVOKABLE void emptyTrash();
+    Q_INVOKABLE int trashCount() const;
     // Empty string on success, or why not.
     Q_INVOKABLE QString rename(const QString &path, const QString &name);
     // Makes "New Folder" (or "New Folder 2"...) and returns its name.
@@ -74,6 +90,16 @@ public:
     // "Archive.zip" for several; never one that exists.
     static QString archiveName(const QStringList &paths);
     static bool sameDrive(const QString &a, const QString &b);
+    // The trash folders: the home one, then each mounted drive's own.
+    static QStringList trashDirs();
+    // For an item in <trash>/files: its note, and the path it came from.
+    static QString infoFileFor(const QString &trashedPath);
+    static QString readOriginalPath(const QString &trashedPath);
+    static QDateTime readDeletionDate(const QString &trashedPath);
+    // Restores one item; returns where it went, or empty with `error` set.
+    static QString restoreOne(const QString &trashedPath, QString *error);
+    static bool deleteTrashed(const QString &trashedPath);
+    static int emptyTrashDir(const QString &trashDir);
     // Copies or moves each path into `folder`; returns the new names.
     static QStringList transfer(const QStringList &paths, const QString &folder, bool move, QString *error);
 

@@ -59,6 +59,8 @@ QString Backend::title() const {
     const QString p = path();
     if (p == FolderModel::recentPath())
         return tr("Recents");
+    if (p == trashPath())
+        return tr("Trash");
     if (p == m_home)
         return tr("Home");
     if (p == "/")
@@ -74,6 +76,9 @@ QVariantList Backend::crumbs() const {
     const QString p = path();
     if (p == FolderModel::recentPath())
         return {QVariantMap{{"name", tr("Recents")}, {"path", p}}};
+    // The trash's files folder is an implementation detail; it's "Trash".
+    if (p == trashPath())
+        return {QVariantMap{{"name", tr("Trash")}, {"path", p}}};
     QString base = "/";
     QString label = "/";
     if (p == m_home || p.startsWith(m_home + "/")) {
@@ -103,7 +108,7 @@ void Backend::go(const QString &path, bool record) {
     const QString clean = path == FolderModel::recentPath() ? path : QDir::cleanPath(path);
     // The trash folder only exists once something has been trashed; the
     // spec lets anyone create it, so Trash always opens.
-    if (clean == QDir::cleanPath(m_home + "/.local/share/Trash/files"))
+    if (clean == trashPath())
         QDir().mkpath(clean);
     if (clean != FolderModel::recentPath() && !QFileInfo(clean).isDir()) {
         setMessage(tr("%1 isn't a folder.").arg(clean));
@@ -133,8 +138,8 @@ void Backend::open(const QString &path) {
 }
 
 void Backend::goUp() {
-    // Recents is a list, not a folder: there's nothing above it.
-    if (path() == FolderModel::recentPath())
+    // Recents and the trash are places of their own: nothing above them.
+    if (path() == FolderModel::recentPath() || path() == trashPath())
         return;
     const QString parent = QFileInfo(path()).absolutePath();
     if (parent == path())
@@ -225,6 +230,10 @@ Backend::~Backend() {
         m_preview.terminate();
         m_preview.waitForFinished(1000);
     }
+}
+
+QString Backend::trashPath() const {
+    return QDir::cleanPath(m_home + "/.local/share/Trash/files");
 }
 
 QString Backend::typedPath() const {

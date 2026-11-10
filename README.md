@@ -5,7 +5,7 @@
 Folio is Omarchy's file manager: one window for finding, previewing and opening your files. It follows the Omarchy theme and language live, works from the keyboard, and never crawls your home folder in the background. Thumbnails are made when a tile needs one and shared with other apps through the standard `~/.cache/thumbnails` cache.
 
 - **Home**: every folder in your home, with the standard ones and Dropbox drawn with their own icons; click the Home label to go home.
-- **Views**: Recents (files you've used lately, in any app) and Trash.
+- **Views**: Recents (files you've used lately, in any app) and Trash, where items can be restored to where they came from (shown in the details, with when they were deleted) and the trash emptied.
 - **Files**: right-click for open with, rename, duplicate, copy, cut, paste, compress, share (LocalSend or Taildrop) and delete to the trash. Copy and paste work with other apps, and nothing is ever overwritten.
 - **Pinned**: any folder, pinned with Ctrl+D or by dragging it onto the sidebar. Pins are GTK's bookmarks, so they show up in file dialogs too.
 - **Devices**: physical drives, whether plugged in or extra internal disks; the system's own partitions stay out of the way.

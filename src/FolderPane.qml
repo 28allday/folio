@@ -33,7 +33,7 @@ FocusScope {
     property string loadedPath: ""
     // While a text field has the keyboard (renaming, a password), single-key
     // and clipboard shortcuts stand aside so typing works.
-    readonly property bool typing: rename.visible || backend.mounter.asking || pathBar.editing || (!!host && host.helpVisible)
+    readonly property bool typing: rename.visible || confirm.visible || backend.mounter.asking || pathBar.editing || (!!host && host.helpVisible)
     readonly property bool keys: active && !typing
     // What file actions act on: everything selected, or the item under
     // the cursor when nothing is.
@@ -51,6 +51,31 @@ FocusScope {
         // An open preview stays on the selected item.
         if (backend.previewing && current.path)
             backend.followSelection(current.path)
+    }
+
+    // In the trash, Delete means for good (after asking), and there's
+    // Restore and Empty Trash.
+    readonly property bool inTrash: fileOps.inTrash(backend.path)
+    function deleteSelected() {
+        const paths = pane.selectedPaths
+        if (paths.length === 0)
+            return
+        if (!pane.inTrash) {
+            fileOps.trash(paths)
+            return
+        }
+        confirm.ask(qsTr("Delete for good?"),
+                    paths.length === 1 ? qsTr("%1 will be deleted permanently. This can't be undone.").arg(pane.current.name)
+                                       : qsTr("%n items will be deleted permanently. This can't be undone.", "", paths.length),
+                    qsTr("Delete"), () => fileOps.deleteForever(paths))
+    }
+    function emptyTrash() {
+        const count = fileOps.trashCount()
+        if (count === 0)
+            return
+        confirm.ask(qsTr("Empty the trash?"),
+                    qsTr("%n items will be deleted permanently. This can't be undone.", "", count),
+                    qsTr("Empty Trash"), () => fileOps.emptyTrash())
     }
 
     // Whichever pane has the keyboard is the one keys, the sidebar and the
@@ -87,7 +112,7 @@ FocusScope {
     Shortcut { sequences: [StandardKey.Paste]; enabled: pane.keys; onActivated: fileOps.paste(backend.path) }
     // "Yank": the selected path (or the folder's) as text, for a terminal.
     Shortcut { sequence: "Ctrl+Shift+C"; enabled: pane.keys; onActivated: fileOps.yank(pane.selectedPaths.length > 0 ? pane.selectedPaths : [backend.path]) }
-    Shortcut { sequence: "Delete"; enabled: pane.keys; onActivated: fileOps.trash(pane.selectedPaths) }
+    Shortcut { sequence: "Delete"; enabled: pane.keys; onActivated: pane.deleteSelected() }
     Shortcut { sequence: "F2"; enabled: pane.keys; onActivated: if (pane.current.path) rename.open(pane.current) }
     Shortcut { sequences: [StandardKey.SelectAll]; enabled: pane.keys; onActivated: backend.folder.selectAll() }
     // Escape narrows a selection of several back to the cursor.
@@ -165,6 +190,8 @@ FocusScope {
         id: fileMenu
         objectName: "fileMenu"
         onRenameRequested: (target) => rename.open(target)
+        onDeleteRequested: pane.deleteSelected()
+        onEmptyTrashRequested: pane.emptyTrash()
     }
 
     ColumnLayout {
@@ -195,6 +222,31 @@ FocusScope {
                     glyph: "close"
                     text: qsTr("Dismiss")
                     onClicked: backend.dismissMessage()
+                }
+            }
+        }
+
+        // The trash says what it holds and offers to empty it.
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: 48
+            visible: pane.inTrash
+            color: pane.tint(theme.foreground, 0.04)
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 24
+                anchors.rightMargin: 16
+                Text {
+                    Layout.fillWidth: true
+                    text: backend.folder.count === 0 ? qsTr("The trash is empty.")
+                        : qsTr("%n items in the trash. Right-click to restore one.", "", backend.folder.count)
+                    color: theme.secondaryForeground
+                    elide: Text.ElideRight
+                }
+                PlainButton {
+                    visible: backend.folder.count > 0
+                    text: qsTr("Empty Trash")
+                    onClicked: pane.emptyTrash()
                 }
             }
         }
@@ -280,6 +332,11 @@ FocusScope {
 
     RenameDialog {
         id: rename
+        anchors.fill: parent
+    }
+
+    ConfirmDialog {
+        id: confirm
         anchors.fill: parent
     }
 }

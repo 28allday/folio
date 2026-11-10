@@ -17,6 +17,10 @@ FolioMenu {
     property string folder
 
     signal renameRequested(var target)
+    signal deleteRequested()
+    signal emptyTrashRequested()
+    // In the trash the menu is about getting things back, or letting go.
+    readonly property bool trashView: fileOps.inTrash(folder)
 
     readonly property bool onItem: !!target && target.path !== undefined
     readonly property bool onFolder: onItem && target.isDir === true
@@ -50,6 +54,16 @@ FolioMenu {
     }
 
     FolioMenuItem {
+        shown: menu.onItem && menu.trashView
+        text: menu.onSelection ? qsTr("Restore %n Items", "", menu.paths.length) : qsTr("Restore")
+        onTriggered: fileOps.restore(menu.paths)
+    }
+    FolioMenuItem {
+        shown: !menu.onItem && menu.trashView
+        text: qsTr("Empty Trash…")
+        onTriggered: menu.emptyTrashRequested()
+    }
+    FolioMenuItem {
         shown: menu.onItem
         text: menu.onFolder ? qsTr("Open Folder") : qsTr("Open")
         keys: "⏎"
@@ -77,13 +91,13 @@ FolioMenu {
     }
     MenuLine { shown: menu.onItem }
     FolioMenuItem {
-        shown: menu.onItem
+        shown: !menu.trashView && (menu.onItem)
         text: qsTr("Rename…")
         keys: "F2"
         onTriggered: menu.renameRequested(menu.target)
     }
     FolioMenuItem {
-        shown: menu.onItem
+        shown: !menu.trashView && (menu.onItem)
         text: qsTr("Duplicate")
         keys: "Ctrl+Shift+D"
         onTriggered: fileOps.duplicate(menu.target.path)
@@ -95,13 +109,13 @@ FolioMenu {
         onTriggered: fileOps.copy(menu.paths)
     }
     FolioMenuItem {
-        shown: menu.onItem
+        shown: !menu.trashView && (menu.onItem)
         text: qsTr("Cut")
         keys: "Ctrl+X"
         onTriggered: fileOps.cut(menu.paths)
     }
     FolioMenuItem {
-        shown: !menu.onItem || menu.onFolder
+        shown: !menu.trashView && (!menu.onItem || menu.onFolder)
         text: menu.onFolder ? qsTr("Paste Into Folder") : qsTr("Paste")
         keys: menu.onItem ? "" : "Ctrl+V"
         enabled: fileOps.canPaste
@@ -113,14 +127,14 @@ FolioMenu {
         onTriggered: fileOps.yank(menu.onItem ? menu.paths : [menu.folder])
     }
     FolioMenuItem {
-        shown: !menu.onItem
+        shown: !menu.onItem && !menu.trashView
         text: qsTr("New Folder")
         keys: "Ctrl+Shift+N"
         onTriggered: fileOps.newFolder(menu.folder)
     }
     MenuLine { }
     FolioMenuItem {
-        shown: menu.onItem
+        shown: !menu.trashView && (menu.onItem)
         text: qsTr("Compress")
         onTriggered: fileOps.compress(menu.paths)
     }
@@ -199,8 +213,9 @@ FolioMenu {
     // Delete moves to the trash; Restore in any file manager brings it back.
     FolioMenuItem {
         shown: menu.onItem
-        text: menu.onSelection ? qsTr("Delete %n Items", "", menu.paths.length) : qsTr("Delete")
+        text: menu.trashView ? qsTr("Delete Permanently…")
+            : menu.onSelection ? qsTr("Delete %n Items", "", menu.paths.length) : qsTr("Delete")
         keys: "Delete"
-        onTriggered: fileOps.trash(menu.paths)
+        onTriggered: menu.trashView ? menu.deleteRequested() : fileOps.trash(menu.paths)
     }
 }

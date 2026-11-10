@@ -13,6 +13,7 @@
 #include <QStandardPaths>
 #include <QUrl>
 #include <QtConcurrent>
+#include <unistd.h>
 
 // GIO's headers use `signals` as a struct member, which Qt defines as a
 // keyword.
@@ -373,6 +374,167 @@ void FileOps::trash(const QStringList &paths) {
     }
     if (!failedNames.isEmpty())
         emit failed(tr("Couldn't move to the trash: %1").arg(failedNames.join(", ")));
+}
+
+QStringList FileOps::trashDirs() {
+    QStringList dirs{QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/Trash"};
+    // Drives keep their own trash at the top, so deleting never copies
+    // across disks: .Trash-<uid> (or .Trash/<uid>).
+    const QString uid = QString::number(getuid());
+    for (const QStorageInfo &volume : QStorageInfo::mountedVolumes()) {
+        for (const QString &dir : {volume.rootPath() + "/.Trash-" + uid, volume.rootPath() + "/.Trash/" + uid})
+            if (QFileInfo(dir + "/files").isDir() && !dirs.contains(dir))
+                dirs << dir;
+    }
+    return dirs;
+}
+
+bool FileOps::inTrash(const QString &path) const {
+    const QString clean = QDir::cleanPath(path);
+    for (const QString &dir : trashDirs())
+        if (clean == dir + "/files" || clean.startsWith(dir + "/files/"))
+            return true;
+    return false;
+}
+
+QString FileOps::infoFileFor(const QString &trashedPath) {
+    const QFileInfo item(trashedPath);
+    const QString trashDir = QFileInfo(item.absolutePath()).absolutePath();
+    return trashDir + "/info/" + item.fileName() + ".trashinfo";
+}
+
+QString FileOps::readOriginalPath(const QString &trashedPath) {
+    QFile info(infoFileFor(trashedPath));
+    if (!info.open(QIODevice::ReadOnly))
+        return {};
+    for (const QByteArray &line : info.readAll().split('\n')) {
+        if (!line.startsWith("Path="))
+            continue;
+        const QString path = QUrl::fromPercentEncoding(line.mid(5).trimmed());
+        if (path.startsWith('/'))
+            return path;
+        // A drive's own trash records paths from the top of that drive.
+        const QString trashDir = QFileInfo(QFileInfo(trashedPath).absolutePath()).absolutePath();
+        const QString top = trashDir.contains("/.Trash/") ? trashDir.section("/.Trash/", 0, 0)
+                                                          : QFileInfo(trashDir).absolutePath();
+        return QDir(top).filePath(path);
+    }
+    return {};
+}
+
+QDateTime FileOps::readDeletionDate(const QString &trashedPath) {
+    QFile info(infoFileFor(trashedPath));
+    if (!info.open(QIODevice::ReadOnly))
+        return {};
+    for (const QByteArray &line : info.readAll().split('\n'))
+        if (line.startsWith("DeletionDate="))
+            // Local time, without a zone, as the spec writes it.
+            return QDateTime::fromString(QString::fromUtf8(line.mid(13).trimmed()), Qt::ISODate);
+    return {};
+}
+
+QDateTime FileOps::deletedAt(const QString &path) const {
+    return readDeletionDate(path);
+}
+
+QString FileOps::originalPath(const QString &path) const {
+    return readOriginalPath(path);
+}
+
+QString FileOps::restoreOne(const QString &trashedPath, QString *error) {
+    const QString original = readOriginalPath(trashedPath);
+    if (original.isEmpty()) {
+        *error = tr("%1 has no record of where it came from.").arg(QFileInfo(trashedPath).fileName());
+        return {};
+    }
+    const QString folder = QFileInfo(original).absolutePath();
+    if (!QDir().mkpath(folder)) {
+        *error = tr("Couldn't recreate %1.").arg(folder);
+        return {};
+    }
+    const QString destination = QDir(folder).filePath(freeName(folder, QFileInfo(original).fileName()));
+    if (!QFile::rename(trashedPath, destination)) {
+        // Across drives (rare: trash lives on the item's own drive), copy.
+        if (!copyRecursively(trashedPath, destination, error))
+            return {};
+        deleteTrashed(trashedPath);
+    }
+    QFile::remove(infoFileFor(trashedPath));
+    return destination;
+}
+
+bool FileOps::deleteTrashed(const QString &trashedPath) {
+    const QFileInfo item(trashedPath);
+    const bool removed = item.isDir() && !item.isSymLink() ? QDir(trashedPath).removeRecursively()
+                                                           : QFile::remove(trashedPath);
+    QFile::remove(infoFileFor(trashedPath));
+    return removed;
+}
+
+int FileOps::emptyTrashDir(const QString &trashDir) {
+    int count = 0;
+    const QDir files(trashDir + "/files");
+    for (const QFileInfo &item : files.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System))
+        if (deleteTrashed(item.absoluteFilePath()))
+            ++count;
+    // Notes left without a file, and the size cache, go too.
+    QDir info(trashDir + "/info");
+    for (const QString &name : info.entryList(QDir::Files | QDir::Hidden))
+        info.remove(name);
+    QFile::remove(trashDir + "/directorysizes");
+    return count;
+}
+
+int FileOps::trashCount() const {
+    int count = 0;
+    for (const QString &dir : trashDirs())
+        count += QDir(dir + "/files").entryList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System).size();
+    return count;
+}
+
+void FileOps::restore(const QStringList &paths) {
+    QStringList failures;
+    QString last;
+    for (const QString &path : paths) {
+        QString error;
+        const QString to = restoreOne(path, &error);
+        if (to.isEmpty())
+            failures << error;
+        else
+            last = to;
+    }
+    if (!failures.isEmpty())
+        emit failed(failures.join(' '));
+    else if (!last.isEmpty())
+        emit notice(paths.size() == 1 ? tr("Restored %1 to %2.").arg(QFileInfo(last).fileName(), QFileInfo(last).absolutePath())
+                                      : tr("Restored %n items.", "", paths.size()));
+}
+
+void FileOps::deleteForever(const QStringList &paths) {
+    int failures = 0;
+    for (const QString &path : paths)
+        if (!deleteTrashed(path))
+            ++failures;
+    if (failures > 0)
+        emit failed(tr("Couldn't delete %n items.", "", failures));
+}
+
+void FileOps::emptyTrash() {
+    if (!m_busy.isEmpty())
+        return;
+    setBusy(tr("Emptying the trash…"));
+    auto *watcher = new QFutureWatcher<int>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher] {
+        watcher->deleteLater();
+        setBusy({});
+        emit notice(tr("Emptied the trash: %n items deleted.", "", watcher->result()));
+    });
+    watcher->setFuture(QtConcurrent::run([] {
+        int count = 0;
+        for (const QString &dir : trashDirs())
+            count += emptyTrashDir(dir);
+        return count;
+    }));
 }
 
 QString FileOps::rename(const QString &path, const QString &name) {
