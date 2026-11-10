@@ -8,6 +8,7 @@
         <file alias="PathBar.qml">PathBar.qml</file>
         <file alias="PreviewPane.qml">PreviewPane.qml</file>
         <file alias="HelpOverlay.qml">HelpOverlay.qml</file>
+        <file alias="MountPrompt.qml">MountPrompt.qml</file>
         <file alias="PreviewWindow.qml">PreviewWindow.qml</file>
         <file alias="PdfPreview.qml">PdfPreview.qml</file>
         <file alias="MediaPreview.qml">MediaPreview.qml</file>

@@ -127,6 +127,7 @@ int main(int argc, char *argv[]) {
     QObject::connect(&translator, &Translator::changed, &engine, &QQmlEngine::retranslate);
     engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
     qmlRegisterUncreatableType<FolderModel>("Folio", 1, 0, "FolderModel", "Owned by the backend");
+    qmlRegisterUncreatableType<Mounter>("Folio", 1, 0, "Mounter", "Owned by the backend");
     engine.rootContext()->setContextProperty("translator", &translator);
     engine.rootContext()->setContextProperty("theme", &theme);
     engine.rootContext()->setContextProperty("places", &places);

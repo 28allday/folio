@@ -220,6 +220,19 @@ ApplicationWindow {
             }
         }
 
+        // The mouse's back and forward thumb buttons move through history,
+        // as in a browser. Only those buttons are taken; every other click
+        // passes through to what's underneath.
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.BackButton | Qt.ForwardButton
+            onPressed: mouse => mouse.button === Qt.BackButton ? backend.back() : backend.forward()
+        }
+
+        MountPrompt {
+            anchors.fill: parent
+        }
+
         HelpOverlay {
             anchors.fill: parent
             visible: win.helpVisible

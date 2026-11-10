@@ -161,6 +161,13 @@ ApplicationWindow {
             }
         }
 
+        // The mouse's back and forward thumb buttons step through the folder.
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.BackButton | Qt.ForwardButton
+            onPressed: mouse => mouse.button === Qt.BackButton ? previewer.previous() : previewer.next()
+        }
+
         HelpOverlay {
             anchors.fill: parent
             visible: win.helpVisible

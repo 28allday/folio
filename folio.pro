@@ -8,6 +8,7 @@ HEADERS += \
     src/backend.h \
     src/filemanager1.h \
     src/foldermodel.h \
+    src/mounter.h \
     src/places.h \
     src/previewer.h \
     src/theme.h \
@@ -19,6 +20,7 @@ SOURCES += \
     src/backend.cpp \
     src/filemanager1.cpp \
     src/foldermodel.cpp \
+    src/mounter.cpp \
     src/places.cpp \
     src/previewer.cpp \
     src/theme.cpp \
@@ -26,5 +28,7 @@ SOURCES += \
     src/translator.cpp
 
 LIBS += -lz
+CONFIG += link_pkgconfig
+PKGCONFIG += gio-2.0
 
 RESOURCES += src/resources.qrc

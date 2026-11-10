@@ -1,8 +1,9 @@
 import QtQuick
+import QtQuick.Shapes
 
-// One item in the grid: a preview on top, its name below. Folders show the
-// first pictures inside them peeking out; files show a real thumbnail when
-// one can be made, and a drawn stand-in for their kind when not.
+// One item in the grid: a preview on top, its name below. Folders are a
+// quiet card with a dot per item inside; files show a real thumbnail when one
+// can be made, and a drawn stand-in for their kind when not.
 Item {
     id: tile
 
@@ -25,11 +26,6 @@ Item {
 
     function thumbUrl(file, type, size) {
         return "image://thumb/" + size + "/" + encodeURIComponent(type) + "/" + encodeURIComponent(file)
-    }
-
-    function guessImageMime(file) {
-        const ext = file.split(".").pop().toLowerCase()
-        return "image/" + (ext === "jpg" ? "jpeg" : ext === "heic" ? "heif" : ext)
     }
 
     // The badge and stand-in color for each kind, from the theme's palette.
@@ -88,54 +84,50 @@ Item {
         onDoubleTapped: tile.activated()
     }
 
+    // A folder's outline: a card with a tab on its top left edge, drawn as
+    // one silhouette.
+    component FolderShape: Shape {
+        id: shape
+        property color fill: theme.lighterBackground
+        property color stroke: "transparent"
+        property real strokeWidth: 1
+        width: 128
+        height: 92
+        preferredRendererType: Shape.CurveRenderer
+        ShapePath {
+            fillColor: shape.fill
+            strokeColor: shape.stroke
+            strokeWidth: shape.strokeWidth
+            joinStyle: ShapePath.MiterJoin
+            PathSvg { path: "M4.5 88.5V0.5H46L50 6.5H123.5V88.5Z" }
+        }
+    }
+
+    // Folders are a plain card with a dot for each thing inside, up to eight,
+    // so full and empty folders read differently without a number or a
+    // picture competing with the files around them.
     Component {
         id: folderArt
 
         Item {
-            readonly property color panel: theme.lighterBackground
-
-            // Back of the folder and its tab.
-            Rectangle { x: 4; y: 0; width: 46; height: 10; color: parent.panel; radius: Math.min(2, theme.radius) }
-            Rectangle { x: 4; y: 8; width: 120; height: 84; color: parent.panel; radius: Math.min(2, theme.radius) }
-
-            // Up to two pictures from inside, peeking over the front panel.
-            Repeater {
-                model: tile.peek
-                delegate: Rectangle {
-                    required property int index
-                    required property string modelData
-                    x: index === 0 ? 18 : 58
-                    y: index === 0 ? 16 : 22
-                    width: 52
-                    height: 40
-                    color: theme.darkBackground
-                    border.width: 1
-                    border.color: theme.lighterBackground
-                    clip: true
-                    Image {
-                        anchors.fill: parent
-                        anchors.margins: 1
-                        asynchronous: true
-                        fillMode: Image.PreserveAspectCrop
-                        source: tile.thumbUrl(modelData, tile.guessImageMime(modelData), 128)
-                    }
-                }
+            FolderShape {
+                fill: tile.current ? Qt.tint(theme.lighterBackground, tile.tint(theme.accent, 0.22)) : theme.lighterBackground
+                stroke: tile.current ? theme.accent : "transparent"
             }
-
-            // Front panel, tinted toward the accent, with the item count.
-            Rectangle {
-                x: 4; y: 40; width: 120; height: 52
-                color: Qt.tint(theme.lighterBackground, tile.tint(theme.accent, 0.16))
-                radius: Math.min(2, theme.radius)
-                Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: theme.accent }
+            Row {
+                x: 14
+                y: 74
+                spacing: 4
+                Repeater {
+                    model: Math.max(0, Math.min(8, tile.itemCount))
+                    Rectangle { width: 4; height: 4; color: tile.tint(theme.foreground, 0.45) }
+                }
                 Text {
-                    anchors.left: parent.left
-                    anchors.bottom: parent.bottom
-                    anchors.margins: 8
-                    visible: tile.itemCount >= 0
-                    text: qsTr("%n items", "", tile.itemCount)
-                    color: theme.brightForeground
-                    font.pixelSize: 10
+                    visible: tile.itemCount > 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "+"
+                    color: tile.tint(theme.foreground, 0.45)
+                    font.pixelSize: 9
                 }
             }
         }

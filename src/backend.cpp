@@ -13,19 +13,18 @@
 
 Backend::Backend(const QString &home, QObject *parent)
     : QObject(parent), m_home(home.isEmpty() ? QDir::homePath() : home) {
-    connect(&m_mount, &QProcess::finished, this, [this](int code, QProcess::ExitStatus status) {
+    connect(&m_mounter, &Mounter::mounted, this, [this](const QString &, const QString &root) {
         setBusy({});
-        const QString root = gvfsRoot() + "/sftp:host=" + m_mountHost;
-        const QString output = QString::fromUtf8(m_mount.readAllStandardError()).trimmed();
-        // "Already mounted" is as good as a fresh mount.
-        if ((code != 0 || status != QProcess::NormalExit) && !QFileInfo(root).isDir()) {
-            setMessage(tr("Couldn't open %1 over SFTP: %2").arg(m_mountHost, output.isEmpty() ? tr("the mount failed") : output));
-            return;
-        }
         // Land in the matching home folder when the other machine has one,
         // which on a tailnet of one person's machines it usually does.
         const QString remoteHome = root + QDir::homePath();
         navigate(QFileInfo(remoteHome).isDir() ? remoteHome : root);
+    });
+    connect(&m_mounter, &Mounter::failed, this, [this](const QString &, const QString &error) {
+        setBusy({});
+        // An empty error is the user saying no to a question: nothing to report.
+        if (!error.isEmpty())
+            setMessage(tr("Couldn't open %1 over SFTP: %2").arg(m_mountHost, error));
     });
     // The preview reports each file it steps to, and the grid follows.
     connect(&m_preview, &QProcess::readyReadStandardOutput, this, [this] {
@@ -43,12 +42,6 @@ Backend::Backend(const QString &home, QObject *parent)
         // rather than letting the window just vanish.
         if (status == QProcess::CrashExit)
             setMessage(tr("The preview closed unexpectedly on %1.").arg(QFileInfo(m_previewed).fileName()));
-    });
-    connect(&m_mount, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
-        if (error != QProcess::FailedToStart)
-            return;
-        setBusy({});
-        setMessage(tr("Opening tailnet machines needs gio from GVfs, which isn't installed."));
     });
 }
 
@@ -151,7 +144,7 @@ void Backend::forward() {
 }
 
 void Backend::openPeer(const QString &host) {
-    if (m_mount.state() != QProcess::NotRunning)
+    if (m_mounter.busy())
         return;
     const QString root = gvfsRoot() + "/sftp:host=" + host;
     if (QFileInfo(root).isDir()) {
@@ -164,8 +157,7 @@ void Backend::openPeer(const QString &host) {
     // any other folder.
     m_mountHost = host;
     setBusy(tr("Connecting to %1…").arg(host));
-    m_mount.start("gio", {"mount", "sftp://" + host + "/"});
-    m_mount.closeWriteChannel();
+    m_mounter.mount("sftp://" + host + "/");
 }
 
 void Backend::dismissMessage() {

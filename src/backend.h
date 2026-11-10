@@ -6,6 +6,7 @@
 #include <QVariantList>
 
 #include "foldermodel.h"
+#include "mounter.h"
 
 // Where the window is and how it got there: the current folder, its
 // breadcrumbs, back/forward history, and the actions that leave the folder
@@ -13,6 +14,7 @@
 class Backend : public QObject {
     Q_OBJECT
     Q_PROPERTY(FolderModel *folder READ folder CONSTANT)
+    Q_PROPERTY(Mounter *mounter READ mounter CONSTANT)
     Q_PROPERTY(QString path READ path NOTIFY pathChanged)
     Q_PROPERTY(QString title READ title NOTIFY pathChanged)
     Q_PROPERTY(QVariantList crumbs READ crumbs NOTIFY pathChanged)
@@ -27,6 +29,7 @@ public:
     ~Backend() override;
 
     FolderModel *folder() { return &m_folder; }
+    Mounter *mounter() { return &m_mounter; }
     QString path() const { return m_folder.path(); }
     QString title() const;
     QVariantList crumbs() const;
@@ -80,7 +83,7 @@ private:
     QString m_message;
     QString m_busy;
     QString m_pendingSelection;
-    QProcess m_mount;
+    Mounter m_mounter;
     QString m_mountHost;
     QProcess m_preview;
     QString m_previewed;

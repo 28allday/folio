@@ -22,11 +22,12 @@ Folio replaces it with an app built the way Hype, Monologue, Omacut and Signed a
 Done, tested (19 Qt Test cases), and verified offscreen:
 
 - Folder model listing off the UI thread, folders first, natural sort, name or newest-first, hidden files toggle, live reload on change.
-- Folder tiles with the first two pictures inside peeking out and an item count; file tiles with real thumbnails (in-process for common images, installed thumbnailers for video, PDF, HEIC, office files), drawn stand-ins otherwise.
+- Folder tiles as plain cards with a dot per item inside (up to eight); file tiles with real thumbnails (in-process for common images, installed thumbnailers for video, PDF, HEIC, office files), drawn stand-ins otherwise.
 - Shared thumbnail cache per the spec, with failure markers so broken files aren't retried.
 - Preview pane: large preview, the system's type name, size, modified, dimensions, opening lines of text files, Open.
 - Sidebar: XDG places, Dropbox when `~/Dropbox` exists (with `dropbox-cli` sync status), Trash, system and removable drives with free space, tailnet machines from `tailscale status --json`.
-- Tailnet machines open over SFTP via `gio mount`, landing in the matching home folder.
+- Tailnet machines open over SFTP through GIO, landing in the matching home folder; GVfs's questions (host key on first connection, password) are asked in the window.
+- Mouse back/forward buttons move through history (in the preview: previous/next file).
 - Space opens a large preview in its own process (`folio preview`), like Sushi: pictures at full size with zoom, animated GIF/WebP, video and audio playing (Qt Multimedia's FFmpeg backend), PDFs scrolling (Qt PDF), text and rendered Markdown, folders with their pictures, and the largest cached thumbnail for anything else. Arrows step through the folder and the grid follows; a crash in the preview is reported in the Folio window. Ctrl+I toggles the details pane.
 - `org.freedesktop.FileManager1` for "Show in folder"; `folio <file>` opens its folder with the file selected.
 - Whole-palette theme following, Hyprland rounding, the Omarchy translator, `?` overlay.
@@ -76,7 +77,7 @@ Done, tested (19 Qt Test cases), and verified offscreen:
 
 ### 4. Remote and removable storage
 
-- First connection to a tailnet machine: GVfs asks to confirm the host key. Drive the mount through GIO's `GMountOperation` from C++ (not the `gio` CLI) and show the question in the window.
+- GVfs shows the host key fingerprint as "???" on first connection; show the real fingerprint (from `ssh-keyscan`) next to its question so it can be checked.
 - Unmount and eject (removable drives, SFTP mounts) from the sidebar.
 - Taildrive shares listed under their machine once the tailnet's ACLs grant `drive:share`/`drive:access`; mounted as WebDAV through GVfs.
 - SMB/NFS/MTP keep working through the GVfs backends Omarchy already installs (`gvfs-smb`, `gvfs-nfs`, `gvfs-mtp`); MTP phones appear under Devices.
