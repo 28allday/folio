@@ -2,14 +2,14 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
 
-// The right-click menu. On an item: Open, Open With (each app that can),
+// The right-click fileMenu. On an item: Open, Open With (each app that can),
 // Preview, Rename, Duplicate, Copy, Cut, Paste Into, Copy Path, Compress,
 // Share (Dropbox link, Taildrop, LocalSend: whichever are available), Pin,
 // Terminal, Delete. On empty
 // space: Paste, New Folder, Copy Path, Terminal, hidden files. Entries show
 // their keys, so the menu also teaches the shortcuts.
 FolioMenu {
-    id: menu
+    id: fileMenu
 
     // What was clicked ({path, name, isDir}), or null for empty space.
     property var target: null
@@ -54,89 +54,89 @@ FolioMenu {
     }
 
     FolioMenuItem {
-        shown: menu.onItem && menu.trashView
-        text: menu.onSelection ? qsTr("Restore %n Items", "", menu.paths.length) : qsTr("Restore")
-        onTriggered: fileOps.restore(menu.paths)
+        shown: fileMenu.onItem && fileMenu.trashView
+        text: fileMenu.onSelection ? qsTr("Restore %n Items", "", fileMenu.paths.length) : qsTr("Restore")
+        onTriggered: fileOps.restore(fileMenu.paths)
     }
     FolioMenuItem {
-        shown: !menu.onItem && menu.trashView
+        shown: !fileMenu.onItem && fileMenu.trashView
         text: qsTr("Empty Trash…")
-        onTriggered: menu.emptyTrashRequested()
+        onTriggered: fileMenu.emptyTrashRequested()
     }
     FolioMenuItem {
-        shown: menu.onItem
-        text: menu.onFolder ? qsTr("Open Folder") : qsTr("Open")
+        shown: fileMenu.onItem
+        text: fileMenu.onFolder ? qsTr("Open Folder") : qsTr("Open")
         keys: "⏎"
-        onTriggered: backend.open(menu.target.path)
+        onTriggered: backend.open(fileMenu.target.path)
     }
     // Every app that says it can open this type, the default first.
     FolioMenu {
         id: openWith
         title: qsTr("Open With")
-        enabled: menu.apps.length > 0
+        enabled: fileMenu.apps.length > 0
         Repeater {
-            model: menu.apps
+            model: fileMenu.apps
             FolioMenuItem {
                 required property var modelData
                 text: modelData.isDefault ? qsTr("%1 (default)").arg(modelData.name) : modelData.name
-                onTriggered: fileOps.openWith(menu.target.path, modelData.id)
+                onTriggered: fileOps.openWith(fileMenu.target.path, modelData.id)
             }
         }
     }
     FolioMenuItem {
-        shown: menu.onItem
+        shown: fileMenu.onItem
         text: qsTr("Preview")
         keys: "Space"
-        onTriggered: backend.togglePreview(menu.target.path)
+        onTriggered: backend.togglePreview(fileMenu.target.path)
     }
-    MenuLine { shown: menu.onItem }
+    MenuLine { shown: fileMenu.onItem }
     FolioMenuItem {
-        shown: !menu.trashView && (menu.onItem)
+        shown: !fileMenu.trashView && (fileMenu.onItem)
         text: qsTr("Rename…")
         keys: "F2"
-        onTriggered: menu.renameRequested(menu.target)
+        onTriggered: fileMenu.renameRequested(fileMenu.target)
     }
     FolioMenuItem {
-        shown: !menu.trashView && (menu.onItem)
+        shown: !fileMenu.trashView && (fileMenu.onItem)
         text: qsTr("Duplicate")
         keys: "Ctrl+Shift+D"
-        onTriggered: fileOps.duplicate(menu.target.path)
+        onTriggered: fileOps.duplicate(fileMenu.target.path)
     }
     FolioMenuItem {
-        shown: menu.onItem
+        shown: fileMenu.onItem
         text: qsTr("Copy")
         keys: "Ctrl+C"
-        onTriggered: fileOps.copy(menu.paths)
+        onTriggered: fileOps.copy(fileMenu.paths)
     }
     FolioMenuItem {
-        shown: !menu.trashView && (menu.onItem)
+        shown: !fileMenu.trashView && (fileMenu.onItem)
         text: qsTr("Cut")
         keys: "Ctrl+X"
-        onTriggered: fileOps.cut(menu.paths)
+        onTriggered: fileOps.cut(fileMenu.paths)
     }
     FolioMenuItem {
-        shown: !menu.trashView && (!menu.onItem || menu.onFolder)
-        text: menu.onFolder ? qsTr("Paste Into Folder") : qsTr("Paste")
-        keys: menu.onItem ? "" : "Ctrl+V"
+        shown: !fileMenu.trashView && (!fileMenu.onItem || fileMenu.onFolder)
+        text: fileMenu.onFolder ? qsTr("Paste Into Folder") : qsTr("Paste")
+        keys: fileMenu.onItem ? "" : "Ctrl+V"
         enabled: fileOps.canPaste
-        onTriggered: fileOps.paste(menu.onItem ? menu.target.path : menu.folder)
+        onTriggered: fileOps.paste(fileMenu.onItem ? fileMenu.target.path : fileMenu.folder)
     }
     FolioMenuItem {
         text: qsTr("Copy Path")
         keys: "Ctrl+Shift+C"
-        onTriggered: fileOps.yank(menu.onItem ? menu.paths : [menu.folder])
+        onTriggered: fileOps.yank(fileMenu.onItem ? fileMenu.paths : [fileMenu.folder])
     }
     FolioMenuItem {
-        shown: !menu.onItem && !menu.trashView
+        shown: !fileMenu.onItem && !fileMenu.trashView
         text: qsTr("New Folder")
         keys: "Ctrl+Shift+N"
-        onTriggered: fileOps.newFolder(menu.folder)
+        onTriggered: fileOps.newFolder(fileMenu.folder)
     }
     MenuLine { }
     FolioMenuItem {
-        shown: !menu.trashView && (menu.onItem)
+        shown: !fileMenu.trashView && (fileMenu.onItem)
         text: qsTr("Compress")
-        onTriggered: fileOps.compress(menu.paths)
+        onTriggered: fileOps.compress(fileMenu.paths)
     }
     // Share offers only what this machine has: a Dropbox link for things in
     // the Dropbox folder (while Dropbox runs), Taildrop to the online
@@ -152,24 +152,24 @@ FolioMenu {
         id: shareMenu
         title: qsTr("Share")
         Repeater {
-            model: menu.canDropbox ? 1 : 0
+            model: fileMenu.canDropbox ? 1 : 0
             FolioMenuItem {
                 text: qsTr("Dropbox Link")
-                onTriggered: fileOps.dropboxLink(menu.target.path)
+                onTriggered: fileOps.dropboxLink(fileMenu.target.path)
             }
         }
         Repeater {
-            model: menu.canLocalSend ? 1 : 0
+            model: fileMenu.canLocalSend ? 1 : 0
             FolioMenuItem {
                 text: qsTr("LocalSend…")
-                onTriggered: fileOps.shareLocalSend(menu.paths)
+                onTriggered: fileOps.shareLocalSend(fileMenu.paths)
             }
         }
     }
     // Taildrop is its own menu inside Share, one entry per machine; it's
     // added only while there are machines to send to.
     Instantiator {
-        model: menu.canTaildrop ? 1 : 0
+        model: fileMenu.canTaildrop ? 1 : 0
         delegate: FolioMenu {
             title: qsTr("Taildrop")
             Repeater {
@@ -177,7 +177,7 @@ FolioMenu {
                 FolioMenuItem {
                     required property var modelData
                         text: modelData.name
-                    onTriggered: fileOps.shareTaildrop(menu.paths, modelData.host)
+                    onTriggered: fileOps.shareTaildrop(fileMenu.paths, modelData.host)
                 }
             }
         }
@@ -185,37 +185,37 @@ FolioMenu {
         onObjectRemoved: (index, object) => shareMenu.removeMenu(object)
     }
     FolioMenuItem {
-        shown: menu.onFolder
-        text: menu.onFolder && places.isPinned(menu.target.path) ? qsTr("Unpin") : qsTr("Pin")
+        shown: fileMenu.onFolder
+        text: fileMenu.onFolder && places.isPinned(fileMenu.target.path) ? qsTr("Unpin") : qsTr("Pin")
         keys: "Ctrl+D"
         onTriggered: {
-            if (places.isPinned(menu.target.path)) {
-                places.unpin(menu.target.path)
+            if (places.isPinned(fileMenu.target.path)) {
+                places.unpin(fileMenu.target.path)
                 return
             }
-            const problem = places.pin(menu.target.path)
+            const problem = places.pin(fileMenu.target.path)
             if (problem.length > 0)
                 backend.showMessage(problem)
         }
     }
     FolioMenuItem {
-        shown: !menu.onItem || menu.onFolder
+        shown: !fileMenu.onItem || fileMenu.onFolder
         text: qsTr("Open Terminal Here")
-        onTriggered: fileOps.openTerminal(menu.onItem ? menu.target.path : menu.folder)
+        onTriggered: fileOps.openTerminal(fileMenu.onItem ? fileMenu.target.path : fileMenu.folder)
     }
     FolioMenuItem {
-        shown: !menu.onItem
+        shown: !fileMenu.onItem
         text: backend.folder.showHidden ? qsTr("Hide Hidden Files") : qsTr("Show Hidden Files")
         keys: "Ctrl+H"
         onTriggered: backend.folder.showHidden = !backend.folder.showHidden
     }
-    MenuLine { shown: menu.onItem }
+    MenuLine { shown: fileMenu.onItem }
     // Delete moves to the trash; Restore in any file manager brings it back.
     FolioMenuItem {
-        shown: menu.onItem
-        text: menu.trashView ? qsTr("Delete Permanently…")
-            : menu.onSelection ? qsTr("Delete %n Items", "", menu.paths.length) : qsTr("Delete")
+        shown: fileMenu.onItem
+        text: fileMenu.trashView ? qsTr("Delete Permanently…")
+            : fileMenu.onSelection ? qsTr("Delete %n Items", "", fileMenu.paths.length) : qsTr("Delete")
         keys: "Delete"
-        onTriggered: menu.trashView ? menu.deleteRequested() : fileOps.trash(menu.paths)
+        onTriggered: fileMenu.trashView ? fileMenu.deleteRequested() : fileOps.trash(fileMenu.paths)
     }
 }
