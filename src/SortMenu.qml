@@ -5,13 +5,19 @@ import QtQuick
 FolioMenu {
     id: menu
 
+    // Each with its entry here, and the sort button's glyph and tooltip.
     readonly property var orders: [
-        { mode: "name", label: qsTr("Name") },
-        { mode: "kind", label: qsTr("Kind") },
-        { mode: "modified", label: qsTr("Newest") },
-        { mode: "oldest", label: qsTr("Oldest") },
-        { mode: "size", label: qsTr("Size") }
+        { mode: "name", label: qsTr("Name"), glyph: "sort-name", tip: qsTr("Sorted by name (S)") },
+        { mode: "kind", label: qsTr("Kind"), glyph: "sort-kind", tip: qsTr("Sorted by kind (S)") },
+        { mode: "modified", label: qsTr("Newest"), glyph: "sort-newest", tip: qsTr("Newest first (S)") },
+        { mode: "oldest", label: qsTr("Oldest"), glyph: "sort-oldest", tip: qsTr("Oldest first (S)") },
+        { mode: "size", label: qsTr("Size"), glyph: "sort-size", tip: qsTr("Biggest first (S)") }
     ]
+    readonly property var current: orders.find(o => o.mode === backend.folder.sortMode) || orders[0]
+    function step(by) {
+        const i = orders.findIndex(o => o.mode === backend.folder.sortMode)
+        backend.folder.sortMode = orders[(i + by + orders.length) % orders.length].mode
+    }
 
     Repeater {
         model: menu.orders
