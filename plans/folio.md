@@ -47,7 +47,7 @@ Done, tested (19 Qt Test cases), and verified offscreen:
 - Identify files by GIO URI rather than local path, so SFTP, MTP and Trash entries behave the same as local ones once operations exist.
 - Design operation safety first: the queue, undo log and conflict handling in phase 1 build on it.
 - Run thumbnailers in a separate, resource-limited process, the way the preview already runs apart.
-- Thumbnail cache fixes: validate `Thumb::URI` on a cache hit, version the failure directory (`fail/folio-<version>`), and don't record a missing thumbnailer as a failure.
+- Thumbnail cache fixes: validate `Thumb::URI` on a cache hit and version the failure directory (`fail/folio-<version>`).
 - Responsiveness: summarize subfolders lazily (visible tiles first), and move `details()` off the UI thread.
 
 ### Previews, finishing the Sushi replacement

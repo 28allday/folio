@@ -810,6 +810,28 @@ private slots:
         QVERIFY(QFile::exists(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(dir.filePath("clip.mp4")))));
     }
 
+    void thumbnailsRememberOnlyWhatFailed()
+    {
+        QTemporaryDir dir;
+        QImage frame(64, 32, QImage::Format_RGB32);
+        frame.fill(Qt::green);
+        QVERIFY(frame.save(dir.filePath("frame.png")));
+        write(dir.filePath("heif.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=/bin/cp \"" + dir.filePath("frame.png").toUtf8() + "\" %o\nMimeType=image/heif;\n");
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
+
+        // Nothing could make one, so nothing failed: a thumbnailer installed
+        // later still gets its turn.
+        write(dir.filePath("bundle.zip"), "not a zip");
+        QVERIFY(thumbnails.load(dir.filePath("bundle.zip"), "application/zip", 128).isNull());
+        QVERIFY(!QFile::exists(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(dir.filePath("bundle.zip")))));
+
+        // A folder's peek asks for any picture, and gets the thumbnailer for
+        // the one it names.
+        write(dir.filePath("photo.heic"), "not a real heic");
+        QCOMPARE(thumbnails.load(dir.filePath("photo.heic"), "image/*", 128).size(), QSize(64, 32));
+    }
+
     void previewerPicksAViewerForEachType()
     {
         QCOMPARE(Previewer::viewerFor("image/png", false), QString("image"));

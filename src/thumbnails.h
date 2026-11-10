@@ -28,7 +28,8 @@ public:
 private:
     QString cachePath(const QString &path, int size) const;
     QString failPath(const QString &path) const;
-    QImage generate(const QString &path, const QString &mime, int pixels) const;
+    // Sets `attempted` when Qt's reader or a thumbnailer could take the file.
+    QImage generate(const QString &path, const QString &mime, int pixels, bool &attempted) const;
     QImage runThumbnailer(const QString &command, const QString &path, int pixels) const;
     void remember(QImage image, const QString &path, int size, const QString &mtime) const;
     void rememberFailure(const QString &path, const QString &mtime) const;

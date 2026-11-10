@@ -8,6 +8,7 @@
 #include <QDirIterator>
 #include <QFileInfo>
 #include <QImageReader>
+#include <QMimeDatabase>
 #include <QProcess>
 #include <QQuickTextureFactory>
 #include <QRunnable>
@@ -160,10 +161,19 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
     if (failedBefore(path, mtime))
         return {};
 
+    // A folder's peek asks for any picture ("image/*"); named by extension,
+    // as the grid names it, it goes to the same thumbnailer as its tile.
+    const QString type = mime.endsWith("/*")
+        ? QMimeDatabase().mimeTypeForFile(path, QMimeDatabase::MatchExtension).name()
+        : mime;
     const int pixels = bucketPixels(bucketFor(size));
-    QImage image = generate(path, mime, pixels);
+    bool attempted = false;
+    QImage image = generate(path, type, pixels, attempted);
     if (image.isNull()) {
-        rememberFailure(path, mtime);
+        // Only a reader or thumbnailer that ran and failed is remembered, so
+        // one installed later still gets its turn.
+        if (attempted)
+            rememberFailure(path, mtime);
         return {};
     }
     if (image.width() > pixels || image.height() > pixels)
@@ -172,13 +182,14 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
     return image;
 }
 
-QImage Thumbnails::generate(const QString &path, const QString &mime, int pixels) const {
+QImage Thumbnails::generate(const QString &path, const QString &mime, int pixels, bool &attempted) const {
     // Common photo formats decode fastest in-process; anything Qt can't read
     // (HEIC, JPEG XL) falls through to the installed thumbnailers.
     if (mime.startsWith("image/")) {
         QImageReader reader(path);
         reader.setAutoTransform(true);
         if (reader.canRead()) {
+            attempted = true;
             const QSize full = reader.size();
             if (full.isValid())
                 reader.setScaledSize(full.scaled(pixels, pixels, Qt::KeepAspectRatio));
@@ -190,6 +201,7 @@ QImage Thumbnails::generate(const QString &path, const QString &mime, int pixels
     const QString command = m_thumbnailers.value(mime);
     if (command.isEmpty())
         return {};
+    attempted = true;
     return runThumbnailer(command, path, pixels);
 }
 
