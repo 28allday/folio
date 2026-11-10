@@ -122,6 +122,7 @@ signals:
 
 private:
     void setLoading(bool loading);
+    void setEntries(const QVector<Entry> &entries);
     void clearEntries();
     QString cacheKey() const;
     void remember();
