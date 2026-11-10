@@ -1,5 +1,7 @@
 #include "mounter.h"
 
+#include <QPointer>
+
 // GIO's headers use `signals` as a struct member, which Qt defines as a
 // keyword.
 #undef signals
@@ -46,26 +48,30 @@ struct MounterCallbacks {
     }
 
     static void mounted(GObject *source, GAsyncResult *result, gpointer data) {
-        auto *self = static_cast<Mounter *>(data);
+        auto *guard = static_cast<QPointer<Mounter> *>(data);
+        Mounter *self = guard->data();
+        delete guard;
         GError *error = nullptr;
         const bool ok = g_file_mount_enclosing_volume_finish(G_FILE(source), result, &error);
-        const QString uri = self->m_uri;
-        // Mounted earlier (by Folio or another app) is as good as now.
-        const bool already = error && g_error_matches(error, G_IO_ERROR, G_IO_ERROR_ALREADY_MOUNTED);
-        if (ok || already) {
-            char *path = g_file_get_path(self->m_file);
-            const QString local = QString::fromUtf8(path ? path : "");
-            g_free(path);
-            self->finish();
-            if (local.isEmpty())
-                emit self->failed(uri, QObject::tr("GVfs mounted it but gave no local folder for it"));
-            else
-                emit self->mounted(uri, local);
-        } else {
-            const bool cancelled = error && g_error_matches(error, G_IO_ERROR, G_IO_ERROR_FAILED_HANDLED);
-            const QString message = cancelled ? QString() : QString::fromUtf8(error ? error->message : "");
-            self->finish();
-            emit self->failed(uri, message);
+        if (self) {
+            const QString uri = self->m_uri;
+            // Mounted earlier (by Folio or another app) is as good as now.
+            const bool already = error && g_error_matches(error, G_IO_ERROR, G_IO_ERROR_ALREADY_MOUNTED);
+            if (ok || already) {
+                char *path = g_file_get_path(self->m_file);
+                const QString local = QString::fromUtf8(path ? path : "");
+                g_free(path);
+                self->finish();
+                if (local.isEmpty())
+                    emit self->failed(uri, QObject::tr("GVfs mounted it but gave no local folder for it"));
+                else
+                    emit self->mounted(uri, local);
+            } else {
+                const bool cancelled = error && g_error_matches(error, G_IO_ERROR, G_IO_ERROR_FAILED_HANDLED);
+                const QString message = cancelled ? QString() : QString::fromUtf8(error ? error->message : "");
+                self->finish();
+                emit self->failed(uri, message);
+            }
         }
         if (error)
             g_error_free(error);
@@ -75,6 +81,8 @@ struct MounterCallbacks {
 Mounter::Mounter(QObject *parent) : QObject(parent) {}
 
 Mounter::~Mounter() {
+    // A prompt nobody will answer any more would keep GVfs waiting.
+    cancel();
     if (m_operation)
         g_signal_handlers_disconnect_by_data(m_operation, this);
     finish();
@@ -91,9 +99,10 @@ void Mounter::mount(const QString &uri, bool trustNewHost) {
     g_signal_connect(m_operation, "ask-password", G_CALLBACK(MounterCallbacks::password), this);
     g_signal_connect(m_operation, "aborted", G_CALLBACK(MounterCallbacks::aborted), this);
     // Qt runs on GLib's main loop on Linux, so the reply arrives on the UI
-    // thread like any other event.
+    // thread like any other event. The window can close before GVfs answers,
+    // and GIO calls back regardless, so the callback gets a guard, not `this`.
     g_file_mount_enclosing_volume(m_file, G_MOUNT_MOUNT_NONE, m_operation, nullptr,
-                                  MounterCallbacks::mounted, this);
+                                  MounterCallbacks::mounted, new QPointer<Mounter>(this));
 }
 
 void Mounter::choose(int choice) {

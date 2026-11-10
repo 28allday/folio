@@ -629,6 +629,23 @@ private slots:
         QCOMPARE(backend.takeSelection(), QString("report.pdf"));
     }
 
+    void mounterOutlivedByGiosReply()
+    {
+        // A local folder can't be mounted, so GIO answers with an error on
+        // a later turn of the main loop, as it does for a slow tailnet
+        // machine. By then the first Mounter's window has closed.
+        QTemporaryDir dir;
+        const QString uri = QUrl::fromLocalFile(dir.path()).toString();
+        auto *closed = new Mounter;
+        closed->mount(uri);
+        delete closed;
+        Mounter open;
+        QSignalSpy failed(&open, &Mounter::failed);
+        open.mount(uri);
+        QVERIFY(failed.wait(2000));
+        QVERIFY(!open.busy());
+    }
+
     void trashFollowsXdgDataHome()
     {
         // g_file_trash puts things in $XDG_DATA_HOME/Trash, wherever that
