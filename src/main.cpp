@@ -6,6 +6,7 @@
 #include <QGuiApplication>
 #include <QIcon>
 #include <QQmlApplicationEngine>
+#include <QQmlEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
 #include <QUrl>
@@ -19,6 +20,7 @@
 #include "theme.h"
 #include "thumbnails.h"
 #include "translator.h"
+#include "windows.h"
 
 // Accepts a path, a file:// URI (how launchers and xdg-open pass folders),
 // or nothing for home. A file opens its folder with the file selected.
@@ -120,15 +122,12 @@ int main(int argc, char *argv[]) {
 
     Theme theme;
     Places places;
-    Backend backend;
     Thumbnails thumbnails;
-    // Declared before the engine, so it outlives the QML that uses it.
-    FileOps fileOps;
 
     QString select;
     const QString start = startPath(app.arguments(), &select);
 
-    QQmlApplicationEngine engine;
+    QQmlEngine engine;
     QObject::connect(&translator, &Translator::changed, &engine, &QQmlEngine::retranslate);
     engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
     // Creatable too: the column view lists each folder on the way here.
@@ -137,18 +136,11 @@ int main(int argc, char *argv[]) {
     engine.rootContext()->setContextProperty("translator", &translator);
     engine.rootContext()->setContextProperty("theme", &theme);
     engine.rootContext()->setContextProperty("places", &places);
-    engine.rootContext()->setContextProperty("backend", &backend);
-    engine.rootContext()->setContextProperty("fileOps", &fileOps);
-    engine.load(QUrl("qrc:/Main.qml"));
-    if (engine.rootObjects().isEmpty())
+
+    Windows windows(&engine);
+    if (!windows.open(start, select))
         return 1;
-
-    FileManager1::registerOn(&backend, &backend);
-
-    if (select.isEmpty())
-        backend.navigate(start);
-    else
-        backend.showItem(start + "/" + select);
+    FileManager1::registerOn(&windows, &windows);
 
     return app.exec();
 }

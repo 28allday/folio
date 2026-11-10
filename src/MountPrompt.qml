@@ -24,7 +24,7 @@ Rectangle {
     // Swallows clicks so the grid underneath stays put while asking.
     MouseArea { anchors.fill: parent }
 
-    Shortcut { sequence: "Escape"; enabled: prompt.visible; context: Qt.ApplicationShortcut; onActivated: prompt.mounter.cancel() }
+    Shortcut { sequence: "Escape"; enabled: prompt.visible; context: Qt.WindowShortcut; onActivated: prompt.mounter.cancel() }
 
     Rectangle {
         anchors.centerIn: parent

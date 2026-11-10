@@ -14,7 +14,8 @@ HEADERS += \
     src/previewer.h \
     src/theme.h \
     src/thumbnails.h \
-    src/translator.h
+    src/translator.h \
+    src/windows.h
 
 SOURCES += \
     src/main.cpp \
@@ -27,7 +28,8 @@ SOURCES += \
     src/previewer.cpp \
     src/theme.cpp \
     src/thumbnails.cpp \
-    src/translator.cpp
+    src/translator.cpp \
+    src/windows.cpp
 
 LIBS += -lz
 CONFIG += link_pkgconfig

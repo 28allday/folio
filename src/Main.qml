@@ -70,10 +70,10 @@ ApplicationWindow {
         return index >= 0 ? backend.folder.get(index) : ({})
     }
 
-    Shortcut { sequence: "?"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: win.helpVisible = !win.helpVisible }
-    Shortcut { sequence: "Escape"; context: Qt.ApplicationShortcut; enabled: win.helpVisible; onActivated: win.helpVisible = false }
-    Shortcut { sequence: "Q"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: Qt.quit() }
-    Shortcut { sequence: "Space"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: backend.togglePreview(win.current.path || "") }
+    Shortcut { sequence: "?"; context: Qt.WindowShortcut; enabled: !win.typing; onActivated: win.helpVisible = !win.helpVisible }
+    Shortcut { sequence: "Escape"; context: Qt.WindowShortcut; enabled: win.helpVisible; onActivated: win.helpVisible = false }
+    Shortcut { sequence: "Q"; context: Qt.WindowShortcut; enabled: !win.typing; onActivated: win.close() }
+    Shortcut { sequence: "Space"; context: Qt.WindowShortcut; enabled: !win.typing; onActivated: backend.togglePreview(win.current.path || "") }
     // Pins the selected folder, or the folder being shown when a file is
     // selected; pressed again, unpins it.
     function togglePin() {
@@ -86,40 +86,40 @@ ApplicationWindow {
         if (problem.length > 0)
             backend.showMessage(problem)
     }
-    Shortcut { sequence: "Ctrl+1"; context: Qt.ApplicationShortcut; onActivated: win.viewMode = "grid" }
-    Shortcut { sequence: "Ctrl+2"; context: Qt.ApplicationShortcut; onActivated: win.viewMode = "list" }
-    Shortcut { sequence: "Ctrl+3"; context: Qt.ApplicationShortcut; onActivated: win.viewMode = "columns" }
-    Shortcut { sequences: [StandardKey.Copy]; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: fileOps.copy(win.selectedPaths) }
-    Shortcut { sequences: [StandardKey.Cut]; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: fileOps.cut(win.selectedPaths) }
-    Shortcut { sequences: [StandardKey.Paste]; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: fileOps.paste(backend.path) }
+    Shortcut { sequence: "Ctrl+1"; context: Qt.WindowShortcut; onActivated: win.viewMode = "grid" }
+    Shortcut { sequence: "Ctrl+2"; context: Qt.WindowShortcut; onActivated: win.viewMode = "list" }
+    Shortcut { sequence: "Ctrl+3"; context: Qt.WindowShortcut; onActivated: win.viewMode = "columns" }
+    Shortcut { sequences: [StandardKey.Copy]; context: Qt.WindowShortcut; enabled: !win.typing; onActivated: fileOps.copy(win.selectedPaths) }
+    Shortcut { sequences: [StandardKey.Cut]; context: Qt.WindowShortcut; enabled: !win.typing; onActivated: fileOps.cut(win.selectedPaths) }
+    Shortcut { sequences: [StandardKey.Paste]; context: Qt.WindowShortcut; enabled: !win.typing; onActivated: fileOps.paste(backend.path) }
     // "Yank": the selected path (or the folder's) as text, for a terminal.
-    Shortcut { sequence: "Ctrl+Shift+C"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: fileOps.yank(win.selectedPaths.length > 0 ? win.selectedPaths : [backend.path]) }
-    Shortcut { sequence: "Delete"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: fileOps.trash(win.selectedPaths) }
-    Shortcut { sequence: "F2"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: if (win.current.path) rename.open(win.current) }
-    Shortcut { sequence: "Ctrl+Shift+D"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: if (win.current.path) fileOps.duplicate(win.current.path) }
-    Shortcut { sequences: [StandardKey.New]; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: backend.newWindow() }
-    Shortcut { sequence: "Ctrl+Shift+N"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: fileOps.newFolder(backend.path) }
+    Shortcut { sequence: "Ctrl+Shift+C"; context: Qt.WindowShortcut; enabled: !win.typing; onActivated: fileOps.yank(win.selectedPaths.length > 0 ? win.selectedPaths : [backend.path]) }
+    Shortcut { sequence: "Delete"; context: Qt.WindowShortcut; enabled: !win.typing; onActivated: fileOps.trash(win.selectedPaths) }
+    Shortcut { sequence: "F2"; context: Qt.WindowShortcut; enabled: !win.typing; onActivated: if (win.current.path) rename.open(win.current) }
+    Shortcut { sequence: "Ctrl+Shift+D"; context: Qt.WindowShortcut; enabled: !win.typing; onActivated: if (win.current.path) fileOps.duplicate(win.current.path) }
+    Shortcut { sequences: [StandardKey.New]; context: Qt.WindowShortcut; enabled: !win.typing; onActivated: backend.newWindow() }
+    Shortcut { sequence: "Ctrl+Shift+N"; context: Qt.WindowShortcut; enabled: !win.typing; onActivated: fileOps.newFolder(backend.path) }
     // Tab hands the keyboard between the sidebar and the files.
     Shortcut {
         sequences: ["Tab", "Backtab"]
-        context: Qt.ApplicationShortcut
+        context: Qt.WindowShortcut
         enabled: !win.typing
         onActivated: sidebar.activeFocus ? (view.item && view.item.focusView()) : sidebar.focusSidebar()
     }
-    Shortcut { sequences: ["Ctrl+L", "Alt+D"]; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: pathBar.editPath() }
-    Shortcut { sequence: "Ctrl+D"; context: Qt.ApplicationShortcut; onActivated: win.togglePin() }
-    Shortcut { sequence: "Ctrl+I"; context: Qt.ApplicationShortcut; onActivated: win.previewVisible = !win.previewVisible }
-    Shortcut { sequences: ["Return", "Enter"]; context: Qt.ApplicationShortcut; enabled: !win.typing && !sidebar.activeFocus; onActivated: if (win.current.path) backend.open(win.current.path) }
-    Shortcut { sequences: ["Backspace", "Alt+Up"]; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: backend.goUp() }
-    Shortcut { sequences: ["Alt+Left", StandardKey.Back]; context: Qt.ApplicationShortcut; onActivated: backend.back() }
-    Shortcut { sequences: ["Alt+Right", StandardKey.Forward]; context: Qt.ApplicationShortcut; onActivated: backend.forward() }
-    Shortcut { sequence: "Alt+Home"; context: Qt.ApplicationShortcut; onActivated: backend.navigate(places.home) }
-    Shortcut { sequence: "Ctrl+H"; context: Qt.ApplicationShortcut; onActivated: backend.folder.showHidden = !backend.folder.showHidden }
-    Shortcut { sequence: "S"; context: Qt.ApplicationShortcut; enabled: !win.typing; onActivated: {
+    Shortcut { sequences: ["Ctrl+L", "Alt+D"]; context: Qt.WindowShortcut; enabled: !win.typing; onActivated: pathBar.editPath() }
+    Shortcut { sequence: "Ctrl+D"; context: Qt.WindowShortcut; onActivated: win.togglePin() }
+    Shortcut { sequence: "Ctrl+I"; context: Qt.WindowShortcut; onActivated: win.previewVisible = !win.previewVisible }
+    Shortcut { sequences: ["Return", "Enter"]; context: Qt.WindowShortcut; enabled: !win.typing && !sidebar.activeFocus; onActivated: if (win.current.path) backend.open(win.current.path) }
+    Shortcut { sequences: ["Backspace", "Alt+Up"]; context: Qt.WindowShortcut; enabled: !win.typing; onActivated: backend.goUp() }
+    Shortcut { sequences: ["Alt+Left", StandardKey.Back]; context: Qt.WindowShortcut; onActivated: backend.back() }
+    Shortcut { sequences: ["Alt+Right", StandardKey.Forward]; context: Qt.WindowShortcut; onActivated: backend.forward() }
+    Shortcut { sequence: "Alt+Home"; context: Qt.WindowShortcut; onActivated: backend.navigate(places.home) }
+    Shortcut { sequence: "Ctrl+H"; context: Qt.WindowShortcut; onActivated: backend.folder.showHidden = !backend.folder.showHidden }
+    Shortcut { sequence: "S"; context: Qt.WindowShortcut; enabled: !win.typing; onActivated: {
         const modes = ["name", "kind", "modified", "oldest", "size"]
         backend.folder.sortMode = modes[(modes.indexOf(backend.folder.sortMode) + 1) % modes.length]
     } }
-    Shortcut { sequences: ["F5", StandardKey.Refresh]; context: Qt.ApplicationShortcut; onActivated: { backend.folder.reload(); places.refresh() } }
+    Shortcut { sequences: ["F5", StandardKey.Refresh]; context: Qt.WindowShortcut; onActivated: { backend.folder.reload(); places.refresh() } }
 
     Connections {
         target: backend

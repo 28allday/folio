@@ -3,7 +3,7 @@
 #include <QDBusAbstractAdaptor>
 #include <QStringList>
 
-class Backend;
+class Windows;
 
 // org.freedesktop.FileManager1: what browsers and other apps call for "Show
 // in folder". Without it, those buttons do nothing once Nautilus is gone.
@@ -12,11 +12,11 @@ class FileManager1 : public QDBusAbstractAdaptor {
     Q_CLASSINFO("D-Bus Interface", "org.freedesktop.FileManager1")
 
 public:
-    FileManager1(QObject *host, Backend *backend);
+    FileManager1(QObject *host, Windows *windows);
 
     // Claims the bus name and object path; false when another file manager
     // already holds it, in which case folio simply runs without it.
-    static bool registerOn(QObject *host, Backend *backend);
+    static bool registerOn(QObject *host, Windows *windows);
 
 public slots:
     void ShowFolders(const QStringList &uris, const QString &startupId);
@@ -24,5 +24,5 @@ public slots:
     void ShowItemProperties(const QStringList &uris, const QString &startupId);
 
 private:
-    Backend *m_backend;
+    Windows *m_windows;
 };

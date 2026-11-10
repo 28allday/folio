@@ -38,7 +38,7 @@ Folio is Omarchy's file manager: one window for finding, previewing and opening 
 | Ctrl+H | Show hidden files |
 | F5 | Reload |
 | ? | Show every shortcut |
-| Q | Quit |
+| Q | Close the window |
 
 ## Build
 

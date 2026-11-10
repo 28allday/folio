@@ -33,7 +33,7 @@ Rectangle {
         ["Ctrl+H", qsTr("Show hidden files")],
         ["F5", qsTr("Reload")],
         ["?", qsTr("Show these shortcuts")],
-        ["Q", qsTr("Quit")]
+        ["Q", qsTr("Close the window")]
     ]
 
     MouseArea { anchors.fill: parent; onClicked: overlay.dismissed() }
