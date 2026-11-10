@@ -96,10 +96,8 @@ FocusScope {
         return value.toLocaleString(Qt.locale(), "f", i === 0 ? 0 : 1) + " " + units[i]
     }
 
-    // Pins the selected folder, or the folder being shown when a file is
-    // selected; pressed again, unpins it.
-    function togglePin() {
-        const target = current.isDir ? current.path : backend.path
+    // Pins a folder to the sidebar, or unpins it when it's pinned already.
+    function togglePin(target) {
         if (places.isPinned(target)) {
             places.unpin(target)
             return
@@ -144,7 +142,9 @@ FocusScope {
     Shortcut { sequences: [StandardKey.New]; enabled: pane.keys; onActivated: backend.newWindow() }
     Shortcut { sequence: "Ctrl+Shift+N"; enabled: pane.keys && !pane.inTrash; onActivated: fileOps.newFolder(backend.path) }
     Shortcut { sequences: ["Ctrl+L", "Alt+D"]; enabled: pane.keys; onActivated: pathBar.editPath() }
-    Shortcut { sequence: "Ctrl+D"; enabled: pane.active; onActivated: pane.togglePin() }
+    // Pins the selected folder, or the folder being shown when a file is
+    // selected; pressed again, unpins it.
+    Shortcut { sequence: "Ctrl+D"; enabled: pane.active; onActivated: pane.togglePin(pane.current.isDir ? pane.current.path : backend.path) }
     Shortcut { sequence: "Ctrl+1"; enabled: pane.active; onActivated: pane.viewMode = "grid" }
     Shortcut { sequence: "Ctrl+2"; enabled: pane.active; onActivated: pane.viewMode = "list" }
     Shortcut { sequence: "Ctrl+3"; enabled: pane.active; onActivated: pane.viewMode = "columns" }
@@ -205,6 +205,7 @@ FocusScope {
         onRenameRequested: (target) => rename.open(target)
         onDeleteRequested: (paths) => pane.confirmDelete(paths)
         onEmptyTrashRequested: pane.emptyTrash()
+        onPinRequested: (path) => pane.togglePin(path)
     }
 
     ColumnLayout {

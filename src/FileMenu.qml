@@ -19,6 +19,7 @@ FolioMenu {
     signal renameRequested(var target)
     signal deleteRequested(var paths)
     signal emptyTrashRequested()
+    signal pinRequested(string path)
     // In the trash the menu is about getting things back, or letting go.
     readonly property bool trashView: fileOps.inTrash(folder)
 
@@ -189,15 +190,7 @@ FolioMenu {
         shown: fileMenu.onFolder
         text: fileMenu.onFolder && places.isPinned(fileMenu.target.path) ? qsTr("Unpin") : qsTr("Pin")
         keys: "Ctrl+D"
-        onTriggered: {
-            if (places.isPinned(fileMenu.target.path)) {
-                places.unpin(fileMenu.target.path)
-                return
-            }
-            const problem = places.pin(fileMenu.target.path)
-            if (problem.length > 0)
-                backend.showMessage(problem)
-        }
+        onTriggered: fileMenu.pinRequested(fileMenu.target.path)
     }
     FolioMenuItem {
         shown: !fileMenu.onItem || fileMenu.onFolder
