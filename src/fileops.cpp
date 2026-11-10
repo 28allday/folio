@@ -573,10 +573,11 @@ QString FileOps::rename(const QString &path, const QString &name) {
     if (clean.contains('/'))
         return tr("A name can't contain \"/\".");
     const QString destination = QDir(info.absolutePath()).filePath(clean);
-    if (QFileInfo::exists(destination))
-        return tr("%1 already exists here.").arg(clean);
+    // QFile::rename never overwrites, and lets a name change only its case
+    // on drives that ignore case, where the new name already "exists".
     if (!QFile::rename(path, destination))
-        return tr("Couldn't rename %1.").arg(info.fileName());
+        return QFileInfo::exists(destination) ? tr("%1 already exists here.").arg(clean)
+                                              : tr("Couldn't rename %1.").arg(info.fileName());
     emit done(info.absolutePath(), clean);
     return {};
 }

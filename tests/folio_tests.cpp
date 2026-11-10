@@ -245,6 +245,26 @@ private slots:
         QCOMPARE(FileOps::freeName(dir.path(), "Report v1.2.pdf"), QString("Report v1.2 (copy).pdf"));
     }
 
+    void fileOpsRenameNeverOverwrites()
+    {
+        // Nothing checks for the new name first (on drives that ignore case
+        // it "exists" when only its case changes); the rename itself refuses.
+        QTemporaryDir dir;
+        write(dir.filePath("IMG.JPG"), "photo");
+        write(dir.filePath("notes.txt"), "notes");
+        QDir(dir.path()).mkdir("Album");
+        QDir(dir.path()).mkdir("Empty");
+        FileOps ops;
+        QCOMPARE(ops.rename(dir.filePath("IMG.JPG"), "notes.txt"), QString("notes.txt already exists here."));
+        QCOMPARE(ops.rename(dir.filePath("Album"), "Empty"), QString("Empty already exists here."));
+        QFile kept(dir.filePath("notes.txt"));
+        QVERIFY(kept.open(QIODevice::ReadOnly));
+        QCOMPARE(kept.readAll(), QByteArray("notes"));
+        QVERIFY(QFileInfo(dir.filePath("Album")).isDir());
+        QCOMPARE(ops.rename(dir.filePath("IMG.JPG"), "img.jpg"), QString());
+        QVERIFY(QFile::exists(dir.filePath("img.jpg")));
+    }
+
     void fileOpsCopyAndMove()
     {
         QTemporaryDir from, to;
