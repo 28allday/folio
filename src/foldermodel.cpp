@@ -34,6 +34,12 @@ FolderModel::FolderModel(QObject *parent) : QAbstractListModel(parent) {
     connect(&m_staleClear, &QTimer::timeout, this, &FolderModel::clearEntries);
 }
 
+// Generations start at 1, so 0 stops any search or folder count still
+// running for this model.
+FolderModel::~FolderModel() {
+    *m_latest = 0;
+}
+
 // Recent listings, shared by every model (the window's folder and each
 // column), so stepping back and forth or opening a column for a folder just
 // seen shows it in the same frame instead of an old or empty one. Each is
@@ -177,6 +183,10 @@ void FolderModel::setPath(const QString &path) {
     // after a moment, so the old folder never lingers under the new path.
     // An empty path is a column with nothing to show yet.
     if (m_path.isEmpty()) {
+        // What's still being read is for the folder left behind.
+        ++m_generation;
+        *m_latest = m_generation;
+        setLoading(false);
         clearEntries();
         return;
     }
@@ -481,9 +491,15 @@ void FolderModel::summarizeFolders(quint64 generation) {
             emit countChanged();
         remember();
     });
-    watcher->setFuture(QtConcurrent::run([folders, showHidden]() mutable {
-        for (auto &folder : folders)
+    const auto latest = m_latest;
+    watcher->setFuture(QtConcurrent::run([folders, showHidden, latest, generation]() mutable {
+        // Overtaken (another folder, or a re-read), the counts would be
+        // thrown away, so it stops instead of listing every subfolder.
+        for (auto &folder : folders) {
+            if (*latest != generation)
+                break;
             summarize(folder.second, showHidden);
+        }
         return folders;
     }));
 }

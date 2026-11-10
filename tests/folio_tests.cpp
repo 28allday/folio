@@ -174,6 +174,21 @@ private slots:
         QTRY_COMPARE(model.get(1).value("itemCount").toInt(), 1);
     }
 
+    void folderModelForgetsAFolderLeftWhileLoading()
+    {
+        QTemporaryDir dir;
+        write(dir.filePath("one.txt"), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(model.loading());
+        // Emptied before the listing lands, the column stays empty.
+        model.setPath(QString());
+        QVERIFY(!model.loading());
+        QVERIFY(!loaded.wait(200));
+        QCOMPARE(model.count(), 0);
+    }
+
     void folderModelTellsCopiedFoldersApart()
     {
         // A copy (cp -a, rsync -a) lists exactly like its original, but its
