@@ -5,7 +5,7 @@ TEMPLATE = app
 
 INCLUDEPATH += ../src
 
-HEADERS += ../src/backend.h ../src/foldermodel.h ../src/places.h ../src/theme.h ../src/thumbnails.h ../src/translator.h
-SOURCES += folio_tests.cpp ../src/backend.cpp ../src/foldermodel.cpp ../src/places.cpp ../src/theme.cpp ../src/thumbnails.cpp ../src/translator.cpp
+HEADERS += ../src/backend.h ../src/foldermodel.h ../src/places.h ../src/previewer.h ../src/theme.h ../src/thumbnails.h ../src/translator.h
+SOURCES += folio_tests.cpp ../src/backend.cpp ../src/foldermodel.cpp ../src/places.cpp ../src/previewer.cpp ../src/theme.cpp ../src/thumbnails.cpp ../src/translator.cpp
 
 LIBS += -lz

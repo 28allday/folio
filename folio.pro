@@ -9,6 +9,7 @@ HEADERS += \
     src/filemanager1.h \
     src/foldermodel.h \
     src/places.h \
+    src/previewer.h \
     src/theme.h \
     src/thumbnails.h \
     src/translator.h
@@ -19,6 +20,7 @@ SOURCES += \
     src/filemanager1.cpp \
     src/foldermodel.cpp \
     src/places.cpp \
+    src/previewer.cpp \
     src/theme.cpp \
     src/thumbnails.cpp \
     src/translator.cpp

@@ -9,10 +9,12 @@
 #include <QQmlContext>
 #include <QQuickStyle>
 #include <QUrl>
+#include <cstdio>
 
 #include "backend.h"
 #include "filemanager1.h"
 #include "places.h"
+#include "previewer.h"
 #include "theme.h"
 #include "thumbnails.h"
 #include "translator.h"
@@ -35,24 +37,78 @@ static QString startPath(const QStringList &args, QString *select) {
     return QDir::homePath();
 }
 
-int main(int argc, char *argv[]) {
-    QGuiApplication app(argc, argv);
+// Omarchy points fontconfig's monospace at the font picked in its menu, so
+// asking for "monospace" follows the user's choice.
+static void setUp(QGuiApplication &app) {
     app.setApplicationName("folio");
     app.setApplicationVersion("0.1.0");
-
-    // Matches the window to folio.desktop, so the compositor (Wayland app_id)
-    // and the launcher pick up the installed icon.
-    app.setDesktopFileName("folio");
     app.setWindowIcon(QIcon::fromTheme("folio"));
-
-    // Omarchy points fontconfig's monospace at the font picked in its menu,
-    // so asking for "monospace" follows the user's choice.
     QFont font("monospace");
     font.setStyleHint(QFont::Monospace);
     font.setPixelSize(13);
     app.setFont(font);
-
     QQuickStyle::setStyle("Material");
+}
+
+// `folio preview [--hidden] [--sort name|modified] [--follow] FILE`: the large
+// look at one file, stepping through its folder. Its own process, so a file
+// that crashes a decoder only closes this window.
+static int preview(QGuiApplication &app) {
+    QStringList args = app.arguments().mid(2);
+    bool showHidden = false;
+    bool follow = false;
+    QString sort = "name";
+    QString path;
+    while (!args.isEmpty()) {
+        const QString arg = args.takeFirst();
+        if (arg == "--hidden")
+            showHidden = true;
+        else if (arg == "--follow")
+            follow = true;
+        else if (arg == "--sort" && !args.isEmpty())
+            sort = args.takeFirst();
+        else
+            path = QUrl(arg).isLocalFile() ? QUrl(arg).toLocalFile() : arg;
+    }
+    if (path.isEmpty() || !QFileInfo::exists(path)) {
+        fprintf(stderr, "usage: folio preview [--hidden] [--sort name|modified] FILE\n");
+        return 1;
+    }
+
+    // Its own app id, so window rules can float it the way Omarchy floats
+    // Sushi's previewer.
+    app.setDesktopFileName("folio-preview");
+
+    Translator translator;
+    app.installTranslator(&translator);
+    Theme theme;
+    Thumbnails thumbnails;
+    Previewer previewer;
+    previewer.start(path, showHidden, sort);
+    if (follow)
+        previewer.connectToFolio();
+
+    QQmlApplicationEngine engine;
+    QObject::connect(&translator, &Translator::changed, &engine, &QQmlEngine::retranslate);
+    engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+    engine.rootContext()->setContextProperty("translator", &translator);
+    engine.rootContext()->setContextProperty("theme", &theme);
+    engine.rootContext()->setContextProperty("previewer", &previewer);
+    engine.load(QUrl("qrc:/PreviewWindow.qml"));
+    if (engine.rootObjects().isEmpty())
+        return 1;
+    return app.exec();
+}
+
+int main(int argc, char *argv[]) {
+    QGuiApplication app(argc, argv);
+    setUp(app);
+    if (app.arguments().value(1) == "preview")
+        return preview(app);
+
+    // Matches the window to folio.desktop, so the compositor (Wayland app_id)
+    // and the launcher pick up the installed icon.
+    app.setDesktopFileName("folio");
 
     // Installed before anything is translated, and every qsTr() binding is
     // re-evaluated when the Omarchy language changes.

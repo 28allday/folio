@@ -41,7 +41,8 @@ ApplicationWindow {
     Shortcut { sequence: "?"; context: Qt.ApplicationShortcut; onActivated: win.helpVisible = !win.helpVisible }
     Shortcut { sequence: "Escape"; context: Qt.ApplicationShortcut; enabled: win.helpVisible; onActivated: win.helpVisible = false }
     Shortcut { sequence: "Q"; context: Qt.ApplicationShortcut; onActivated: Qt.quit() }
-    Shortcut { sequence: "Space"; context: Qt.ApplicationShortcut; onActivated: win.previewVisible = !win.previewVisible }
+    Shortcut { sequence: "Space"; context: Qt.ApplicationShortcut; onActivated: backend.togglePreview(win.current.path || "") }
+    Shortcut { sequence: "Ctrl+I"; context: Qt.ApplicationShortcut; onActivated: win.previewVisible = !win.previewVisible }
     Shortcut { sequences: ["Return", "Enter"]; context: Qt.ApplicationShortcut; onActivated: if (win.current.path) backend.open(win.current.path) }
     Shortcut { sequences: ["Backspace", "Alt+Up"]; context: Qt.ApplicationShortcut; onActivated: backend.goUp() }
     Shortcut { sequences: ["Alt+Left", StandardKey.Back]; context: Qt.ApplicationShortcut; onActivated: backend.back() }
@@ -155,6 +156,8 @@ ApplicationWindow {
                         cellWidth: Math.floor(width / columns)
                         cellHeight: 176
                         highlightFollowsCurrentItem: false
+                        // An open preview stays on the selected item.
+                        onCurrentIndexChanged: if (backend.previewing) backend.followSelection(backend.folder.get(currentIndex).path || "")
                         ScrollBar.vertical: ScrollBar { }
 
                         function select(name) {

@@ -9,6 +9,7 @@
 #include "backend.h"
 #include "foldermodel.h"
 #include "places.h"
+#include "previewer.h"
 #include "theme.h"
 #include "thumbnails.h"
 #include "translator.h"
@@ -194,6 +195,77 @@ private slots:
         write(dir.filePath("clip.mp4"), "not a video");
         QVERIFY(thumbnails.load(dir.filePath("clip.mp4"), "video/mp4", 128).isNull());
         QVERIFY(QFile::exists(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(dir.filePath("clip.mp4")))));
+    }
+
+    void previewerPicksAViewerForEachType()
+    {
+        QCOMPARE(Previewer::viewerFor("image/png", false), QString("image"));
+        QCOMPARE(Previewer::viewerFor("image/gif", false), QString("animated"));
+        QCOMPARE(Previewer::viewerFor("image/x-canon-cr2", false), QString("thumbnail"));
+        QCOMPARE(Previewer::viewerFor("video/mp4", false), QString("video"));
+        QCOMPARE(Previewer::viewerFor("audio/mpeg", false), QString("audio"));
+        QCOMPARE(Previewer::viewerFor("application/pdf", false), QString("pdf"));
+        QCOMPARE(Previewer::viewerFor("text/markdown", false), QString("markdown"));
+        QCOMPARE(Previewer::viewerFor("text/x-c++src", false), QString("text"));
+        QCOMPARE(Previewer::viewerFor("application/x-shellscript", false), QString("text"));
+        QCOMPARE(Previewer::viewerFor("application/zip", false), QString("other"));
+        QCOMPARE(Previewer::viewerFor("inode/directory", true), QString("folder"));
+    }
+
+    void previewerReadsTextButNotBinaries()
+    {
+        QTemporaryDir dir;
+        write(dir.filePath("notes.txt"), "hello\nworld\n");
+        write(dir.filePath("blob.txt"), QByteArray("abc\0def", 7));
+        QCOMPARE(Previewer::readText(dir.filePath("notes.txt")), QString("hello\nworld\n"));
+        QVERIFY(Previewer::readText(dir.filePath("blob.txt")).isEmpty());
+        QCOMPARE(Previewer::readText(dir.filePath("notes.txt"), 5), QString("hello"));
+
+        // A binary with a text name falls back to the plain file view.
+        Previewer previewer;
+        previewer.start(dir.filePath("blob.txt"), false, "name");
+        QCOMPARE(previewer.viewer(), QString("other"));
+    }
+
+    void previewerStepsThroughTheFolder()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkdir("album");
+        write(dir.filePath("a.md"), "# A");
+        write(dir.filePath("b.txt"), "b");
+        write(dir.filePath("c.pdf"), "%PDF");
+        write(dir.filePath(".hidden"), "h");
+
+        Previewer previewer;
+        QSignalSpy changed(&previewer, &Previewer::changed);
+        previewer.start(dir.filePath("b.txt"), false, "name");
+        // Shown at once, before the folder is listed.
+        QCOMPARE(previewer.item().value("name").toString(), QString("b.txt"));
+        QCOMPARE(previewer.text(), QString("b"));
+
+        QTRY_COMPARE(previewer.count(), 4);
+        QCOMPARE(previewer.index(), 2);
+        previewer.previous();
+        QCOMPARE(previewer.viewer(), QString("markdown"));
+        previewer.previous();
+        QCOMPARE(previewer.viewer(), QString("folder"));
+        QCOMPARE(previewer.item().value("itemCount").toInt(), 0);
+        previewer.previous();
+        QCOMPARE(previewer.index(), 0);
+        previewer.next();
+        previewer.next();
+        previewer.next();
+        QCOMPARE(previewer.viewer(), QString("pdf"));
+        previewer.next();
+        QCOMPARE(previewer.index(), 3);
+
+        // Folio pointing at a sibling keeps the list; another folder starts over.
+        previewer.show(dir.filePath("a.md"));
+        QCOMPARE(previewer.index(), 1);
+        QCOMPARE(previewer.count(), 4);
+        previewer.show(dir.filePath("album"));
+        QCOMPARE(previewer.index(), 0);
+        QVERIFY(changed.count() > 0);
     }
 
     void themeFallsBack()

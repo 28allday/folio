@@ -4,8 +4,9 @@ pkgrel=1
 pkgdesc="Omarchy's file manager: airy, keyboard-first, and following the theme"
 arch=('x86_64' 'aarch64')
 license=('MIT')
-depends=('qt6-base' 'qt6-declarative' 'qt6-wayland' 'xdg-utils' 'zlib')
+depends=('qt6-base' 'qt6-declarative' 'qt6-multimedia' 'qt6-wayland' 'xdg-utils' 'zlib')
 optdepends=(
+  'qt6-webengine: PDF previews (Qt PDF)'
   'ffmpegthumbnailer: video thumbnails'
   'papers: PDF thumbnails'
   'glycin: HEIC, JPEG XL and other image thumbnails'

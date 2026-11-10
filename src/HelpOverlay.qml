@@ -9,13 +9,14 @@ Rectangle {
 
     color: Qt.rgba(0, 0, 0, 0.55)
 
-    readonly property var shortcuts: [
+    property var shortcuts: [
         ["← ↑ → ↓", qsTr("Move the selection")],
         ["⏎", qsTr("Open")],
         ["Backspace", qsTr("Go to the parent folder")],
         ["Alt+← / Alt+→", qsTr("Back / forward")],
         ["Alt+Home", qsTr("Go home")],
-        ["Space", qsTr("Show or hide the preview")],
+        ["Space", qsTr("Preview the selected file")],
+        ["Ctrl+I", qsTr("Show or hide the details pane")],
         ["S", qsTr("Sort by name or newest first")],
         ["Ctrl+H", qsTr("Show hidden files")],
         ["F5", qsTr("Reload")],

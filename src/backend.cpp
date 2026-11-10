@@ -1,6 +1,7 @@
 #include "backend.h"
 
 #include <QDesktopServices>
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -25,6 +26,23 @@ Backend::Backend(const QString &home, QObject *parent)
         // which on a tailnet of one person's machines it usually does.
         const QString remoteHome = root + QDir::homePath();
         navigate(QFileInfo(remoteHome).isDir() ? remoteHome : root);
+    });
+    // The preview reports each file it steps to, and the grid follows.
+    connect(&m_preview, &QProcess::readyReadStandardOutput, this, [this] {
+        while (m_preview.canReadLine()) {
+            const QString shown = QString::fromUtf8(m_preview.readLine()).trimmed();
+            m_previewed = shown;
+            const QFileInfo info(shown);
+            if (info.absolutePath() == path())
+                emit selectRequested(info.fileName());
+        }
+    });
+    connect(&m_preview, &QProcess::stateChanged, this, &Backend::previewingChanged);
+    connect(&m_preview, &QProcess::finished, this, [this](int, QProcess::ExitStatus status) {
+        // A decoder that crashed took down the preview, not Folio; say so
+        // rather than letting the window just vanish.
+        if (status == QProcess::CrashExit)
+            setMessage(tr("The preview closed unexpectedly on %1.").arg(QFileInfo(m_previewed).fileName()));
     });
     connect(&m_mount, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         if (error != QProcess::FailedToStart)
@@ -181,6 +199,37 @@ QVariantMap Backend::details(const QString &path, const QString &kind, const QSt
         }
     }
     return map;
+}
+
+Backend::~Backend() {
+    // The preview follows this window; it closes with it.
+    if (previewing()) {
+        m_preview.terminate();
+        m_preview.waitForFinished(1000);
+    }
+}
+
+void Backend::togglePreview(const QString &path) {
+    if (previewing()) {
+        m_preview.terminate();
+        return;
+    }
+    if (path.isEmpty())
+        return;
+    QStringList args{"preview", "--follow", "--sort", m_folder.sortMode()};
+    if (m_folder.showHidden())
+        args << "--hidden";
+    args << path;
+    m_previewed = path;
+    m_preview.setProcessChannelMode(QProcess::ForwardedErrorChannel);
+    m_preview.start(QCoreApplication::applicationFilePath(), args);
+}
+
+void Backend::followSelection(const QString &path) {
+    if (!previewing() || path.isEmpty() || path == m_previewed)
+        return;
+    m_previewed = path;
+    m_preview.write(path.toUtf8() + '\n');
 }
 
 void Backend::showFolder(const QString &path) {

@@ -86,7 +86,7 @@ Rectangle {
         }
         IconButton {
             glyph: "preview"
-            text: qsTr("Preview (Space)")
+            text: qsTr("Details (Ctrl+I)")
             active: bar.previewVisible
             onClicked: bar.togglePreview()
         }

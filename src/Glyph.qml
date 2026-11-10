@@ -39,6 +39,9 @@ Item {
         "hidden": "M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" + circle(12, 12, 3),
         "sort": "M7 4v16M3 16l4 4 4-4M14 6h7M14 12h5M14 18h3",
         "play": "M8 5v14l11-7z",
+        "pause": "M8 5v14M16 5v14",
+        "open": "M14 4h6v6M20 4l-9 9M18 14v6H4V6h6",
+        "audio": "M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2",
         "close": "M6 6l12 12M18 6L6 18"
     })
 

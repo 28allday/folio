@@ -20,9 +20,11 @@ class Backend : public QObject {
     Q_PROPERTY(bool canForward READ canForward NOTIFY pathChanged)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(QString busy READ busy NOTIFY busyChanged)
+    Q_PROPERTY(bool previewing READ previewing NOTIFY previewingChanged)
 
 public:
     explicit Backend(const QString &home = {}, QObject *parent = nullptr);
+    ~Backend() override;
 
     FolderModel *folder() { return &m_folder; }
     QString path() const { return m_folder.path(); }
@@ -32,6 +34,7 @@ public:
     bool canForward() const { return m_index + 1 < m_history.size(); }
     QString message() const { return m_message; }
     QString busy() const { return m_busy; }
+    bool previewing() const { return m_preview.state() != QProcess::NotRunning; }
 
     Q_INVOKABLE void navigate(const QString &path);
     Q_INVOKABLE void open(const QString &path);
@@ -44,6 +47,11 @@ public:
     // The item to select once the folder has loaded (where we came from, or
     // what "Show in folder" asked for); empty means the first item.
     Q_INVOKABLE QString takeSelection();
+    // Space: opens the large preview of a file in its own process, or closes
+    // it when it's already open.
+    Q_INVOKABLE void togglePreview(const QString &path);
+    // Keeps an open preview on the item selected in the grid.
+    Q_INVOKABLE void followSelection(const QString &path);
 
     // Called for org.freedesktop.FileManager1: open a folder, or open the
     // folder holding a file and select it.
@@ -56,6 +64,7 @@ signals:
     void pathChanged();
     void messageChanged();
     void busyChanged();
+    void previewingChanged();
     void selectRequested(const QString &name);
     void activateRequested();
 
@@ -73,4 +82,6 @@ private:
     QString m_pendingSelection;
     QProcess m_mount;
     QString m_mountHost;
+    QProcess m_preview;
+    QString m_previewed;
 };
