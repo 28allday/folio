@@ -7,11 +7,15 @@ import QtQuick.Layouts
 Rectangle {
     id: pane
 
-    property var item: ({})
+    // The pane whose selected item this shows, and whose backend and file
+    // work the button acts through: in a split, the one used last.
+    property var folderPane: null
+    readonly property var item: folderPane ? folderPane.current : ({})
     readonly property bool hasItem: item !== undefined && item.path !== undefined
     // An item in the trash shows where it came from and when it was
     // deleted, and offers Restore rather than Open.
-    readonly property bool trashed: hasItem && fileOps.inTrash(item.path) && fileOps.originalPath(item.path).length > 0
+    readonly property string origin: hasItem && folderPane.inTrash ? fileOps.originalPath(item.path) : ""
+    readonly property bool trashed: origin.length > 0
     function homeless(path) { return path.startsWith(places.home + "/") ? "~" + path.slice(places.home.length) : path }
     readonly property var info: hasItem ? backend.details(item.path, item.kind, item.mime) : ({})
 
@@ -117,7 +121,7 @@ Rectangle {
                 visible: pane.trashed
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignRight
-                text: pane.trashed ? pane.homeless(fileOps.originalPath(pane.item.path).replace(/\/[^\/]*$/, "") || "/") : ""
+                text: pane.trashed ? pane.homeless(pane.origin.replace(/\/[^\/]*$/, "") || "/") : ""
                 color: theme.foreground
                 font.pixelSize: 12
                 elide: Text.ElideMiddle
@@ -155,7 +159,7 @@ Rectangle {
             hoverEnabled: true
             text: pane.trashed ? qsTr("Restore") : pane.hasItem && pane.item.isDir ? qsTr("Open folder") : qsTr("Open")
             Accessible.name: text
-            onClicked: pane.trashed ? fileOps.restore([pane.item.path]) : backend.open(pane.item.path)
+            onClicked: pane.trashed ? pane.folderPane.paneFileOps.restore([pane.item.path]) : pane.folderPane.paneBackend.open(pane.item.path)
             background: Rectangle {
                 radius: Math.min(4, theme.radius)
                 color: openButton.hovered ? Qt.lighter(theme.accent, 1.08) : theme.accent

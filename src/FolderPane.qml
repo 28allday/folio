@@ -14,6 +14,7 @@ FocusScope {
     readonly property var host: ApplicationWindow.window
     readonly property bool active: !!host && host.activePane === pane
     readonly property var paneBackend: backend
+    readonly property var paneFileOps: fileOps
     property bool closable: false
     signal closeRequested()
     // How far this pane's path bar reaches right, over the details column,

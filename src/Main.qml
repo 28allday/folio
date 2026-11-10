@@ -143,7 +143,7 @@ ApplicationWindow {
                 Layout.topMargin: parent.parent.barHeight
                 Layout.preferredWidth: 300
                 Layout.fillHeight: true
-                item: win.activePane ? win.activePane.current : ({})
+                folderPane: win.activePane
             }
         }
 
