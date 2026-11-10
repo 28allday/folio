@@ -40,8 +40,9 @@ FocusScope {
     readonly property bool keys: active && !typing
     // What file actions act on: everything selected, or the item under
     // the cursor when nothing is.
-    readonly property var selectedPaths: backend.folder.selectedCount > 0 ? backend.folder.selectedPaths()
-                                       : (current.path ? [current.path] : [])
+    function selectedPaths() {
+        return backend.folder.selectedCount > 0 ? backend.folder.selectedPaths() : (current.path ? [current.path] : [])
+    }
     readonly property var current: {
         // Re-read when the folder changes underneath the selection.
         backend.folder.count
@@ -61,10 +62,11 @@ FocusScope {
     // without its note (or under another name) can't be restored.
     readonly property bool inTrash: fileOps.inTrash(backend.path)
     function deleteSelected() {
+        const paths = pane.selectedPaths()
         if (pane.inTrash)
-            confirmDelete(pane.selectedPaths)
+            confirmDelete(paths)
         else
-            fileOps.trash(pane.selectedPaths)
+            fileOps.trash(paths)
     }
     function confirmDelete(paths) {
         if (paths.length === 0)
@@ -103,11 +105,11 @@ FocusScope {
     }
 
     Shortcut { sequence: "Space"; enabled: pane.keys; onActivated: backend.togglePreview(pane.current.path || "") }
-    Shortcut { sequences: [StandardKey.Copy]; enabled: pane.keys; onActivated: fileOps.copy(pane.selectedPaths) }
-    Shortcut { sequences: [StandardKey.Cut]; enabled: pane.keys; onActivated: fileOps.cut(pane.selectedPaths) }
+    Shortcut { sequences: [StandardKey.Copy]; enabled: pane.keys; onActivated: fileOps.copy(pane.selectedPaths()) }
+    Shortcut { sequences: [StandardKey.Cut]; enabled: pane.keys; onActivated: fileOps.cut(pane.selectedPaths()) }
     Shortcut { sequences: [StandardKey.Paste]; enabled: pane.keys; onActivated: fileOps.paste(backend.path) }
     // "Yank": the selected path (or the folder's) as text, for a terminal.
-    Shortcut { sequence: "Ctrl+Shift+C"; enabled: pane.keys; onActivated: fileOps.yank(pane.selectedPaths.length > 0 ? pane.selectedPaths : [backend.path]) }
+    Shortcut { sequence: "Ctrl+Shift+C"; enabled: pane.keys; onActivated: { const paths = pane.selectedPaths(); fileOps.yank(paths.length > 0 ? paths : [backend.path]) } }
     Shortcut { sequence: "Delete"; enabled: pane.keys; onActivated: pane.deleteSelected() }
     Shortcut { sequence: "F2"; enabled: pane.keys && !pane.inTrash; onActivated: if (pane.current.path) rename.open(pane.current) }
     Shortcut { sequences: [StandardKey.SelectAll]; enabled: pane.keys; onActivated: backend.folder.selectAll() }
@@ -208,13 +210,14 @@ FocusScope {
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: 40
-            visible: backend.message.length > 0 || backend.busy.length > 0 || fileOps.busy.length > 0 || backend.folder.error.length > 0 || backend.notice.length > 0
+            visible: bannerText.text.length > 0
             color: backend.message.length > 0 || backend.folder.error.length > 0 ? pane.tint(theme.red, 0.14) : pane.tint(theme.accent, 0.10)
             RowLayout {
                 anchors.fill: parent
                 anchors.leftMargin: 24
                 anchors.rightMargin: 12
                 Text {
+                    id: bannerText
                     Layout.fillWidth: true
                     text: backend.message || backend.folder.error || backend.busy || fileOps.busy || backend.notice
                     color: theme.brightForeground
@@ -301,7 +304,7 @@ FocusScope {
 
     // With two panes, a line along the top marks the one keys go to.
     Rectangle {
-        visible: pane.closable || (pane.host && pane.host.split)
+        visible: !!pane.host && pane.host.split
         y: pathBar.height - 1
         width: parent.width
         height: 2

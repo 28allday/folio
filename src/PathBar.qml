@@ -31,7 +31,7 @@ Rectangle {
 
     // /: search this folder and every folder below it, as you type. The
     // results replace the folder until Escape, or until going elsewhere.
-    readonly property bool searching: backend.folder.query.length > 0 || searchField.activeFocus
+    readonly property bool searching: backend.folder.query.length > 0 || searchFocused
     readonly property bool searchFocused: searchField.activeFocus
     function search() {
         searchField.forceActiveFocus()
