@@ -45,7 +45,6 @@ static void setUp(QGuiApplication &app) {
     app.setApplicationName("folio");
     // Settings (the chosen view) go to ~/.config/folio/folio.conf.
     app.setOrganizationName("folio");
-    app.setApplicationVersion("0.1.1");
     app.setWindowIcon(QIcon::fromTheme("folio"));
     QFont font("monospace");
     font.setStyleHint(QFont::Monospace);
@@ -54,9 +53,9 @@ static void setUp(QGuiApplication &app) {
     QQuickStyle::setStyle("Material");
 }
 
-// `folio preview [--hidden] [--sort name|modified] [--follow] FILE`: the large
-// look at one file, stepping through its folder. Its own process, so a file
-// that crashes a decoder only closes this window.
+// `folio preview [--hidden] [--sort name|kind|modified|oldest|size] [--follow] FILE`:
+// the large look at one file, stepping through its folder. Its own process,
+// so a file that crashes a decoder only closes this window.
 static int preview(QGuiApplication &app) {
     QStringList args = app.arguments().mid(2);
     bool showHidden = false;
@@ -75,7 +74,7 @@ static int preview(QGuiApplication &app) {
             path = QUrl(arg).isLocalFile() ? QUrl(arg).toLocalFile() : arg;
     }
     if (path.isEmpty() || !QFileInfo::exists(path)) {
-        fprintf(stderr, "usage: folio preview [--hidden] [--sort name|modified] FILE\n");
+        fprintf(stderr, "usage: folio preview [--hidden] [--sort name|kind|modified|oldest|size] [--follow] FILE\n");
         return 1;
     }
 
