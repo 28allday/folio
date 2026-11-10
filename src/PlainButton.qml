@@ -9,7 +9,6 @@ AbstractButton {
 
     implicitWidth: Math.max(88, label.implicitWidth + 32)
     implicitHeight: 36
-    focusPolicy: Qt.StrongFocus
     hoverEnabled: true
     Accessible.name: text
 
