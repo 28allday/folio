@@ -324,17 +324,22 @@ FocusScope {
         onPressed: mouse => mouse.button === Qt.BackButton ? backend.back() : backend.forward()
     }
 
+    // A dialog takes the keyboard while it's open; closing only hides it,
+    // so the keyboard is handed back to the files.
     MountPrompt {
         anchors.fill: parent
+        onVisibleChanged: if (!visible) pane.focusView()
     }
 
     RenameDialog {
         id: rename
         anchors.fill: parent
+        onVisibleChanged: if (!visible) pane.focusView()
     }
 
     ConfirmDialog {
         id: confirm
         anchors.fill: parent
+        onVisibleChanged: if (!visible) pane.focusView()
     }
 }
