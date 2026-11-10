@@ -10,4 +10,4 @@ SOURCES += folio_tests.cpp ../src/backend.cpp ../src/fileops.cpp ../src/foldermo
 
 LIBS += -lz
 CONFIG += link_pkgconfig
-PKGCONFIG += gio-2.0
+PKGCONFIG += gio-2.0 gio-unix-2.0

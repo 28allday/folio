@@ -18,6 +18,7 @@
 // GIO's headers use `signals` as a struct member, which Qt defines as a
 // keyword.
 #undef signals
+#include <gio/gdesktopappinfo.h>
 #include <gio/gio.h>
 #define signals Q_SIGNALS
 
@@ -595,26 +596,19 @@ QVariantList FileOps::appsFor(const QString &path) const {
 }
 
 void FileOps::openWith(const QString &path, const QString &appId) {
-    GList *all = g_app_info_get_all();
-    bool launched = false;
-    for (GList *l = all; l && !launched; l = l->next) {
-        auto *info = G_APP_INFO(l->data);
-        if (QString::fromUtf8(g_app_info_get_id(info)) != appId)
-            continue;
-        GFile *file = g_file_new_for_path(path.toUtf8().constData());
-        GList *files = g_list_append(nullptr, file);
-        GError *error = nullptr;
-        launched = g_app_info_launch(info, files, nullptr, &error);
-        if (!launched)
-            emit failed(tr("Couldn't open %1 with %2: %3")
-                            .arg(QFileInfo(path).fileName(), QString::fromUtf8(g_app_info_get_name(info)),
-                                 QString::fromUtf8(error ? error->message : "")));
-        if (error)
-            g_error_free(error);
-        g_list_free_full(files, g_object_unref);
-        launched = true;
-    }
-    g_list_free_full(all, g_object_unref);
+    GDesktopAppInfo *app = g_desktop_app_info_new(appId.toUtf8().constData());
+    if (!app)
+        return;
+    GList *files = g_list_append(nullptr, g_file_new_for_path(path.toUtf8().constData()));
+    GError *error = nullptr;
+    if (!g_app_info_launch(G_APP_INFO(app), files, nullptr, &error))
+        emit failed(tr("Couldn't open %1 with %2: %3")
+                        .arg(QFileInfo(path).fileName(), QString::fromUtf8(g_app_info_get_name(G_APP_INFO(app))),
+                             QString::fromUtf8(error ? error->message : "")));
+    if (error)
+        g_error_free(error);
+    g_list_free_full(files, g_object_unref);
+    g_object_unref(app);
 }
 
 void FileOps::openTerminal(const QString &folder) {

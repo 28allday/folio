@@ -33,6 +33,6 @@ SOURCES += \
 
 LIBS += -lz
 CONFIG += link_pkgconfig
-PKGCONFIG += gio-2.0
+PKGCONFIG += gio-2.0 gio-unix-2.0
 
 RESOURCES += src/resources.qrc
