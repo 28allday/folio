@@ -11,6 +11,7 @@ Rectangle {
 
     property var shortcuts: [
         ["← ↑ → ↓", qsTr("Move the selection")],
+        ["→ / ←", qsTr("In list and columns: into a folder / back out")],
         ["Tab", qsTr("Switch between the sidebar and the files")],
         ["⏎", qsTr("Open")],
         ["Backspace", qsTr("Go to the parent folder")],

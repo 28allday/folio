@@ -75,6 +75,14 @@ ColumnLayout {
         model: backend.folder
         ScrollBar.vertical: ScrollBar { }
 
+        // → goes into the selected folder and ← back up, as in the columns.
+        Keys.onRightPressed: {
+            const item = backend.folder.get(list.currentIndex)
+            if (item.isDir)
+                backend.navigate(item.path)
+        }
+        Keys.onLeftPressed: backend.goUp()
+
         TapHandler {
             acceptedButtons: Qt.RightButton
             onTapped: (point) => {
