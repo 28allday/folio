@@ -14,11 +14,19 @@ FolioDialog {
     spacing: 18
     visible: mounter.asking
 
-    onVisibleChanged: if (visible) password.forceActiveFocus()
+    // Each request starts fresh, whichever way the last one closed
+    // (Connect, Cancel, Escape or GVfs giving up), so a password typed for
+    // one machine is never offered to the next, nor kept once it's closed.
+    onVisibleChanged: {
+        password.text = ""
+        if (visible) {
+            user.text = mounter.user
+            password.forceActiveFocus()
+        }
+    }
 
     function submit() {
         prompt.mounter.providePassword(user.text, password.text)
-        password.text = ""
     }
 
     // A click outside the card does nothing: GVfs waits for an answer,
@@ -37,7 +45,6 @@ FolioDialog {
         id: user
         Layout.fillWidth: true
         placeholderText: qsTr("User")
-        text: prompt.mounter.user
     }
     PlainField {
         id: password
