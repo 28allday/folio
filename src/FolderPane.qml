@@ -87,14 +87,6 @@ FocusScope {
 
     function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
 
-    function formatSize(bytes) {
-        const units = [qsTr("B"), qsTr("KB"), qsTr("MB"), qsTr("GB"), qsTr("TB")]
-        let i = 0
-        let value = bytes
-        while (value >= 1000 && i < units.length - 1) { value /= 1000; ++i }
-        return value.toLocaleString(Qt.locale(), "f", i === 0 ? 0 : 1) + " " + units[i]
-    }
-
     // Pins a folder to the sidebar, or unpins it when it's pinned already.
     function togglePin(target) {
         if (places.isPinned(target)) {
@@ -170,7 +162,6 @@ FocusScope {
 
     Connections {
         target: view.item
-        ignoreUnknownSignals: true
         function onContextMenu(item, folder) { fileMenu.show(item, folder) }
     }
 
@@ -200,7 +191,6 @@ FocusScope {
 
     FileMenu {
         id: fileMenu
-        objectName: "fileMenu"
         onRenameRequested: (target) => rename.open(target)
         onDeleteRequested: (paths) => pane.confirmDelete(paths)
         onEmptyTrashRequested: pane.emptyTrash()
