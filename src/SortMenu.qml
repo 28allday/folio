@@ -20,7 +20,6 @@ FolioMenu {
         FolioMenuItem {
             required property var modelData
             text: modelData.label
-            checkable: true
             checked: backend.folder.sortMode === modelData.mode
             onTriggered: backend.folder.sortMode = modelData.mode
         }

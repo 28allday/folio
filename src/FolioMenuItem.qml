@@ -59,7 +59,7 @@ MenuItem {
     indicator: Glyph {
         x: entry.width - width - 14
         anchors.verticalCenter: parent.verticalCenter
-        visible: entry.checkable && entry.checked
+        visible: entry.checked
         name: "check"
         size: 14
         color: theme.accent
