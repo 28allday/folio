@@ -18,10 +18,13 @@ Rectangle {
     function open(target) {
         problem = ""
         item = target
-        field.text = target.name
-        const dot = fileOps.extensionStart(target.name, target.isDir)
+        // From the path: in search results the name is the path from where
+        // the search started ("sub/x.txt").
+        const name = target.path.slice(target.path.lastIndexOf("/") + 1)
+        field.text = name
+        const dot = fileOps.extensionStart(name, target.isDir)
         field.forceActiveFocus()
-        field.select(0, dot > 0 ? dot : target.name.length)
+        field.select(0, dot > 0 ? dot : name.length)
     }
     function close() { item = null }
     function submit() {
