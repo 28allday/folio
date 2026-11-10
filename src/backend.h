@@ -19,8 +19,6 @@ class Backend : public QObject {
     Q_PROPERTY(QString path READ path NOTIFY pathChanged)
     Q_PROPERTY(QString title READ title NOTIFY pathChanged)
     Q_PROPERTY(QVariantList crumbs READ crumbs NOTIFY pathChanged)
-    Q_PROPERTY(bool canBack READ canBack NOTIFY pathChanged)
-    Q_PROPERTY(bool canForward READ canForward NOTIFY pathChanged)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(QString notice READ notice NOTIFY noticeChanged)
     Q_PROPERTY(QString busy READ busy NOTIFY busyChanged)
@@ -78,8 +76,6 @@ public:
     void showFolder(const QString &path);
     void showItem(const QString &path);
 
-    static QString gvfsRoot();
-    QString trashPath() const;
     static QString expandTyped(const QString &text, const QString &home, const QString &current);
     static QString complete(const QString &text, const QString &home, const QString &current);
 
@@ -94,6 +90,8 @@ signals:
     void activateRequested();
 
 private:
+    static QString gvfsRoot();
+    QString trashPath() const;
     void go(const QString &path, bool record);
     void setMessage(const QString &message);
     void setBusy(const QString &busy);
