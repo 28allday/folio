@@ -16,6 +16,7 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QUrl>
+#include <atomic>
 
 namespace {
 
@@ -271,7 +272,9 @@ public:
     void run() override {
         // id = <size>/<url-encoded mime>/<url-encoded path>
         const QStringList parts = m_id.split('/');
-        if (parts.size() >= 3) {
+        // A tile scrolled away before its turn came shouldn't keep the pool
+        // from the ones on screen.
+        if (!m_cancelled && parts.size() >= 3) {
             const int size = parts.at(0).toInt();
             const QString mime = QUrl::fromPercentEncoding(parts.at(1).toUtf8());
             const QString path = QUrl::fromPercentEncoding(parts.mid(2).join('/').toUtf8());
@@ -281,6 +284,8 @@ public:
             m_error = QStringLiteral("No thumbnail");
         emit finished();
     }
+
+    void cancel() override { m_cancelled = true; }
 
     QQuickTextureFactory *textureFactory() const override {
         return QQuickTextureFactory::textureFactoryForImage(m_image);
@@ -292,6 +297,7 @@ private:
     QString m_id;
     QImage m_image;
     QString m_error;
+    std::atomic_bool m_cancelled{false};
 };
 
 } // namespace
