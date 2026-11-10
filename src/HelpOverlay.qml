@@ -34,7 +34,7 @@ Rectangle {
         ["Ctrl+Alt+N / Ctrl+W", qsTr("Split into two panes / close the right one")],
         ["Delete", qsTr("Move to the trash")],
         ["Right-click / Alt+⏎", qsTr("Everything else")],
-        ["S", qsTr("Sort: name, kind, newest, oldest, size")],
+        ["S / Shift+S", qsTr("Sort: name, kind, newest, oldest, size")],
         ["Ctrl+H", qsTr("Show hidden files")],
         ["F5", qsTr("Reload")],
         ["?", qsTr("Show these shortcuts")],

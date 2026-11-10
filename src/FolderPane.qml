@@ -144,10 +144,13 @@ FocusScope {
     Shortcut { sequences: ["Alt+Right", StandardKey.Forward]; enabled: pane.active; onActivated: backend.forward() }
     Shortcut { sequence: "Alt+Home"; enabled: pane.active; onActivated: backend.navigate(places.home) }
     Shortcut { sequence: "Ctrl+H"; enabled: pane.active; onActivated: backend.folder.showHidden = !backend.folder.showHidden }
-    Shortcut { sequence: "S"; enabled: pane.keys; onActivated: {
+    // S steps through the sort orders, Shift+S back.
+    function stepSort(by) {
         const modes = ["name", "kind", "modified", "oldest", "size"]
-        backend.folder.sortMode = modes[(modes.indexOf(backend.folder.sortMode) + 1) % modes.length]
-    } }
+        backend.folder.sortMode = modes[(modes.indexOf(backend.folder.sortMode) + by + modes.length) % modes.length]
+    }
+    Shortcut { sequence: "S"; enabled: pane.keys; onActivated: pane.stepSort(1) }
+    Shortcut { sequence: "Shift+S"; enabled: pane.keys; onActivated: pane.stepSort(-1) }
     Shortcut { sequences: ["F5", StandardKey.Refresh]; enabled: pane.active; onActivated: { backend.folder.reload(); places.refresh() } }
 
     Connections {
