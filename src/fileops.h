@@ -5,8 +5,10 @@
 #include <QStringList>
 #include <QUrl>
 #include <QVariantList>
+#include <functional>
 
 class QMimeData;
+class QProcess;
 
 // What can be done to files: the clipboard (copy, cut, paste, and yanking
 // paths as text), trash, rename, new folder, and opening with another app.
@@ -127,6 +129,12 @@ private:
     // moving or copying) meanwhile.
     void transferInBackground(const QStringList &paths, const QString &folder, bool move, bool releaseClipboard,
                               const QString &busy = {});
+    // Runs a helper program (bsdtar, dropbox-cli, tailscale) while showing
+    // `busy`, one piece of work at a time like the rest. `missing` says
+    // what to install when it isn't there; `finished` gets its exit code,
+    // or -1 if it crashed.
+    void runTool(const QString &program, const QStringList &args, const QString &busy, const QString &missing,
+                 const std::function<void(QProcess *, int)> &finished);
 
     QString m_busy;
 };

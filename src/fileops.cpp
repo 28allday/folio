@@ -277,7 +277,7 @@ QString FileOps::archiveName(const QStringList &paths, const QString &folder) {
 }
 
 void FileOps::compress(const QStringList &paths) {
-    if (paths.isEmpty() || !m_busy.isEmpty())
+    if (paths.isEmpty())
         return;
     // Search results and Recents can span folders, so the archive goes in
     // the deepest folder holding them all, with their paths from there.
@@ -290,31 +290,20 @@ void FileOps::compress(const QStringList &paths) {
         while (!holds(folder, path))
             folder = QFileInfo(folder).absolutePath();
     const QString archive = archiveName(paths, folder);
-    QStringList args{"-a", "-cf", archive, "-C", folder, "--"};
+    QStringList args{"-a", "-cf", QDir(folder).filePath(archive), "-C", folder, "--"};
     for (const QString &path : paths)
         args << QDir(folder).relativeFilePath(path);
-    auto *process = new QProcess(this);
-    process->setWorkingDirectory(folder);
-    setBusy(tr("Compressing into %1…").arg(archive));
-    connect(process, &QProcess::finished, this, [this, process, folder, archive](int code, QProcess::ExitStatus status) {
-        process->deleteLater();
-        setBusy({});
-        if (code != 0 || status != QProcess::NormalExit) {
-            // Leave nothing half-written behind.
-            QFile::remove(QDir(folder).filePath(archive));
-            emit failed(tr("Couldn't compress: %1").arg(QString::fromUtf8(process->readAllStandardError()).trimmed()));
-            return;
-        }
-        emit done(folder, archive);
-    });
-    connect(process, &QProcess::errorOccurred, this, [this, process](QProcess::ProcessError error) {
-        if (error != QProcess::FailedToStart)
-            return;
-        process->deleteLater();
-        setBusy({});
-        emit failed(tr("Compressing needs bsdtar, from the libarchive package."));
-    });
-    process->start("bsdtar", args);
+    runTool("bsdtar", args, tr("Compressing into %1…").arg(archive),
+            tr("Compressing needs bsdtar, from the libarchive package."),
+            [this, folder, archive](QProcess *process, int code) {
+                if (code != 0) {
+                    // Leave nothing half-written behind.
+                    QFile::remove(QDir(folder).filePath(archive));
+                    emit failed(tr("Couldn't compress: %1").arg(QString::fromUtf8(process->readAllStandardError()).trimmed()));
+                    return;
+                }
+                emit done(folder, archive);
+            });
 }
 
 void FileOps::shareLocalSend(const QStringList &paths) {
@@ -330,46 +319,33 @@ bool FileOps::hasLocalSend() const {
 }
 
 void FileOps::dropboxLink(const QString &path) {
-    auto *process = new QProcess(this);
     const QString name = QFileInfo(path).fileName();
-    setBusy(tr("Getting a Dropbox link for %1…").arg(name));
-    connect(process, &QProcess::finished, this, [this, process, name](int code, QProcess::ExitStatus) {
-        process->deleteLater();
-        setBusy({});
-        const QString out = QString::fromUtf8(process->readAllStandardOutput()).trimmed();
-        // dropbox-cli prints the link, or a sentence saying why not.
-        const QString link = out.section('\n', -1).trimmed();
-        if (code != 0 || !link.startsWith("https://")) {
-            const QString why = out.isEmpty() ? QString::fromUtf8(process->readAllStandardError()).trimmed() : out;
-            emit failed(tr("Couldn't get a Dropbox link for %1: %2").arg(name, why));
-            return;
-        }
-        QGuiApplication::clipboard()->setText(link);
-        emit notice(tr("Dropbox link for %1 copied.").arg(name));
-    });
-    connect(process, &QProcess::errorOccurred, this, [this, process](QProcess::ProcessError error) {
-        if (error != QProcess::FailedToStart)
-            return;
-        process->deleteLater();
-        setBusy({});
-        emit failed(tr("Dropbox links need dropbox-cli, which isn't installed."));
-    });
-    process->start("dropbox-cli", {"sharelink", path});
+    runTool("dropbox-cli", {"sharelink", path}, tr("Getting a Dropbox link for %1…").arg(name),
+            tr("Dropbox links need dropbox-cli, which isn't installed."),
+            [this, name](QProcess *process, int code) {
+                const QString out = QString::fromUtf8(process->readAllStandardOutput()).trimmed();
+                // dropbox-cli prints the link, or a sentence saying why not.
+                const QString link = out.section('\n', -1).trimmed();
+                if (code != 0 || !link.startsWith("https://")) {
+                    const QString why = out.isEmpty() ? QString::fromUtf8(process->readAllStandardError()).trimmed() : out;
+                    emit failed(tr("Couldn't get a Dropbox link for %1: %2").arg(name, why));
+                    return;
+                }
+                QGuiApplication::clipboard()->setText(link);
+                emit notice(tr("Dropbox link for %1 copied.").arg(name));
+            });
 }
 
 void FileOps::shareTaildrop(const QStringList &paths, const QString &host) {
-    if (paths.isEmpty() || !m_busy.isEmpty())
+    if (paths.isEmpty())
         return;
-    auto *process = new QProcess(this);
     const QString machine = host.section('.', 0, 0);
-    setBusy(tr("Sending to %1…").arg(machine));
-    connect(process, &QProcess::finished, this, [this, process, machine](int code, QProcess::ExitStatus) {
-        process->deleteLater();
-        setBusy({});
-        if (code != 0)
-            emit failed(tr("Couldn't send to %1: %2").arg(machine, QString::fromUtf8(process->readAllStandardError()).trimmed()));
-    });
-    process->start("tailscale", QStringList{"file", "cp"} + paths + QStringList{host + ":"});
+    runTool("tailscale", QStringList{"file", "cp"} + paths + QStringList{host + ":"}, tr("Sending to %1…").arg(machine),
+            tr("Sending with Taildrop needs tailscale, which isn't installed."),
+            [this, machine](QProcess *process, int code) {
+                if (code != 0)
+                    emit failed(tr("Couldn't send to %1: %2").arg(machine, QString::fromUtf8(process->readAllStandardError()).trimmed()));
+            });
 }
 
 void FileOps::trash(const QStringList &paths) {
@@ -642,6 +618,29 @@ void FileOps::openTerminal(const QString &folder) {
     // xdg-terminal-exec starts the terminal Omarchy is set up with.
     if (!QProcess::startDetached("xdg-terminal-exec", {"--dir=" + folder}, folder))
         emit failed(tr("Couldn't start a terminal: xdg-terminal-exec isn't installed."));
+}
+
+void FileOps::runTool(const QString &program, const QStringList &args, const QString &busy, const QString &missing,
+                      const std::function<void(QProcess *, int)> &finished) {
+    if (!m_busy.isEmpty())
+        return;
+    auto *process = new QProcess(this);
+    setBusy(busy);
+    connect(process, &QProcess::finished, this, [this, process, finished](int code, QProcess::ExitStatus status) {
+        process->deleteLater();
+        setBusy({});
+        finished(process, status == QProcess::NormalExit ? code : -1);
+    });
+    // A program that isn't installed never finishes, so this is the only
+    // word from it.
+    connect(process, &QProcess::errorOccurred, this, [this, process, missing](QProcess::ProcessError error) {
+        if (error != QProcess::FailedToStart)
+            return;
+        process->deleteLater();
+        setBusy({});
+        emit failed(missing);
+    });
+    process->start(program, args);
 }
 
 void FileOps::setBusy(const QString &busy) {
