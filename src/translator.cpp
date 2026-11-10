@@ -9,20 +9,10 @@
 #include <QLocale>
 #include <QRegularExpression>
 
-Translator::Translator(const QString &languageFile, const QString &catalogDirectory, QObject *parent)
-    : QTranslator(parent),
-      m_languageFile(languageFile.isEmpty() ? QDir::homePath() + "/.config/omarchy/language" : languageFile),
-      m_catalogDirectory(catalogDirectory) {
-    m_debounce.setSingleShot(true);
-    m_debounce.setInterval(80);
-    connect(&m_watcher, &QFileSystemWatcher::directoryChanged, this, [this] { m_debounce.start(); });
-    connect(&m_watcher, &QFileSystemWatcher::fileChanged, this, [this] { m_debounce.start(); });
-    connect(&m_debounce, &QTimer::timeout, this, &Translator::reload);
-    reload();
-}
+namespace {
 
 // One registry code on the first line; anything else, or no file, is English.
-QString Translator::readLanguage(const QString &path) {
+QString readLanguage(const QString &path) {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly))
         return "en";
@@ -33,11 +23,10 @@ QString Translator::readLanguage(const QString &path) {
 
 // CLDR cardinal plural categories for whole counts, for Omarchy's languages
 // (the same rules as Omarchy's shell/Commons/Plural.js).
-QString Translator::pluralCategory(const QString &language, long long count) {
+QString pluralCategory(const QString &code, long long count) {
     const long long n = count < 0 ? -count : count, n10 = n % 10, n100 = n % 100;
     const bool millions = n != 0 && n % 1000000 == 0;
     const bool teens = n100 >= 12 && n100 <= 14;
-    const QString code = language;
     auto in = [&](std::initializer_list<const char *> codes) {
         for (const char *c : codes) if (code == QLatin1String(c)) return true;
         return false;
@@ -68,7 +57,7 @@ QString Translator::pluralCategory(const QString &language, long long count) {
 // The locale Omarchy formats this language with, from its registry, so the
 // app's numbers and dates match the desktop's (Arabic there uses Western
 // digits); without Omarchy, Qt's own locale for the code.
-QLocale Translator::formatLocale(const QString &language) {
+QLocale formatLocale(const QString &language) {
     QFile registry(qEnvironmentVariable("OMARCHY_PATH") + "/default/i18n/locales.json");
     if (registry.open(QIODevice::ReadOnly)) {
         const QString name = QJsonDocument::fromJson(registry.readAll()).object()
@@ -77,6 +66,20 @@ QLocale Translator::formatLocale(const QString &language) {
             return QLocale(name);
     }
     return QLocale(language);
+}
+
+} // namespace
+
+Translator::Translator(const QString &languageFile, const QString &catalogDirectory, QObject *parent)
+    : QTranslator(parent),
+      m_languageFile(languageFile.isEmpty() ? QDir::homePath() + "/.config/omarchy/language" : languageFile),
+      m_catalogDirectory(catalogDirectory) {
+    m_debounce.setSingleShot(true);
+    m_debounce.setInterval(80);
+    connect(&m_watcher, &QFileSystemWatcher::directoryChanged, this, [this] { m_debounce.start(); });
+    connect(&m_watcher, &QFileSystemWatcher::fileChanged, this, [this] { m_debounce.start(); });
+    connect(&m_debounce, &QTimer::timeout, this, &Translator::reload);
+    reload();
 }
 
 QString Translator::translate(const char *, const char *sourceText, const char *, int n) const {

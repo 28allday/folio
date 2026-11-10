@@ -52,12 +52,6 @@ public:
     bool light() const { return m_light; }
     int radius() const { return m_radius; }
 
-    struct Palette {
-        QHash<QString, QColor> colors;
-        bool light = false;
-    };
-    static Palette readPalette(const QString &path);
-
 signals:
     void changed();
 
