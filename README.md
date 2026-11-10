@@ -25,6 +25,10 @@ Folio is Omarchy's file manager: one window for finding, previewing and opening 
 | Space | Preview the selected file (Space or Esc closes, ← → step through) |
 | Ctrl+I | Show or hide the details pane |
 | Ctrl+D | Pin or unpin the folder |
+| Shift+click / Shift+arrows | Select a range |
+| Alt+click | Add or remove one from the selection |
+| Drag on empty space | Select with a rectangle (Alt adds) |
+| Ctrl+A / Esc | Select everything / back to one |
 | Ctrl+C / Ctrl+X / Ctrl+V | Copy, cut, paste files |
 | Ctrl+Shift+C | Copy the path as text |
 | F2 / Ctrl+Shift+D | Rename / duplicate |

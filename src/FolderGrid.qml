@@ -5,13 +5,27 @@ import QtQuick.Controls
 GridView {
     id: grid
 
-    function select(name) {
-        const found = name ? backend.folder.indexOf(name) : -1
-        currentIndex = found >= 0 ? found : (count > 0 ? 0 : -1)
-        if (currentIndex >= 0)
-            positionViewAtIndex(currentIndex, GridView.Contain)
-    }
+    function select(name, keep) { selecting.select(name, keep) }
     function focusView() { forceActiveFocus() }
+
+    Selecting { id: selecting; view: grid }
+    onCurrentIndexChanged: selecting.cursorMoved()
+    Keys.onPressed: (event) => {
+        if (!(event.modifiers & Qt.ShiftModifier))
+            return
+        const step = event.key === Qt.Key_Left ? -1 : event.key === Qt.Key_Right ? 1
+                   : event.key === Qt.Key_Up ? -columns : event.key === Qt.Key_Down ? columns : 0
+        if (step !== 0) {
+            selecting.extendTo(currentIndex + step)
+            event.accepted = true
+        }
+    }
+
+    Band {
+        view: grid
+        rectOf: (i) => Qt.rect((i % grid.columns) * grid.cellWidth + 20, Math.floor(i / grid.columns) * grid.cellHeight + 12,
+                               grid.cellWidth - 40, grid.cellHeight - 24)
+    }
 
     // Right-click on an item (selecting it) or on empty space.
     signal contextMenu(var item, string folder)
@@ -19,8 +33,7 @@ GridView {
         acceptedButtons: Qt.RightButton
         onTapped: (point) => {
             const index = grid.indexAt(point.position.x + grid.contentX, point.position.y + grid.contentY)
-            if (index >= 0)
-                grid.currentIndex = index
+            selecting.menuAt(index)
             grid.contextMenu(index >= 0 ? backend.folder.get(index) : null, backend.path)
         }
     }
@@ -42,8 +55,8 @@ GridView {
     delegate: FileTile {
         width: grid.cellWidth
         height: grid.cellHeight
-        current: GridView.isCurrentItem
-        onClicked: { grid.currentIndex = index; grid.forceActiveFocus() }
+        current: selected
+        onClicked: (modifiers) => { selecting.click(index, modifiers); grid.forceActiveFocus() }
         onActivated: backend.open(path)
     }
 

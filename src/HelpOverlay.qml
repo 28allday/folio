@@ -12,6 +12,10 @@ Rectangle {
     property var shortcuts: [
         ["← ↑ → ↓", qsTr("Move the selection")],
         ["→ / ←", qsTr("In list and columns: into a folder / back out")],
+        ["Shift+click / Shift+arrows", qsTr("Select a range")],
+        ["Alt+click", qsTr("Add or remove one from the selection")],
+        ["Drag on empty space", qsTr("Select with a rectangle (Alt adds)")],
+        ["Ctrl+A", qsTr("Select everything")],
         ["Tab", qsTr("Switch between the sidebar and the files")],
         ["⏎", qsTr("Open")],
         ["Backspace", qsTr("Go to the parent folder")],

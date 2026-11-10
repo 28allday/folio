@@ -90,6 +90,7 @@ QVariant FolderModel::data(const QModelIndex &index, int role) const {
     case ExtensionRole: return e.extension;
     case ItemCountRole: return e.itemCount;
     case PeekRole: return e.peek;
+    case SelectedRole: return m_selected.contains(e.name);
     }
     return {};
 }
@@ -99,6 +100,7 @@ QHash<int, QByteArray> FolderModel::roleNames() const {
         {NameRole, "name"}, {PathRole, "path"}, {IsDirRole, "isDir"}, {SizeRole, "size"},
         {ModifiedRole, "modified"}, {KindRole, "kind"}, {MimeRole, "mime"},
         {ExtensionRole, "extension"}, {ItemCountRole, "itemCount"}, {PeekRole, "peek"},
+        {SelectedRole, "selected"},
     };
 }
 
@@ -132,6 +134,10 @@ void FolderModel::setPath(const QString &path) {
         m_watcher.removePaths(m_watcher.files());
     m_path = clean;
     emit pathChanged();
+    if (!m_selected.isEmpty()) {
+        m_selected.clear();
+        emit selectionChanged();
+    }
 
     // The old folder stays up while the new one is read, which locally takes
     // a few milliseconds: swapping straight from one to the other avoids an
@@ -348,6 +354,16 @@ void FolderModel::reload() {
             endResetModel();
             emit countChanged();
         }
+        if (!m_selected.isEmpty()) {
+            QSet<QString> still;
+            for (const Entry &e : m_entries)
+                if (m_selected.contains(e.name))
+                    still.insert(e.name);
+            if (still != m_selected) {
+                m_selected = still;
+                emit selectionChanged();
+            }
+        }
         setError(error);
         setLoading(false);
         emit loaded();
@@ -402,7 +418,74 @@ QVariantMap FolderModel::get(int row) const {
         {"name", e.name}, {"path", e.path}, {"isDir", e.isDir}, {"size", e.size},
         {"modified", e.modified}, {"kind", e.kind}, {"mime", e.mime},
         {"extension", e.extension}, {"itemCount", e.itemCount}, {"peek", e.peek},
+        {"selected", m_selected.contains(e.name)},
     };
+}
+
+void FolderModel::setSelected(const QSet<QString> &names) {
+    if (names == m_selected)
+        return;
+    m_selected = names;
+    if (!m_entries.isEmpty())
+        emit dataChanged(index(0), index(m_entries.size() - 1), {SelectedRole});
+    emit selectionChanged();
+}
+
+void FolderModel::selectOnly(int row) {
+    setSelected(row >= 0 && row < m_entries.size() ? QSet<QString>{m_entries[row].name} : QSet<QString>{});
+}
+
+void FolderModel::toggleSelected(int row) {
+    if (row < 0 || row >= m_entries.size())
+        return;
+    QSet<QString> names = m_selected;
+    const QString name = m_entries[row].name;
+    if (!names.remove(name))
+        names.insert(name);
+    setSelected(names);
+}
+
+void FolderModel::selectRange(int from, int to, bool add) {
+    if (m_entries.isEmpty())
+        return;
+    from = qBound(0, from, int(m_entries.size()) - 1);
+    to = qBound(0, to, int(m_entries.size()) - 1);
+    QSet<QString> names = add ? m_selected : QSet<QString>{};
+    for (int row = qMin(from, to); row <= qMax(from, to); ++row)
+        names.insert(m_entries[row].name);
+    setSelected(names);
+}
+
+void FolderModel::selectRows(const QList<int> &rows) {
+    QSet<QString> names;
+    for (int row : rows)
+        if (row >= 0 && row < m_entries.size())
+            names.insert(m_entries[row].name);
+    setSelected(names);
+}
+
+void FolderModel::selectAll() {
+    QSet<QString> names;
+    for (const Entry &e : m_entries)
+        names.insert(e.name);
+    setSelected(names);
+}
+
+void FolderModel::clearSelection() {
+    setSelected({});
+}
+
+bool FolderModel::isSelected(int row) const {
+    return row >= 0 && row < m_entries.size() && m_selected.contains(m_entries[row].name);
+}
+
+QStringList FolderModel::selectedPaths() const {
+    // In the folder's order, not the order they were picked in.
+    QStringList paths;
+    for (const Entry &e : m_entries)
+        if (m_selected.contains(e.name))
+            paths << e.path;
+    return paths;
 }
 
 int FolderModel::indexOf(const QString &name) const {

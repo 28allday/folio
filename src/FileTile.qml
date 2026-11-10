@@ -15,11 +15,12 @@ Item {
     required property string mime
     required property string extension
     required property int itemCount
+    required property bool selected
     required property var peek
 
     property bool current: false
 
-    signal clicked()
+    signal clicked(int modifiers)
     signal activated()
 
     function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
@@ -88,13 +89,16 @@ Item {
     Drag.active: drag.active
     Drag.dragType: Drag.Automatic
     Drag.supportedActions: Qt.CopyAction | Qt.LinkAction
-    Drag.mimeData: ({ "text/uri-list": "file://" + encodeURI(tile.path) })
+    // Dragging a selected item takes the whole selection along.
+    Drag.mimeData: ({ "text/uri-list": (tile.selected && backend.folder.selectedCount > 1 ? backend.folder.selectedPaths() : [tile.path])
+                                         .map(p => "file://" + encodeURI(p)).join("\r\n") })
     Drag.hotSpot.x: tile.width / 2
     Drag.hotSpot.y: 40
     DragHandler { id: drag; target: null }
 
     TapHandler {
-        onTapped: tile.clicked()
+        id: tap
+        onTapped: tile.clicked(tap.point.modifiers)
         onDoubleTapped: tile.activated()
     }
 

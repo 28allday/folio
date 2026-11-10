@@ -216,6 +216,38 @@ private slots:
         QCOMPARE(order("size"), QString("Zeta a.png c.txt b.txt"));
     }
 
+    void folderSelectsByName()
+    {
+        QTemporaryDir dir;
+        for (const char *name : {"a.txt", "b.txt", "c.txt", "d.txt"})
+            write(dir.filePath(name), "x");
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(dir.path());
+        QVERIFY(loaded.wait(3000));
+
+        model.selectOnly(1);
+        QCOMPARE(model.selectedCount(), 1);
+        model.selectRange(1, 3, false);
+        QCOMPARE(model.selectedPaths(), QStringList({dir.filePath("b.txt"), dir.filePath("c.txt"), dir.filePath("d.txt")}));
+        model.toggleSelected(2);
+        QCOMPARE(model.selectedCount(), 2);
+        QVERIFY(!model.isSelected(2));
+        model.selectRange(0, 0, true);
+        QCOMPARE(model.selectedCount(), 3);
+
+        // A file that goes away leaves the selection; the rest stay.
+        QFile::remove(dir.filePath("b.txt"));
+        model.reload();
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.selectedPaths(), QStringList({dir.filePath("a.txt"), dir.filePath("d.txt")}));
+
+        model.selectAll();
+        QCOMPARE(model.selectedCount(), 3);
+        model.clearSelection();
+        QCOMPARE(model.selectedCount(), 0);
+    }
+
     void kindsFromMimeTypes()
     {
         QCOMPARE(FolderModel::kindForMime("application/pdf"), QString("pdf"));

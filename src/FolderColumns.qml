@@ -12,12 +12,9 @@ Item {
     property alias currentIndex: here.currentIndex
     readonly property int columnWidth: 260
 
-    function select(name) {
-        const found = name ? backend.folder.indexOf(name) : -1
-        here.currentIndex = found >= 0 ? found : (here.count > 0 ? 0 : -1)
-        if (here.currentIndex >= 0)
-            here.positionViewAtIndex(here.currentIndex, ListView.Contain)
-    }
+    function select(name, keep) { selecting.select(name, keep) }
+
+    Selecting { id: selecting; view: here }
     function focusView() { here.forceActiveFocus() }
 
     // Every column has a menu: on an item there, or on the column's folder.
@@ -139,20 +136,29 @@ Item {
                     acceptedButtons: Qt.RightButton
                     onTapped: (point) => {
                         const index = here.indexAt(point.position.x + here.contentX, point.position.y + here.contentY)
-                        if (index >= 0)
-                            here.currentIndex = index
+                        selecting.menuAt(index)
                         view.contextMenu(index >= 0 ? backend.folder.get(index) : null, backend.path)
                     }
                 }
 
+                onCurrentIndexChanged: selecting.cursorMoved()
+                Keys.onPressed: (event) => {
+                    if (!(event.modifiers & Qt.ShiftModifier))
+                        return
+                    const step = event.key === Qt.Key_Up ? -1 : event.key === Qt.Key_Down ? 1 : 0
+                    if (step !== 0) {
+                        selecting.extendTo(here.currentIndex + step)
+                        event.accepted = true
+                    }
+                }
                 Keys.onRightPressed: if (view.selected.isDir) backend.navigate(view.selected.path)
                 Keys.onLeftPressed: backend.goUp()
 
                 delegate: FileRow {
                     width: here.width
                     chevron: true
-                    current: ListView.isCurrentItem
-                    onClicked: { here.currentIndex = index; here.forceActiveFocus() }
+                    current: selected
+                    onClicked: (modifiers) => { selecting.click(index, modifiers); here.forceActiveFocus() }
                     onActivated: backend.open(path)
                 }
 

@@ -21,7 +21,11 @@ Menu {
     readonly property bool onItem: !!target && target.path !== undefined
     readonly property bool onFolder: onItem && target.isDir === true
     readonly property var apps: onItem ? fileOps.appsFor(target.path) : []
-    readonly property var paths: onItem ? [target.path] : []
+    // A selected item in the folder being shown stands for the whole
+    // selection, so Copy, Compress or Delete act on all of it.
+    readonly property bool onSelection: onItem && target.selected === true && backend.folder.selectedCount > 1
+                                        && backend.folder.indexOf(target.name) >= 0
+    readonly property var paths: !onItem ? [] : onSelection ? backend.folder.selectedPaths() : [target.path]
 
     Material.background: theme.background
     Material.foreground: theme.foreground
@@ -260,7 +264,7 @@ Menu {
     // Delete moves to the trash; Restore in any file manager brings it back.
     Entry {
         shown: menu.onItem
-        text: qsTr("Delete")
+        text: menu.onSelection ? qsTr("Delete %n Items", "", menu.paths.length) : qsTr("Delete")
         keys: "Delete"
         onTriggered: fileOps.trash(menu.paths)
     }

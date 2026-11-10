@@ -5,6 +5,7 @@
 #include <QFileSystemWatcher>
 #include <QStringList>
 #include <QTimer>
+#include <QSet>
 #include <QVector>
 
 // One folder's contents, listed off the UI thread so a slow mount (an SFTP
@@ -20,6 +21,7 @@ class FolderModel : public QAbstractListModel {
     Q_PROPERTY(QString error READ error NOTIFY errorChanged)
     Q_PROPERTY(bool showHidden READ showHidden WRITE setShowHidden NOTIFY showHiddenChanged)
     Q_PROPERTY(QString sortMode READ sortMode WRITE setSortMode NOTIFY sortModeChanged)
+    Q_PROPERTY(int selectedCount READ selectedCount NOTIFY selectionChanged)
 
 public:
     enum Role {
@@ -33,6 +35,7 @@ public:
         ExtensionRole,
         ItemCountRole,
         PeekRole,
+        SelectedRole,
     };
 
     struct Entry {
@@ -69,6 +72,18 @@ public:
     Q_INVOKABLE QVariantMap get(int row) const;
     Q_INVOKABLE int indexOf(const QString &name) const;
 
+    // The selection, kept by name so it survives a re-read or a re-sort.
+    // The views keep the cursor (the current item) themselves.
+    int selectedCount() const { return m_selected.size(); }
+    Q_INVOKABLE void selectOnly(int row);
+    Q_INVOKABLE void toggleSelected(int row);
+    Q_INVOKABLE void selectRange(int from, int to, bool add);
+    Q_INVOKABLE void selectRows(const QList<int> &rows);
+    Q_INVOKABLE void selectAll();
+    Q_INVOKABLE void clearSelection();
+    Q_INVOKABLE bool isSelected(int row) const;
+    Q_INVOKABLE QStringList selectedPaths() const;
+
     // Synchronous building blocks, used by the background passes and tests.
     static QVector<Entry> list(const QString &path, bool showHidden, const QString &sort, QString *error);
     static void summarize(Entry &entry, bool showHidden);
@@ -87,6 +102,7 @@ signals:
     void errorChanged();
     void showHiddenChanged();
     void sortModeChanged();
+    void selectionChanged();
     void loaded();
 
 private:
@@ -100,6 +116,8 @@ private:
 
     QString m_path;
     QVector<Entry> m_entries;
+    QSet<QString> m_selected;
+    void setSelected(const QSet<QString> &names);
     bool m_loading = false;
     QString m_error;
     bool m_showHidden = false;

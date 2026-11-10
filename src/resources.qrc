@@ -12,6 +12,8 @@
         <file alias="PathBar.qml">PathBar.qml</file>
         <file alias="PreviewPane.qml">PreviewPane.qml</file>
         <file alias="HelpOverlay.qml">HelpOverlay.qml</file>
+        <file alias="Selecting.qml">Selecting.qml</file>
+        <file alias="Band.qml">Band.qml</file>
         <file alias="SortMenu.qml">SortMenu.qml</file>
         <file alias="FileMenu.qml">FileMenu.qml</file>
         <file alias="RenameDialog.qml">RenameDialog.qml</file>

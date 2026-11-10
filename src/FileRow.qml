@@ -16,6 +16,7 @@ Item {
     required property var size
     required property var modified
     required property int itemCount
+    required property bool selected
 
     property bool current: false
     // In a column to the left: the folder the next column is showing.
@@ -23,7 +24,7 @@ Item {
     property bool detailed: false
     property bool chevron: false
 
-    signal clicked()
+    signal clicked(int modifiers)
     signal activated()
 
     implicitHeight: 32
@@ -139,7 +140,8 @@ Item {
         onHoveredChanged: if (hovered) row.grabToImage(result => row.Drag.imageSource = result.url)
     }
     TapHandler {
-        onTapped: row.clicked()
+        id: tap
+        onTapped: row.clicked(tap.point.modifiers)
         onDoubleTapped: row.activated()
     }
 
@@ -147,6 +149,8 @@ Item {
     Drag.active: drag.active
     Drag.dragType: Drag.Automatic
     Drag.supportedActions: Qt.CopyAction | Qt.LinkAction
-    Drag.mimeData: ({ "text/uri-list": "file://" + encodeURI(row.path) })
+    // Dragging a selected item takes the whole selection along.
+    Drag.mimeData: ({ "text/uri-list": (row.selected && backend.folder.selectedCount > 1 ? backend.folder.selectedPaths() : [row.path])
+                                         .map(p => "file://" + encodeURI(p)).join("\r\n") })
     DragHandler { id: drag; target: null }
 }

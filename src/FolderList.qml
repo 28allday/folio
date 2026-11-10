@@ -9,12 +9,9 @@ ColumnLayout {
 
     property alias currentIndex: list.currentIndex
 
-    function select(name) {
-        const found = name ? backend.folder.indexOf(name) : -1
-        list.currentIndex = found >= 0 ? found : (list.count > 0 ? 0 : -1)
-        if (list.currentIndex >= 0)
-            list.positionViewAtIndex(list.currentIndex, ListView.Contain)
-    }
+    function select(name, keep) { selecting.select(name, keep) }
+
+    Selecting { id: selecting; view: list }
     function focusView() { list.forceActiveFocus() }
 
     signal contextMenu(var item, string folder)
@@ -75,6 +72,22 @@ ColumnLayout {
         model: backend.folder
         ScrollBar.vertical: ScrollBar { }
 
+        onCurrentIndexChanged: selecting.cursorMoved()
+        Keys.onPressed: (event) => {
+            if (!(event.modifiers & Qt.ShiftModifier))
+                return
+            const step = event.key === Qt.Key_Up ? -1 : event.key === Qt.Key_Down ? 1 : 0
+            if (step !== 0) {
+                selecting.extendTo(list.currentIndex + step)
+                event.accepted = true
+            }
+        }
+
+        Band {
+            view: list
+            rectOf: (i) => Qt.rect(0, i * 32, list.width, 32)
+        }
+
         // → goes into the selected folder and ← back up, as in the columns.
         Keys.onRightPressed: {
             const item = backend.folder.get(list.currentIndex)
@@ -87,8 +100,7 @@ ColumnLayout {
             acceptedButtons: Qt.RightButton
             onTapped: (point) => {
                 const index = list.indexAt(point.position.x + list.contentX, point.position.y + list.contentY)
-                if (index >= 0)
-                    list.currentIndex = index
+                selecting.menuAt(index)
                 view.contextMenu(index >= 0 ? backend.folder.get(index) : null, backend.path)
             }
         }
@@ -96,8 +108,8 @@ ColumnLayout {
         delegate: FileRow {
             width: list.width
             detailed: true
-            current: ListView.isCurrentItem
-            onClicked: { list.currentIndex = index; list.forceActiveFocus() }
+            current: selected
+            onClicked: (modifiers) => { selecting.click(index, modifiers); list.forceActiveFocus() }
             onActivated: backend.open(path)
         }
 

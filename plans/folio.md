@@ -27,6 +27,7 @@ Done, tested (19 Qt Test cases), and verified offscreen:
 - Sidebar sections Views (Recents from GTK's recently-used.xbel, Trash); Tab moves the keyboard between sidebar and files.
 - Right-click menus everywhere (Open, Open With, Preview, Rename, Duplicate, Copy, Cut, Paste, Copy Path, Compress, Share via LocalSend or Taildrop, Pin, Terminal, Delete to trash); clipboard interoperable with GNOME/KDE apps; pastes never overwrite.
 - Sort by name, kind, newest, oldest or size.
+- Multi-select: Shift+click/arrows for ranges, Alt+click to add or remove, rubber band on empty space, Ctrl+A; file actions and drags act on the selection.
 - Path entry (Ctrl+L): ~ and relative paths, a file selects itself in its folder, Tab completes folder names.
 - Three views, remembered between launches: grid (Ctrl+1), list with name, size and date (Ctrl+2; headings sort; the date then the size step aside when narrow), and Finder-style columns (Ctrl+3).
 - Preview pane: large preview, the system's type name, size, modified, dimensions, opening lines of text files, Open.
@@ -58,7 +59,6 @@ Done, tested (19 Qt Test cases), and verified offscreen:
 
 ### 1. File operations (makes it usable as a daily driver)
 
-- Select many: Shift/Ctrl+click, Shift+arrows, Ctrl+A, rubber-band selection.
 - Copy, cut, paste through the Wayland clipboard as `text/uri-list` plus `x-special/gnome-copied-files`, so pasting between Folio and other apps works both ways.
 - Rename in place (F2), new folder (Ctrl+Shift+N), trash (Delete) per the freedesktop Trash spec, restore and empty in Trash, permanent delete only from Trash and only after asking.
 - An operation queue in C++ on a worker thread: progress in the status bar, cancel, and a conflict prompt (replace, keep both, skip, apply to all).

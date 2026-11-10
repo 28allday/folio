@@ -29,7 +29,10 @@ ApplicationWindow {
     // While a text field has the keyboard (renaming, a password), single-key
     // and clipboard shortcuts stand aside so typing works.
     readonly property bool typing: rename.visible || backend.mounter.asking || pathBar.editing
-    readonly property var selectedPaths: current.path ? [current.path] : []
+    // What file actions act on: everything selected, or the item under
+    // the cursor when nothing is.
+    readonly property var selectedPaths: backend.folder.selectedCount > 0 ? backend.folder.selectedPaths()
+                                       : (current.path ? [current.path] : [])
     onCurrentChanged: {
         if (current.name)
             lastName = current.name
@@ -96,6 +99,14 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+Shift+C"; context: Qt.WindowShortcut; enabled: !win.typing; onActivated: fileOps.yank(win.selectedPaths.length > 0 ? win.selectedPaths : [backend.path]) }
     Shortcut { sequence: "Delete"; context: Qt.WindowShortcut; enabled: !win.typing; onActivated: fileOps.trash(win.selectedPaths) }
     Shortcut { sequence: "F2"; context: Qt.WindowShortcut; enabled: !win.typing; onActivated: if (win.current.path) rename.open(win.current) }
+    Shortcut { sequences: [StandardKey.SelectAll]; context: Qt.WindowShortcut; enabled: !win.typing; onActivated: backend.folder.selectAll() }
+    // Escape narrows a selection of several back to the cursor.
+    Shortcut {
+        sequence: "Escape"
+        context: Qt.WindowShortcut
+        enabled: !win.typing && !win.helpVisible && backend.folder.selectedCount > 1
+        onActivated: backend.folder.selectOnly(view.item ? view.item.currentIndex : -1)
+    }
     Shortcut { sequence: "Ctrl+Shift+D"; context: Qt.WindowShortcut; enabled: !win.typing; onActivated: if (win.current.path) fileOps.duplicate(win.current.path) }
     Shortcut { sequences: [StandardKey.New]; context: Qt.WindowShortcut; enabled: !win.typing; onActivated: backend.newWindow() }
     Shortcut { sequence: "Ctrl+Shift+N"; context: Qt.WindowShortcut; enabled: !win.typing; onActivated: fileOps.newFolder(backend.path) }
@@ -123,7 +134,7 @@ ApplicationWindow {
 
     Connections {
         target: backend
-        function onSelectRequested(name) { if (view.item) view.item.select(name) }
+        function onSelectRequested(name) { if (view.item) view.item.select(name, false) }
         function onActivateRequested() { win.raise(); win.requestActivate() }
     }
 
@@ -153,7 +164,7 @@ ApplicationWindow {
             const pending = backend.takeSelection()
             const same = backend.folder.path === win.loadedPath
             win.loadedPath = backend.folder.path
-            view.item.select(pending || (same ? win.lastName : ""))
+            view.item.select(pending || (same ? win.lastName : ""), same && !pending)
         }
     }
 
@@ -248,7 +259,7 @@ ApplicationWindow {
                                        : win.viewMode === "columns" ? columnsView
                                        : gridView
                         // A new view picks up the selection the old one had.
-                        onLoaded: { item.select(win.lastName); item.focusView() }
+                        onLoaded: { item.select(win.lastName, true); item.focusView() }
 
                         // Files dropped on empty space land in this folder;
                         // folders inside take drops on themselves first.
@@ -296,6 +307,7 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         text: qsTr("%n items", "", backend.folder.count)
                               + (backend.folder.folderCount > 0 ? " · " + qsTr("%n folders", "", backend.folder.folderCount) : "")
+                              + (backend.folder.selectedCount > 1 ? " · " + qsTr("%n selected", "", backend.folder.selectedCount) : "")
                         color: theme.secondaryForeground
                         font.pixelSize: 12
                     }
