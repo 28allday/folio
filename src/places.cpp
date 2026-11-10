@@ -107,9 +107,10 @@ QString Places::userDirectory(int location, const QString &fallback) const {
     return m_home + "/" + fallback;
 }
 
-// The sidebar's Home section is every folder in home, the way they appear in the home
-// folder itself, so whatever someone keeps at the top of their home (Work,
-// omarchy, Dropbox) is one click away without a bookmarks feature.
+// The sidebar's Home section is every folder in home but the hidden ones,
+// the way they appear in the home folder itself, so whatever someone keeps
+// at the top of their home (Work, omarchy, Dropbox) is one click away
+// without pinning it.
 void Places::refreshPlaces() {
     QVariantList places;
     auto add = [&](const QString &name, const QString &path, const QString &icon, const QString &status = {}) {
