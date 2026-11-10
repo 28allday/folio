@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Shapes
 import QtQuick.Effects
+import "Format.js" as Format
 
 // One item in the grid: a preview on top, its name below. Folders are a
 // quiet card; files show a real thumbnail when one
@@ -30,29 +31,6 @@ Item {
     // Pictures and drawings round their corners with the theme: square on
     // Omarchy's default, softly rounded on themes that round windows.
     readonly property real iconRadius: Math.min(10, theme.radius)
-
-    // When it changed: the time for today, the date before that.
-    function when(date) {
-        if (!date)
-            return ""
-        translator.language // Re-read when the language (and so the default locale) changes.
-        const locale = Qt.locale()
-        const now = new Date()
-        const today = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate()
-        return today ? date.toLocaleTimeString(locale, Locale.ShortFormat) : date.toLocaleDateString(locale, Locale.ShortFormat)
-    }
-
-    function formatSize(bytes) {
-        const units = [qsTr("B"), qsTr("KB"), qsTr("MB"), qsTr("GB"), qsTr("TB")]
-        let i = 0
-        let value = bytes
-        while (value >= 1000 && i < units.length - 1) { value /= 1000; ++i }
-        return value.toLocaleString(Qt.locale(), "f", i === 0 ? 0 : 1) + " " + units[i]
-    }
-
-    function thumbUrl(file, type, size) {
-        return "image://thumb/" + size + "/" + encodeURIComponent(type) + "/" + encodeURIComponent(file)
-    }
 
     // The badge and stand-in color for each kind, from the theme's palette.
     readonly property color kindColor: kind === "pdf" ? theme.red
@@ -111,10 +89,9 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width - 28
         text: {
-            translator.language
-            const size = tile.isDir ? (tile.itemCount === 0 ? qsTr("Empty") : tile.itemCount > 0 ? qsTr("%n items", "", tile.itemCount) : "")
-                                    : tile.formatSize(tile.size)
-            const date = tile.when(tile.modified)
+            translator.language // Re-read when the language (and so the default locale) changes.
+            const size = tile.isDir ? Format.count(tile.itemCount) : Format.size(tile.size)
+            const date = Format.when(tile.modified)
             return [size, date].filter(part => part.length > 0).join(" · ")
         }
         color: theme.secondaryForeground
@@ -205,7 +182,7 @@ Item {
                 y: (parent.height - height) / 2
                 asynchronous: true
                 fillMode: parent.crop ? Image.PreserveAspectCrop : Image.Stretch
-                source: tile.kind === "text" ? "" : tile.thumbUrl(tile.path, tile.mime, 256)
+                source: tile.kind === "text" ? "" : Format.thumb(tile.path, tile.mime, 256)
                 visible: status === Image.Ready
                 layer.enabled: tile.iconRadius > 0 && status === Image.Ready
                 layer.effect: MultiEffect {

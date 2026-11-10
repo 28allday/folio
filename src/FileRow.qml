@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Effects
+import "Format.js" as Format
 
 // One item as a row, for the list and column views: a small picture or
 // glyph, the name, and in the list the size and date beside it.
@@ -36,25 +37,6 @@ Item {
     readonly property bool showSize: detailed && width >= 380
 
     function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
-
-    // When it changed: the time for today, the date before that.
-    function when(date) {
-        if (!date)
-            return ""
-        translator.language // Re-read when the language (and so the default locale) changes.
-        const locale = Qt.locale()
-        const now = new Date()
-        const today = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate()
-        return today ? date.toLocaleTimeString(locale, Locale.ShortFormat) : date.toLocaleDateString(locale, Locale.ShortFormat)
-    }
-
-    function formatSize(bytes) {
-        const units = [qsTr("B"), qsTr("KB"), qsTr("MB"), qsTr("GB"), qsTr("TB")]
-        let i = 0
-        let value = bytes
-        while (value >= 1000 && i < units.length - 1) { value /= 1000; ++i }
-        return value.toLocaleString(Qt.locale(), "f", i === 0 ? 0 : 1) + " " + units[i]
-    }
 
     readonly property string glyph: row.isDir ? "folder"
                                   : row.kind === "image" ? "pictures"
@@ -107,8 +89,7 @@ Item {
                 }
                 asynchronous: true
                 fillMode: Image.PreserveAspectCrop
-                source: row.kind === "image" || row.kind === "video"
-                    ? "image://thumb/128/" + encodeURIComponent(row.mime) + "/" + encodeURIComponent(row.path) : ""
+                source: row.kind === "image" || row.kind === "video" ? Format.thumb(row.path, row.mime, 128) : ""
                 visible: status === Image.Ready
             }
             Rectangle {
@@ -138,7 +119,7 @@ Item {
             visible: row.showSize
             Layout.preferredWidth: 96
             horizontalAlignment: Text.AlignRight
-            text: row.isDir ? (row.itemCount === 0 ? qsTr("Empty") : row.itemCount > 0 ? qsTr("%n items", "", row.itemCount) : "") : row.formatSize(row.size)
+            text: row.isDir ? Format.count(row.itemCount) : Format.size(row.size)
             color: theme.secondaryForeground
             font.pixelSize: 12
         }
@@ -146,7 +127,10 @@ Item {
             visible: row.showDate
             Layout.preferredWidth: 96
             Layout.leftMargin: 12
-            text: row.when(row.modified)
+            text: {
+                translator.language // Re-read when the language (and so the default locale) changes.
+                return Format.when(row.modified)
+            }
             color: theme.secondaryForeground
             font.pixelSize: 12
             elide: Text.ElideRight

@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
+import "Format.js" as Format
 
 // The large look at one file (Space in Folio, or `folio preview FILE`):
 // pictures at full size, video and audio playing, PDFs to scroll through,
@@ -33,18 +34,6 @@ ApplicationWindow {
     readonly property var view: external ? externalView.item : inlineView.item
 
     function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
-
-    function formatSize(bytes) {
-        const units = [qsTr("B"), qsTr("KB"), qsTr("MB"), qsTr("GB"), qsTr("TB")]
-        let i = 0
-        let value = bytes
-        while (value >= 1000 && i < units.length - 1) { value /= 1000; ++i }
-        return value.toLocaleString(Qt.locale(), "f", i === 0 ? 0 : 1) + " " + units[i]
-    }
-
-    function thumbUrl(file, type, size) {
-        return "image://thumb/" + size + "/" + encodeURIComponent(type) + "/" + encodeURIComponent(file)
-    }
 
     function call(name, arg) {
         if (win.view && typeof win.view[name] === "function")
@@ -101,9 +90,7 @@ ApplicationWindow {
                         }
                         Text {
                             Layout.fillWidth: true
-                            text: !win.item.path ? ""
-                                : win.item.isDir ? (win.item.itemCount === 0 ? qsTr("Folder · Empty") : win.item.itemCount > 0 ? qsTr("Folder · %n items", "", win.item.itemCount) : qsTr("Folder"))
-                                : (previewer.type || win.item.mime) + " · " + win.formatSize(win.item.size)
+                            text: Format.summary(win.item, previewer.type)
                             color: theme.secondaryForeground
                             font.pixelSize: 12
                             elide: Text.ElideRight
@@ -320,7 +307,7 @@ ApplicationWindow {
                         height: 165
                         fillMode: Image.PreserveAspectCrop
                         asynchronous: true
-                        source: win.thumbUrl(modelData, "image/*", 256)
+                        source: Format.thumb(modelData, "image/*", 256)
                     }
                 }
             }
@@ -334,7 +321,7 @@ ApplicationWindow {
             }
             Text {
                 Layout.alignment: Qt.AlignHCenter
-                text: win.item.itemCount === 0 ? qsTr("Empty") : qsTr("%n items", "", Math.max(0, win.item.itemCount))
+                text: Format.count(win.item.itemCount)
                 color: theme.secondaryForeground
             }
             Item { Layout.fillHeight: true }
@@ -354,7 +341,7 @@ ApplicationWindow {
                 anchors.margins: 32
                 fillMode: Image.PreserveAspectFit
                 asynchronous: true
-                source: win.item.path ? win.thumbUrl(win.item.path, win.item.mime, 1024) : ""
+                source: win.item.path ? Format.thumb(win.item.path, win.item.mime, 1024) : ""
                 visible: status === Image.Ready
             }
             ColumnLayout {

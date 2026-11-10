@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "Format.js" as Format
 
 // A larger look at the selected item and the facts about it, with the one
 // action that matters: open it.
@@ -25,18 +26,6 @@ Rectangle {
 
     function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
 
-    function formatSize(bytes) {
-        const units = [qsTr("B"), qsTr("KB"), qsTr("MB"), qsTr("GB"), qsTr("TB")]
-        let i = 0
-        let value = bytes
-        while (value >= 1000 && i < units.length - 1) { value /= 1000; ++i }
-        return value.toLocaleString(Qt.locale(), "f", i === 0 ? 0 : 1) + " " + units[i]
-    }
-
-    function thumbUrl(file, type, size) {
-        return "image://thumb/" + size + "/" + encodeURIComponent(type) + "/" + encodeURIComponent(file)
-    }
-
     Rectangle { anchors.left: parent.left; width: 1; height: parent.height; color: pane.tint(theme.foreground, 0.12) }
 
     ColumnLayout {
@@ -54,7 +43,7 @@ Rectangle {
                 anchors.fill: parent
                 asynchronous: true
                 fillMode: Image.PreserveAspectFit
-                source: pane.hasItem && !pane.item.isDir && pane.item.kind !== "text" ? pane.thumbUrl(pane.item.path, pane.item.mime, 512) : ""
+                source: pane.hasItem && !pane.item.isDir && pane.item.kind !== "text" ? Format.thumb(pane.item.path, pane.item.mime, 512) : ""
                 visible: status === Image.Ready
             }
 
@@ -103,9 +92,7 @@ Rectangle {
             }
             Text {
                 Layout.fillWidth: true
-                text: !pane.hasItem ? ""
-                    : pane.item.isDir ? (pane.item.itemCount === 0 ? qsTr("Folder · Empty") : pane.item.itemCount > 0 ? qsTr("Folder · %n items", "", pane.item.itemCount) : qsTr("Folder"))
-                    : (pane.info.type || pane.item.mime) + " · " + pane.formatSize(pane.item.size)
+                text: Format.summary(pane.item, pane.info.type)
                 color: theme.secondaryForeground
                 font.pixelSize: 12
                 elide: Text.ElideRight

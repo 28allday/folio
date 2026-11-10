@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtMultimedia
+import "Format.js" as Format
 
 // Video and audio, playing as soon as they show, through Qt Multimedia's
 // FFmpeg backend. Click the picture or press K to pause.
@@ -61,8 +62,7 @@ Item {
                     visible: status === Image.Ready
                     fillMode: Image.PreserveAspectFit
                     asynchronous: true
-                    source: !media.isVideo && previewer.item.path
-                        ? "image://thumb/512/" + encodeURIComponent(previewer.item.mime) + "/" + encodeURIComponent(previewer.item.path) : ""
+                    source: !media.isVideo && previewer.item.path ? Format.thumb(previewer.item.path, previewer.item.mime, 512) : ""
                 }
                 Glyph {
                     Layout.alignment: Qt.AlignHCenter

@@ -30,6 +30,7 @@
         <file alias="PreviewWindow.qml">PreviewWindow.qml</file>
         <file alias="PdfPreview.qml">PdfPreview.qml</file>
         <file alias="MediaPreview.qml">MediaPreview.qml</file>
+        <file alias="Format.js">Format.js</file>
         <file alias="i18n/en.json">i18n/en.json</file>
     </qresource>
 </RCC>
