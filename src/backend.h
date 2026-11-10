@@ -110,5 +110,7 @@ private:
     Mounter m_mounter;
     QString m_mountHost;
     QProcess m_preview;
+    // Set while Folio closes the preview itself, which isn't a crash.
+    bool m_closingPreview = false;
     QString m_previewed;
 };

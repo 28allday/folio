@@ -46,8 +46,9 @@ Backend::Backend(const QString &home, QObject *parent)
     connect(&m_preview, &QProcess::stateChanged, this, &Backend::previewingChanged);
     connect(&m_preview, &QProcess::finished, this, [this](int, QProcess::ExitStatus status) {
         // A decoder that crashed took down the preview, not Folio; say so
-        // rather than letting the window just vanish.
-        if (status == QProcess::CrashExit)
+        // rather than letting the window just vanish. Closing it from here
+        // ends it with SIGTERM, which QProcess also reports as a crash.
+        if (status == QProcess::CrashExit && !m_closingPreview)
             setMessage(tr("The preview closed unexpectedly on %1.").arg(QFileInfo(m_previewed).fileName()));
     });
 }
@@ -308,6 +309,7 @@ void Backend::newWindow() {
 
 void Backend::togglePreview(const QString &path) {
     if (previewing()) {
+        m_closingPreview = true;
         m_preview.terminate();
         return;
     }
@@ -319,6 +321,7 @@ void Backend::togglePreview(const QString &path) {
     args << path;
     m_previewed = path;
     m_preview.setProcessChannelMode(QProcess::ForwardedErrorChannel);
+    m_closingPreview = false;
     m_preview.start(QCoreApplication::applicationFilePath(), args);
 }
 
