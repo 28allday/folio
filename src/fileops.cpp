@@ -178,7 +178,8 @@ void FileOps::paste(const QString &folder) {
     const QStringList paths = pathsFrom(QGuiApplication::clipboard()->mimeData(), &cut);
     if (paths.isEmpty() || !m_busy.isEmpty())
         return;
-    if (!QFileInfo(folder).isDir()) {
+    // Only Delete puts things in the trash, with the note Restore needs.
+    if (!QFileInfo(folder).isDir() || inTrash(folder)) {
         emit failed(tr("Files can't be pasted here."));
         return;
     }
@@ -192,7 +193,7 @@ bool FileOps::sameDrive(const QString &a, const QString &b) {
 }
 
 bool FileOps::canDrop(const QList<QUrl> &urls, const QString &folder) const {
-    if (!QFileInfo(folder).isDir())
+    if (!QFileInfo(folder).isDir() || inTrash(folder))
         return false;
     const QString target = QDir::cleanPath(folder);
     bool any = false;

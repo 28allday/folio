@@ -35,7 +35,8 @@ public:
     // copied from another drive. Dropping something where it already is
     // does nothing.
     Q_INVOKABLE void dropInto(const QList<QUrl> &urls, const QString &folder);
-    // Whether these can be dropped on `folder` (not onto themselves).
+    // Whether these can be dropped on `folder`: not onto themselves, and
+    // not into the trash, which only Delete fills.
     Q_INVOKABLE bool canDrop(const QList<QUrl> &urls, const QString &folder) const;
     // Files as a text/uri-list, for dragging them somewhere, and back from
     // dropped URLs to the paths of the local ones. QUrl escapes what a

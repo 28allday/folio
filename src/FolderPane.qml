@@ -54,7 +54,8 @@ FocusScope {
     }
 
     // In the trash, Delete means for good (after asking), and there's
-    // Restore and Empty Trash.
+    // Restore and Empty Trash. Nothing is renamed or made there: an item
+    // without its note (or under another name) can't be restored.
     readonly property bool inTrash: fileOps.inTrash(backend.path)
     function deleteSelected() {
         if (pane.inTrash)
@@ -115,7 +116,7 @@ FocusScope {
     // "Yank": the selected path (or the folder's) as text, for a terminal.
     Shortcut { sequence: "Ctrl+Shift+C"; enabled: pane.keys; onActivated: fileOps.yank(pane.selectedPaths.length > 0 ? pane.selectedPaths : [backend.path]) }
     Shortcut { sequence: "Delete"; enabled: pane.keys; onActivated: pane.deleteSelected() }
-    Shortcut { sequence: "F2"; enabled: pane.keys; onActivated: if (pane.current.path) rename.open(pane.current) }
+    Shortcut { sequence: "F2"; enabled: pane.keys && !pane.inTrash; onActivated: if (pane.current.path) rename.open(pane.current) }
     Shortcut { sequences: [StandardKey.SelectAll]; enabled: pane.keys; onActivated: backend.folder.selectAll() }
     // Escape narrows a selection of several back to the cursor, then ends
     // a search.
@@ -139,9 +140,9 @@ FocusScope {
             fileMenu.show(pane.current.path ? pane.current : null, backend.path, anchor)
         }
     }
-    Shortcut { sequence: "Ctrl+Shift+D"; enabled: pane.keys; onActivated: if (pane.current.path) fileOps.duplicate(pane.current.path) }
+    Shortcut { sequence: "Ctrl+Shift+D"; enabled: pane.keys && !pane.inTrash; onActivated: if (pane.current.path) fileOps.duplicate(pane.current.path) }
     Shortcut { sequences: [StandardKey.New]; enabled: pane.keys; onActivated: backend.newWindow() }
-    Shortcut { sequence: "Ctrl+Shift+N"; enabled: pane.keys; onActivated: fileOps.newFolder(backend.path) }
+    Shortcut { sequence: "Ctrl+Shift+N"; enabled: pane.keys && !pane.inTrash; onActivated: fileOps.newFolder(backend.path) }
     Shortcut { sequences: ["Ctrl+L", "Alt+D"]; enabled: pane.keys; onActivated: pathBar.editPath() }
     Shortcut { sequence: "Ctrl+D"; enabled: pane.active; onActivated: pane.togglePin() }
     Shortcut { sequence: "Ctrl+1"; enabled: pane.active; onActivated: pane.viewMode = "grid" }

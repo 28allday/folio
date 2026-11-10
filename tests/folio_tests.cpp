@@ -20,6 +20,20 @@
 #include "thumbnails.h"
 #include "translator.h"
 
+// Puts XDG_DATA_HOME, where the trash and recent files live, in `path` for
+// as long as the returned guard does.
+[[nodiscard]] static auto dataHomeAt(const QString &path)
+{
+    const QByteArray old = qgetenv("XDG_DATA_HOME");
+    qputenv("XDG_DATA_HOME", QFile::encodeName(path));
+    return qScopeGuard([old] {
+        if (old.isNull())
+            qunsetenv("XDG_DATA_HOME");
+        else
+            qputenv("XDG_DATA_HOME", old);
+    });
+}
+
 class FolioTests : public QObject {
     Q_OBJECT
 
@@ -397,14 +411,7 @@ private slots:
               "<bookmark href=\"" + url + "/a/README.md\" modified=\"2026-01-01T10:00:00Z\"/>\n"
               "<bookmark href=\"" + url + "/b/README.md\" modified=\"2026-02-01T10:00:00Z\"/>\n"
               "</xbel>\n");
-        const QByteArray dataHome = qgetenv("XDG_DATA_HOME");
-        qputenv("XDG_DATA_HOME", QFile::encodeName(data.path()));
-        const auto restore = qScopeGuard([&] {
-            if (dataHome.isNull())
-                qunsetenv("XDG_DATA_HOME");
-            else
-                qputenv("XDG_DATA_HOME", dataHome);
-        });
+        const auto restore = dataHomeAt(data.path());
 
         FolderModel model;
         QSignalSpy loaded(&model, &FolderModel::loaded);
@@ -454,6 +461,25 @@ private slots:
         QCOMPARE(FileOps::emptyTrashDir(trash), 2);
         QVERIFY(QDir(trash + "/files").isEmpty());
         QVERIFY(QDir(trash + "/info").isEmpty());
+    }
+
+    void trashTakesNothingButDeletes()
+    {
+        // A paste or a drop into the trash would leave items with no note
+        // saying where they came from.
+        QTemporaryDir data, from;
+        const auto restore = dataHomeAt(data.path());
+        const QString files = data.filePath("Trash/files");
+        QDir().mkpath(files);
+        write(from.filePath("a.txt"), "a");
+        FileOps ops;
+        QVERIFY(ops.inTrash(files));
+        QVERIFY(!ops.canDrop({QUrl::fromLocalFile(from.filePath("a.txt"))}, files));
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.cut({from.filePath("a.txt")});
+        ops.paste(files);
+        QCOMPARE(failed.count(), 1);
+        QVERIFY(QDir(files).isEmpty());
     }
 
     void kindsFromMimeTypes()
