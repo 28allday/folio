@@ -157,6 +157,28 @@ private slots:
         QCOMPARE(model.count(), 1);
     }
 
+    void folderModelTellsCopiedFoldersApart()
+    {
+        // A copy (cp -a, rsync -a) lists exactly like its original, but its
+        // items are its own.
+        QTemporaryDir a, b;
+        const QDateTime when = QDateTime::fromSecsSinceEpoch(1700000000);
+        for (const QTemporaryDir *dir : {&a, &b}) {
+            QFile file(dir->filePath("report.txt"));
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write("same");
+            file.flush();
+            QVERIFY(file.setFileTime(when, QFileDevice::FileModificationTime));
+        }
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPath(a.path());
+        QVERIFY(loaded.wait(3000));
+        model.setPath(b.path());
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.get(0).value("path").toString(), b.filePath("report.txt"));
+    }
+
     void fileOpsNeverOverwrite()
     {
         QTemporaryDir dir;
