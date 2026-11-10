@@ -75,27 +75,45 @@ void Places::refreshPlaces() {
     m_places = places;
 }
 
-void Places::refreshDevices() {
-    QVariantList devices;
-    auto add = [&](const QString &name, const QStorageInfo &storage) {
-        const double total = storage.bytesTotal();
-        devices << QVariantMap{
-            {"name", name}, {"path", storage.rootPath()}, {"icon", "drive"},
-            {"total", storage.bytesTotal()}, {"free", storage.bytesAvailable()},
-            {"used", total > 0 ? 1.0 - storage.bytesAvailable() / total : 0.0},
-        };
-    };
-    add(tr("System"), QStorageInfo::root());
-
-    // Removable drives land under /run/media/<user>; network mounts and
-    // pseudo filesystems are left out.
-    for (const QStorageInfo &storage : QStorageInfo::mountedVolumes()) {
-        const QString root = storage.rootPath();
-        if (storage.isValid() && storage.isReady()
-            && (root.startsWith("/run/media/") || root.startsWith("/media/")))
-            add(storage.displayName(), storage);
+QVariantList Places::physicalDrives(const QList<Mount> &mounts, const QString &systemDevice) {
+    // Where the system itself lives; a drive mounted here is the computer,
+    // not a device to browse to.
+    static const QStringList systemRoots{"/", "/boot", "/efi", "/home", "/var", "/usr", "/opt", "/srv",
+                                         "/root", "/tmp", "/nix", "/snap", "/swap"};
+    static const QStringList pseudo{"tmpfs", "devtmpfs", "squashfs", "overlay", "ramfs", "fuse.portal",
+                                    "fuse.gvfsd-fuse", "efivarfs", "autofs"};
+    QVariantList drives;
+    QStringList seen;
+    for (const Mount &m : mounts) {
+        const bool system = systemRoots.contains(m.root)
+            || std::any_of(systemRoots.begin() + 1, systemRoots.end(),
+                           [&](const QString &r) { return m.root.startsWith(r + "/"); })
+            || m.root.startsWith("/.");
+        // Only block devices; loop images (snaps, AppImages) and zram aren't
+        // drives. Btrfs subvolumes of the system disk share its device.
+        const bool block = m.device.startsWith("/dev/") && !m.device.startsWith("/dev/loop")
+                           && !m.device.startsWith("/dev/zram");
+        if (system || !block || pseudo.contains(m.type) || m.device == systemDevice || seen.contains(m.device))
+            continue;
+        seen << m.device;
+        const QString name = m.label.isEmpty() ? QFileInfo(m.root).fileName() : m.label;
+        drives << QVariantMap{{"name", name.isEmpty() ? m.root : name}, {"path", m.root}, {"icon", "drive"}};
     }
-    m_devices = devices;
+    return drives;
+}
+
+void Places::refreshDevices() {
+    QList<Mount> mounts;
+    auto volumes = QStorageInfo::mountedVolumes();
+    // Shortest path first, so a drive mounted twice is listed at its top.
+    std::sort(volumes.begin(), volumes.end(),
+              [](const QStorageInfo &a, const QStorageInfo &b) { return a.rootPath().size() < b.rootPath().size(); });
+    for (const QStorageInfo &v : volumes) {
+        if (v.isValid() && v.isReady())
+            mounts << Mount{v.rootPath(), QString::fromUtf8(v.device()), QString::fromUtf8(v.fileSystemType()),
+                            v.name()};
+    }
+    m_devices = physicalDrives(mounts, QString::fromUtf8(QStorageInfo::root().device()));
 }
 
 void Places::pollTailscale() {

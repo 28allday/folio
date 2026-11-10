@@ -30,6 +30,16 @@ public:
     static QVariantList parseTailscale(const QByteArray &json);
     static QString parseDropboxStatus(const QByteArray &output);
 
+    struct Mount {
+        QString root;
+        QString device;
+        QString type;
+        QString label;
+    };
+    // The physical drives among the mounts, one entry per drive: removable
+    // and extra internal disks, never the system's own partitions.
+    static QVariantList physicalDrives(const QList<Mount> &mounts, const QString &systemDevice);
+
 signals:
     void changed();
 

@@ -11,6 +11,8 @@ Item {
     property color color: theme.foreground
     property real size: 18
     property real stroke: 1.6
+    // Brand marks are solid shapes rather than line drawings.
+    readonly property bool filled: name === "dropbox"
 
     implicitWidth: size
     implicitHeight: size
@@ -26,7 +28,8 @@ Item {
         "pictures": "M3 5h18v14H3zM3 16l5-5 4 4 3-3 6 6" + circle(16, 9, 1.5),
         "music": "M9 17V5l11-2v12" + circle(6.5, 17, 2.5) + circle(17.5, 15, 2.5),
         "videos": "M3 5h18v14H3zM10 9v6l5-3z",
-        "dropbox": "M7 18h10a4 4 0 0 0 .5-7.97A6 6 0 0 0 6.1 10.2A4 4 0 0 0 7 18zM10 14l2 2 3-4",
+        // Dropbox's own mark, five diamonds: filled, as the brand draws it.
+        "dropbox": "M7 2.5L12 5.7 7 8.9 2 5.7zM17 2.5L22 5.7 17 8.9 12 5.7zM7 8.9L12 12.1 7 15.3 2 12.1zM17 8.9L22 12.1 17 15.3 12 12.1zM12 13.3L17 16.5 12 19.7 7 16.5z",
         "trash": "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13",
         "drive": "M3 6h18v12H3zM7 14h2",
         "peer": "M4 4h16v11H4zM9 20h6M12 15v5",
@@ -50,8 +53,8 @@ Item {
         preferredRendererType: Shape.CurveRenderer
 
         ShapePath {
-            strokeColor: glyph.color
-            fillColor: "transparent"
+            strokeColor: glyph.filled ? "transparent" : glyph.color
+            fillColor: glyph.filled ? glyph.color : "transparent"
             strokeWidth: glyph.stroke
             capStyle: ShapePath.SquareCap
             joinStyle: ShapePath.MiterJoin

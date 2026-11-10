@@ -146,6 +146,27 @@ private slots:
         QCOMPARE(peers.at(0).toMap().value("host").toString(), QString("studio.example.ts.net"));
     }
 
+    void placesListOnlyPhysicalDrives()
+    {
+        const QList<Places::Mount> mounts{
+            {"/", "/dev/mapper/root", "btrfs", ""},
+            {"/home", "/dev/mapper/root", "btrfs", ""},
+            {"/.snapshots", "/dev/mapper/root", "btrfs", ""},
+            {"/boot", "/dev/nvme0n1p1", "vfat", "EFI"},
+            {"/tmp", "tmpfs", "tmpfs", ""},
+            {"/var/lib/snapd/snap/core", "/dev/loop3", "squashfs", ""},
+            {"/mnt/archive", "/dev/sda1", "ext4", ""},
+            {"/run/media/me/Photos", "/dev/sdb1", "exfat", "Photos"},
+            {"/run/media/me/Photos/again", "/dev/sdb1", "exfat", "Photos"},
+            {"/run/user/1000/gvfs", "gvfsd-fuse", "fuse.gvfsd-fuse", ""},
+        };
+        const auto drives = Places::physicalDrives(mounts, "/dev/mapper/root");
+        QCOMPARE(drives.size(), 2);
+        QCOMPARE(drives.at(0).toMap().value("name").toString(), QString("archive"));
+        QCOMPARE(drives.at(1).toMap().value("name").toString(), QString("Photos"));
+        QCOMPARE(drives.at(1).toMap().value("path").toString(), QString("/run/media/me/Photos"));
+    }
+
     void placesParseDropboxStatus()
     {
         QCOMPARE(Places::parseDropboxStatus("Up to date\n"), QString("synced"));

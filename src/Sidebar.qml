@@ -11,14 +11,6 @@ Rectangle {
 
     function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
 
-    function formatSize(bytes) {
-        const units = [qsTr("B"), qsTr("KB"), qsTr("MB"), qsTr("GB"), qsTr("TB")]
-        let i = 0
-        let value = bytes
-        while (value >= 1000 && i < units.length - 1) { value /= 1000; ++i }
-        return value.toLocaleString(Qt.locale(), "f", i === 0 ? 0 : 1) + " " + units[i]
-    }
-
     // The deepest place the current folder sits under.
     readonly property string activePath: {
         let best = ""
@@ -33,8 +25,9 @@ Rectangle {
     }
 
     function statusText(status) {
-        return status === "synced" ? qsTr("synced")
-             : status === "syncing" ? qsTr("syncing")
+        // Up to date is the normal state and says nothing; only syncing or
+        // a stopped Dropbox is worth a word.
+        return status === "syncing" ? qsTr("syncing")
              : status === "stopped" ? qsTr("stopped") : ""
     }
 
@@ -111,47 +104,16 @@ Rectangle {
                 }
             }
 
-            Item { implicitHeight: 20 }
-            SectionLabel { text: qsTr("Devices") }
+            Item { implicitHeight: 20; visible: places.devices.length > 0 }
+            SectionLabel { text: qsTr("Devices"); visible: places.devices.length > 0 }
             Repeater {
                 model: places.devices
-                AbstractButton {
-                    id: device
+                PlaceRow {
                     required property var modelData
-                    Layout.fillWidth: true
-                    implicitHeight: 64
-                    hoverEnabled: true
-                    focusPolicy: Qt.NoFocus
-                    Accessible.name: modelData.name
+                    text: modelData.name
+                    glyph: "drive"
+                    active: sidebar.activePath === modelData.path
                     onClicked: backend.navigate(modelData.path)
-                    background: Rectangle {
-                        radius: Math.min(4, theme.radius)
-                        color: sidebar.activePath === device.modelData.path ? sidebar.tint(theme.accent, 0.16)
-                             : device.hovered ? sidebar.tint(theme.foreground, 0.06) : "transparent"
-                    }
-                    contentItem: ColumnLayout {
-                        spacing: 7
-                        RowLayout {
-                            spacing: 14
-                            Layout.leftMargin: 14
-                            Glyph { name: "drive" }
-                            Text { text: device.modelData.name; color: theme.foreground; elide: Text.ElideRight; Layout.fillWidth: true }
-                        }
-                        Rectangle {
-                            Layout.leftMargin: 46
-                            Layout.rightMargin: 14
-                            Layout.fillWidth: true
-                            implicitHeight: 3
-                            color: sidebar.tint(theme.foreground, 0.12)
-                            Rectangle { width: parent.width * device.modelData.used; height: 3; color: theme.accent }
-                        }
-                        Text {
-                            Layout.leftMargin: 46
-                            text: qsTr("%1 free of %2").arg(sidebar.formatSize(device.modelData.free)).arg(sidebar.formatSize(device.modelData.total))
-                            color: theme.secondaryForeground
-                            font.pixelSize: 11
-                        }
-                    }
                 }
             }
 
