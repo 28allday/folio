@@ -142,8 +142,9 @@ private:
     QString m_sort = "name";
     QString m_query;
     quint64 m_generation = 0;
-    // The newest listing's generation, shared with the background searches
-    // so one that's been overtaken by more typing stops walking.
+    // The newest listing's generation, shared with the background search
+    // and folder counts, so work that's been overtaken (more typing,
+    // another folder, the model gone) stops early.
     std::shared_ptr<std::atomic<quint64>> m_latest = std::make_shared<std::atomic<quint64>>(0);
     QFileSystemWatcher m_watcher;
     QTimer m_debounce;
