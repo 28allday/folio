@@ -191,9 +191,14 @@ Item {
                 y: (parent.height - height) / 2
                 asynchronous: true
                 fillMode: parent.crop ? Image.PreserveAspectCrop : Image.Stretch
-                source: Format.thumb(tile.path, tile.mime, tile.zoom > 1 ? 512 : 256, tile.modified)
+                source: tile.kind === "text" ? Format.page(tile.path, tile.zoom > 1 ? 512 : 256, tile.modified, theme.lighterBackground, theme.foreground)
+                                              : Format.thumb(tile.path, tile.mime, tile.zoom > 1 ? 512 : 256, tile.modified)
                 visible: status === Image.Ready
                 layer.enabled: tile.iconRadius > 0 && status === Image.Ready
+                // The layer is drawn before the zoom scales it, so it's made
+                // at the zoomed size to keep the bigger thumbnail's detail.
+                layer.textureSize: Qt.size(Math.ceil(width * tile.zoom * Screen.devicePixelRatio),
+                                           Math.ceil(height * tile.zoom * Screen.devicePixelRatio))
                 layer.effect: MultiEffect {
                     maskEnabled: true
                     maskSource: thumbMask
@@ -208,6 +213,7 @@ Item {
                 radius: tile.iconRadius
                 visible: false
                 layer.enabled: true
+                layer.textureSize: thumb.layer.textureSize
             }
 
             // Videos get a play mark over their frame.

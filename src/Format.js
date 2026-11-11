@@ -46,3 +46,10 @@ function thumb(path, mime, px, modified) {
     const changed = modified ? modified.getTime() : 0
     return "image://thumb/" + px + "/" + changed + "/" + encodeURIComponent(mime) + "/" + encodeURIComponent(path)
 }
+
+// A text file's first lines on a page in the theme's colors.
+function page(path, px, modified, paper, ink) {
+    const changed = modified ? modified.getTime() : 0
+    const hex = (color) => String(color).slice(1)
+    return "image://thumb/page/" + px + "/" + changed + "/" + hex(paper) + "/" + hex(ink) + "/" + encodeURIComponent(path)
+}

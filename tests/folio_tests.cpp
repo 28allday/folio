@@ -1161,6 +1161,10 @@ private slots:
         QCOMPARE(FolderModel::kindForMime("video/mp4"), QString("video"));
         QCOMPARE(FolderModel::kindForMime("audio/mp4"), QString("audio"));
         QCOMPARE(FolderModel::kindForMime("application/zip"), QString("archive"));
+        // Whatever reads as text is text: code, config and data formats too.
+        for (const char *mime : {"application/x-ruby", "application/json", "application/x-shellscript",
+                                 "application/toml", "application/x-yaml", "application/javascript"})
+            QCOMPARE(FolderModel::kindForMime(mime), QString("text"));
         QCOMPARE(FolderModel::kindForMime("application/octet-stream"), QString("other"));
     }
 
@@ -1540,8 +1544,7 @@ private slots:
     {
         QTemporaryDir dir;
         write(dir.filePath("notes.md"), "# Packing\n\n- passport\n- charger\n");
-        Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
-        const QImage page = thumbnails.load(dir.filePath("notes.md"), "text/markdown", 256);
+        const QImage page = Thumbnails::textPage(dir.filePath("notes.md"), 256, QColor("#fafaf7"), QColor("#303034"));
         QCOMPARE(page.size(), QSize(184, 256));
         // Dark ink near the top left, where the first line is; plain paper
         // at the bottom right.
@@ -1554,7 +1557,7 @@ private slots:
 
         // Binary that claims to be text gets the stand-in.
         write(dir.filePath("blob.txt"), QByteArray("abc\0def", 7));
-        QVERIFY(thumbnails.load(dir.filePath("blob.txt"), "text/plain", 256).isNull());
+        QVERIFY(Thumbnails::textPage(dir.filePath("blob.txt"), 256, Qt::white, Qt::black).isNull());
     }
 
     void thumbnailsDrawAPdfsFirstPage()

@@ -1,7 +1,5 @@
 #include "thumbnails.h"
 
-#include "foldermodel.h"
-
 #include <QBuffer>
 #include <QCryptographicHash>
 #include <QtEndian>
@@ -201,11 +199,6 @@ QImage Thumbnails::generate(const QString &path, const QString &mime, int pixels
                 return image;
         }
     }
-    // Text shows its own first lines, on a page.
-    if (FolderModel::kindForMime(mime) == "text") {
-        attempted = true;
-        return textPage(path, pixels);
-    }
     const QString command = m_thumbnailers.value(mime);
     if (!command.isEmpty()) {
         attempted = true;
@@ -220,7 +213,7 @@ QImage Thumbnails::generate(const QString &path, const QString &mime, int pixels
     return {};
 }
 
-QImage Thumbnails::textPage(const QString &path, int pixels) {
+QImage Thumbnails::textPage(const QString &path, int pixels, const QColor &paper, const QColor &ink) {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly))
         return {};
@@ -234,18 +227,18 @@ QImage Thumbnails::textPage(const QString &path, int pixels) {
     if (decode.hasError() && head.size() < 4096)
         return {};
 
-    // A page in the paper's proportions, like the stand-in: dark text on
-    // white, in the monospace font, as many lines as fit and no wrapping.
+    // A page in the paper's proportions, like the stand-in, in the theme's
+    // colors: the monospace font, as many lines as fit and no wrapping.
     const QSize size(qRound(pixels * 0.72), pixels);
-    QImage page(size, QImage::Format_RGB32);
-    page.fill(QColor(0xfa, 0xfa, 0xf7));
+    QImage page(size, QImage::Format_ARGB32_Premultiplied);
+    page.fill(paper);
     QPainter painter(&page);
     painter.setRenderHint(QPainter::TextAntialiasing);
     QFont font("monospace");
     font.setStyleHint(QFont::Monospace);
     font.setPixelSize(qMax(4, pixels / 26));
     painter.setFont(font);
-    painter.setPen(QColor(0x30, 0x30, 0x34));
+    painter.setPen(ink);
     const QFontMetricsF metrics(font);
     const qreal margin = size.width() * 0.09, line = metrics.lineSpacing();
     // Long lines stop at the right margin rather than the page's edge.
@@ -288,6 +281,10 @@ QImage Thumbnails::runThumbnailer(const QString &command, const QString &path, i
     if (args.isEmpty())
         return {};
     const QString program = args.takeFirst();
+    // ffmpegthumbnailer's -f frames the picture as a film strip; the tile
+    // marks a video with its own play badge instead.
+    if (QFileInfo(program).fileName() == "ffmpegthumbnailer")
+        args.removeAll("-f");
 
     QProcess process;
     process.setProcessChannelMode(QProcess::ForwardedErrorChannel);
@@ -360,13 +357,18 @@ public:
     }
 
     void run() override {
-        // id = <size>/<modified>/<url-encoded mime>/<url-encoded path>. The
-        // time is only there to tell Qt's own cache apart; load() checks
+        // id = <size>/<modified>/<url-encoded mime>/<url-encoded path>, or
+        // page/<size>/<modified>/<paper>/<ink>/<url-encoded path> for text.
+        // The time is only there to tell Qt's own cache apart; load() checks
         // the file's.
         const QStringList parts = m_id.split('/');
         // A tile scrolled away before its turn came shouldn't keep the pool
         // from the ones on screen.
-        if (!m_cancelled && parts.size() >= 4) {
+        if (!m_cancelled && parts.size() >= 6 && parts.at(0) == "page") {
+            const QString path = QUrl::fromPercentEncoding(parts.mid(5).join('/').toUtf8());
+            m_image = Thumbnails::textPage(path, qBound(64, parts.at(1).toInt(), 1024),
+                                           QColor::fromString("#" + parts.at(3)), QColor::fromString("#" + parts.at(4)));
+        } else if (!m_cancelled && parts.size() >= 4) {
             const int size = parts.at(0).toInt();
             const QString mime = QUrl::fromPercentEncoding(parts.at(2).toUtf8());
             const QString path = QUrl::fromPercentEncoding(parts.mid(3).join('/').toUtf8());

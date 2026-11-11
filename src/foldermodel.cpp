@@ -194,8 +194,10 @@ QString FolderModel::kindForMime(const QString &mime) {
     if (mime.startsWith("image/")) return "image";
     if (mime.startsWith("video/")) return "video";
     if (mime.startsWith("audio/")) return "audio";
-    if (mime.startsWith("text/") || mime == "application/json" || mime == "application/x-shellscript"
-        || mime == "application/toml" || mime == "application/xml" || mime == "application/x-yaml")
+    // Anything readable as text (source code, config, JSON, Ruby, ...) is
+    // text, whatever its own type is called.
+    static const QMimeDatabase types;
+    if (mime.startsWith("text/") || types.mimeTypeForName(mime).inherits("text/plain"))
         return "text";
     static const QStringList archives{"application/zip", "application/x-tar", "application/gzip",
                                       "application/x-xz", "application/zstd", "application/x-7z-compressed",
