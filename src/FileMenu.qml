@@ -2,13 +2,12 @@ import QtQuick
 
 // The right-click menu. On an item: Open, Open With (each app that can),
 // Preview, Rename, Duplicate, Copy, Cut, Paste Into, Copy Path, Compress,
-// Extract (for archives), Burn (for disk images), Share (Dropbox link,
-// Taildrop, LocalSend: whichever are available), Pin, Terminal, Trash. On
-// empty space: Undo, Paste, New Folder, Copy Path, Terminal, hidden files.
-// In the trash: Restore, Empty Trash and Delete…,
-// without the entries that change files. On a tailnet machine: Open, and
-// nothing for files. Entries show their keys, so the menu also teaches the
-// shortcuts.
+// Extract (for archives), Burn (for disk images), Share (whatever plugins
+// offer for it), Pin, Terminal, Trash. On empty space: Undo, Paste, New
+// Folder, Copy Path, Terminal, hidden files. In the trash: Restore, Empty
+// Trash and Delete…, without the entries that change files. On a plugin's
+// item: Open, and nothing for files. Entries show their keys, so the menu
+// also teaches the shortcuts.
 FolioMenu {
     id: fileMenu
 
@@ -25,8 +24,8 @@ FolioMenu {
     signal burnRequested(string path, var drive)
     // In the trash the menu is about getting things back, or letting go.
     readonly property bool trashView: fileOps.inTrash(folder)
-    // The tailnet view lists machines, which only open.
-    readonly property bool forFiles: folder !== "tailnet:"
+    // Plugins' views list items, which only open.
+    readonly property bool forFiles: !folder.startsWith("plugin:")
 
     // Named for…, not on…: QML treats on… names as signal handlers, and an
     // onFolder beside the folder property never updated.
@@ -55,7 +54,8 @@ FolioMenu {
         target = clicked
         folder = where
         shifted = fileOps.shiftHeld()
-        // Empty space among machines has nothing to offer.
+        shares = forItem && forFiles ? plugins.shareFor(paths) : []
+        // Empty space among a plugin's items has nothing to offer.
         if (!forItem && !forFiles)
             return
         canBurn = forItem && forFiles && !trashView && !forSelection && fileOps.canBurn(target.path)
@@ -212,15 +212,11 @@ FolioMenu {
             }
         }
     }
-    // Share offers only what this machine has: a Dropbox link for things in
-    // the Dropbox folder (while Dropbox runs), Taildrop to the online
-    // tailnet machines, and LocalSend when it's installed. With none of
-    // them, there's no Share at all.
-    readonly property bool canDropbox: forItem && target.path.startsWith(places.home + "/Dropbox/")
-                                       && places.dropboxStatus !== "" && places.dropboxStatus !== "stopped"
-    readonly property bool canTaildrop: forItem && forFiles && places.peers.length > 0
-    readonly property bool canLocalSend: forItem && forFiles && fileOps.hasLocalSend()
-    readonly property bool canShare: canDropbox || canTaildrop || canLocalSend
+    // Share offers whatever the plugins offer for these (a Dropbox link,
+    // Taildrop, LocalSend), as it stands when the menu opens: plain entries
+    // first, then submenus of a plugin's items. With none, there's no Share.
+    property var shares: []
+    readonly property bool canShare: shares.length > 0
 
     // The entries are made only while they apply, rather than hidden:
     // opening Share from the keyboard highlights its first entry, even a
@@ -229,33 +225,26 @@ FolioMenu {
         id: shareMenu
         title: qsTr("Share")
         Repeater {
-            model: fileMenu.canDropbox ? 1 : 0
+            model: fileMenu.shares.filter(entry => !entry.targets)
             FolioMenuItem {
-                text: qsTr("Dropbox Link")
-                onTriggered: fileOps.dropboxLink(fileMenu.target.path)
-            }
-        }
-        Repeater {
-            model: fileMenu.canLocalSend ? 1 : 0
-            FolioMenuItem {
-                text: qsTr("LocalSend…")
-                onTriggered: fileOps.shareLocalSend(fileMenu.paths)
+                required property var modelData
+                text: modelData.label
+                onTriggered: backend.share(modelData.plugin, modelData.id, fileMenu.paths)
             }
         }
     }
-    // Taildrop is its own menu inside Share, one entry per machine; it's
-    // added, after the other entries, only while there are machines to
-    // send to.
     Instantiator {
-        model: fileMenu.canTaildrop ? 1 : 0
+        model: fileMenu.shares.filter(entry => !!entry.targets)
         delegate: FolioMenu {
-            title: qsTr("Taildrop")
+            id: targets
+            required property var modelData
+            title: modelData.label
             Repeater {
-                model: places.peers
+                model: targets.modelData.targets
                 FolioMenuItem {
                     required property var modelData
                     text: modelData.name
-                    onTriggered: fileOps.shareTaildrop(fileMenu.paths, modelData.host)
+                    onTriggered: backend.share(targets.modelData.plugin, targets.modelData.id, fileMenu.paths, modelData.id)
                 }
             }
         }

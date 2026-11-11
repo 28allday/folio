@@ -22,8 +22,8 @@ function free(bytes) {
     return qsTr("%1 free").arg(size(bytes))
 }
 
-// When it changed: the time for today, the date before that. Machines on
-// the tailnet have no date.
+// When it changed: the time for today, the date before that. A plugin's
+// items have no date.
 function when(date) {
     if (!date || isNaN(date.getTime()))
         return ""
@@ -39,11 +39,11 @@ function count(n) {
 }
 
 // What an item is and how big, under its name in the details and the
-// preview; for a machine, its system.
+// preview; for a plugin's item, its subtitle.
 function summary(item, type) {
     if (!item || !item.path)
         return ""
-    if (item.kind === "peer")
+    if (item.kind === "item")
         return item.extension
     if (item.isDir)
         return item.itemCount === 0 ? qsTr("Folder · No items") : item.itemCount > 0 ? qsTr("Folder · %Ln items", "", item.itemCount) : qsTr("Folder")

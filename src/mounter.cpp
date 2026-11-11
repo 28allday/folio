@@ -1,6 +1,9 @@
 #include "mounter.h"
 
+#include <QDir>
 #include <QPointer>
+#include <QUrl>
+#include <unistd.h>
 
 // GIO's headers use `signals` as a struct member, which Qt defines as a
 // keyword.
@@ -15,15 +18,15 @@ struct MounterCallbacks {
 
     // GVfs's SFTP backend asks two questions, about a host seen for the
     // first time and about a host whose key differs from the key for its IP
-    // address, and both list "Log In Anyway" first. A tailnet machine is
-    // reached over WireGuard and already authenticated by Tailscale, so the
-    // answer is always yes. A changed key for a known machine never gets
+    // address, and both list "Log In Anyway" first. A verified machine (one
+    // on a tailnet, reached over WireGuard and already authenticated by
+    // Tailscale) gets yes. A changed key for a known machine never gets
     // here: ssh refuses it outright. Any other server's questions (a WebDAV
     // server's certificate that can't be verified, too) are the user's.
     static void question(GMountOperation *op, const char *message, const char **choices, gpointer data) {
         g_signal_stop_emission_by_name(op, "ask-question");
         auto *self = static_cast<Mounter *>(data);
-        if (self->m_trusted) {
+        if (self->m_verified) {
             g_mount_operation_set_choice(op, 0);
             g_mount_operation_reply(op, G_MOUNT_OPERATION_HANDLED);
             return;
@@ -61,6 +64,10 @@ struct MounterCallbacks {
                 char *path = g_file_get_path(G_FILE(source));
                 const QString local = QString::fromUtf8(path ? path : "");
                 g_free(path);
+                // Where GVfs put it, for the address it was asked for: only
+                // SFTP's folder can be worked out ahead of time.
+                if (local.startsWith(Mounter::root() + "/"))
+                    Mounter::known()[self->m_url] = local;
                 self->finish();
                 if (local.isEmpty())
                     emit self->failed(QObject::tr("GVfs gave no local folder for the mount"));
@@ -88,10 +95,51 @@ Mounter::~Mounter() {
     finish();
 }
 
-void Mounter::mount(const QString &uri, bool trusted) {
+QString Mounter::root() {
+    return QStringLiteral("/run/user/%1/gvfs").arg(getuid());
+}
+
+QHash<QString, QString> &Mounter::known() {
+    static QHash<QString, QString> roots;
+    return roots;
+}
+
+QString Mounter::folderFor(const QString &url) {
+    const QUrl parsed(url);
+    if (parsed.scheme() != "sftp" || parsed.host().isEmpty())
+        return known().value(url).section('/', 0, 5);
+    // GVfs keeps a mount's parts sorted by key: host, port, user.
+    return root() + "/sftp:host=" + parsed.host() + (parsed.port() < 0 ? QString() : ",port=" + QString::number(parsed.port()))
+           + (parsed.userName().isEmpty() ? QString() : ",user=" + parsed.userName());
+}
+
+QString Mounter::destinationFor(const QString &url) {
+    if (known().contains(url))
+        return known().value(url);
+    const QString mount = folderFor(url);
+    // The address's path is read from the server's top, where ".." goes no
+    // higher, as GVfs reads it. Joined first and cleaned after, it would
+    // climb out of the mount to a local folder ("sftp://nas/../../tmp");
+    // QDir::cleanPath keeps a leading "..", so the steps are taken here.
+    if (mount.isEmpty())
+        return {};
+    QStringList parts;
+    for (const QString &part : QUrl(url).path().split('/', Qt::SkipEmptyParts)) {
+        if (part == "..") {
+            if (!parts.isEmpty())
+                parts.removeLast();
+        } else if (part != ".") {
+            parts << part;
+        }
+    }
+    return parts.isEmpty() ? mount : mount + '/' + parts.join('/');
+}
+
+void Mounter::mount(const QString &uri, bool verified) {
     if (m_operation)
         return;
-    m_trusted = trusted;
+    m_verified = verified;
+    m_url = uri;
     GFile *file = g_file_new_for_uri(uri.toUtf8().constData());
     m_operation = g_mount_operation_new();
     g_signal_connect(m_operation, "ask-question", G_CALLBACK(MounterCallbacks::question), this);

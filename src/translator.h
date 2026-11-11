@@ -31,6 +31,13 @@ public:
     // in a language, by its Omarchy code.
     static QString pluralCategory(const QString &code, long long n);
 
+    // The strings for `language` from the catalogs in `directory`: English
+    // first, then the base language and the regional one over it (pt, then
+    // pt-BR), so a missing string falls back toward English one step at a
+    // time. Each string comes with the code of the catalog it came from.
+    // Plugins' catalogs are read the same way.
+    static QHash<QString, QPair<QString, QJsonValue>> catalog(const QString &directory, const QString &language);
+
 signals:
     void changed();
 

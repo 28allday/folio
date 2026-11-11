@@ -67,10 +67,11 @@ bool FolderModel::sameListing(const QVector<Entry> &a, const QVector<Entry> &b) 
     // By path, not name: a folder copied with cp -a or rsync lists the same
     // names, sizes and times as the one it came from.
     for (int i = 0; i < a.size(); ++i)
-        // Name and extension too: a tailnet machine keeps its path (its
-        // host) when its name or OS changes.
+        // Name, subtitle, icon and details too: a plugin's item keeps its
+        // path (its id) when they change.
         if (a[i].path != b[i].path || a[i].size != b[i].size || a[i].modified != b[i].modified
-            || a[i].isDir != b[i].isDir || a[i].name != b[i].name || a[i].extension != b[i].extension)
+            || a[i].isDir != b[i].isDir || a[i].name != b[i].name || a[i].extension != b[i].extension
+            || a[i].icon != b[i].icon || a[i].details != b[i].details)
             return false;
     return true;
 }
@@ -107,6 +108,7 @@ QVariant FolderModel::data(const QModelIndex &index, int role) const {
     case ExtensionRole: return e.extension;
     case ItemCountRole: return e.itemCount;
     case SelectedRole: return m_selected.contains(e.path);
+    case IconRole: return e.icon;
     }
     return {};
 }
@@ -116,6 +118,7 @@ QHash<int, QByteArray> FolderModel::roleNames() const {
         {NameRole, "name"}, {PathRole, "path"}, {IsDirRole, "isDir"}, {SizeRole, "size"},
         {ModifiedRole, "modified"}, {KindRole, "kind"}, {MimeRole, "mime"},
         {ExtensionRole, "extension"}, {ItemCountRole, "itemCount"}, {SelectedRole, "selected"},
+        {IconRole, "icon"},
     };
 }
 
@@ -149,13 +152,13 @@ void FolderModel::setQuery(const QString &query) {
     reload();
 }
 
-void FolderModel::setPeers(const QVariantList &peers) {
-    if (peers == m_peers)
+void FolderModel::setItems(const QVariantList &items) {
+    if (items == m_items)
         return;
-    m_peers = peers;
-    emit peersChanged();
-    // The tailnet view follows machines coming online and going away.
-    if (m_path == tailnetPath())
+    m_items = items;
+    emit itemsChanged();
+    // A plugin's view follows its polls.
+    if (isPluginView(m_path))
         reload();
 }
 
@@ -178,7 +181,7 @@ void FolderModel::setPath(const QString &path) {
 
     // The old folder stays up while the new one is read, which locally takes
     // a few milliseconds: swapping straight from one to the other avoids an
-    // empty frame between them. A slow listing (a tailnet machine) clears it
+    // empty frame between them. A slow listing (another machine's) clears it
     // after a moment, so the old folder never lingers under the new path.
     // An empty path is a column with nothing to show yet.
     if (m_path.isEmpty()) {
@@ -197,8 +200,8 @@ void FolderModel::setPath(const QString &path) {
     } else {
         m_staleClear.start();
     }
-    // The tailnet has nothing to watch: Places polls it.
-    if (m_path != tailnetPath())
+    // Plugins' views have nothing to watch: their plugins are polled.
+    if (!isPluginView(m_path))
         m_watcher.addPath(m_path == recentPath() ? recentFile() : m_path);
     reload();
 }
@@ -304,7 +307,7 @@ QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QStri
                 e.name = base.relativeFilePath(e.path);
                 entries.push_back(e);
             }
-            // Other filesystems (a mounted drive, a tailnet machine, /proc
+            // Other filesystems (a mounted drive, another machine, /proc
             // from /) and symlinked folders aren't walked into.
             struct stat st;
             if (info.isDir() && !info.isSymLink()
@@ -391,22 +394,21 @@ QVector<FolderModel::Entry> FolderModel::listRecent(const QString &xbel, bool sh
     return entries;
 }
 
-QVector<FolderModel::Entry> FolderModel::listPeers(const QVariantList &peers, const QString &query,
-                                                const QLocale &locale) {
+QVector<FolderModel::Entry> FolderModel::listItems(const QVariantList &items, const QString &query) {
     QVector<Entry> entries;
-    for (const QVariant &peer : peers) {
-        const QVariantMap map = peer.toMap();
+    for (const QVariant &item : items) {
+        const QVariantMap map = item.toMap();
         Entry e;
         e.name = map.value("name").toString();
         if (!e.name.contains(query, Qt::CaseInsensitive))
             continue;
-        e.path = tailnetPath() + map.value("host").toString();
-        e.kind = QStringLiteral("peer");
-        e.extension = map.value("os").toString();
+        e.path = map.value("path").toString();
+        e.kind = QStringLiteral("item");
+        e.icon = map.value("icon").toString();
+        e.extension = map.value("subtitle").toString();
+        e.details = map.value("details").toList();
         entries.push_back(e);
     }
-    // By name in every order: machines have no size, kind or date to sort by.
-    sortEntries(entries, "name", locale);
     return entries;
 }
 
@@ -446,8 +448,8 @@ void FolderModel::reload() {
     const bool showHidden = m_showHidden;
     const QString sort = m_sort;
     const QString query = m_query;
-    const QVariantList peers = m_peers;
     const QLocale locale;
+    const QVariantList items = m_items;
     *m_latest = generation;
     const auto latest = m_latest;
     auto *watcher = new QFutureWatcher<QPair<QVector<Entry>, QString>>(this);
@@ -479,10 +481,10 @@ void FolderModel::reload() {
             remember();
         countFolders(generation);
     });
-    watcher->setFuture(QtConcurrent::run([path, showHidden, sort, query, peers, latest, generation, locale] {
+    watcher->setFuture(QtConcurrent::run([path, showHidden, sort, query, items, latest, generation, locale] {
         QString error;
         const auto overtaken = [&] { return *latest != generation; };
-        auto entries = path == tailnetPath() ? listPeers(peers, query, locale)
+        auto entries = isPluginView(path) ? listItems(items, query)
                      : query.isEmpty() || path == recentPath() ? list(path, showHidden, sort, &error, overtaken, locale)
                      : search(path, query, showHidden, sort, overtaken, 1000, locale);
         return qMakePair(entries, error);
@@ -547,7 +549,8 @@ QVariantMap FolderModel::toMap(const Entry &entry) {
     return {
         {"name", entry.name}, {"path", entry.path}, {"isDir", entry.isDir}, {"size", entry.size},
         {"modified", entry.modified}, {"kind", entry.kind}, {"mime", entry.mime},
-        {"extension", entry.extension}, {"itemCount", entry.itemCount},
+        {"extension", entry.extension}, {"itemCount", entry.itemCount}, {"icon", entry.icon},
+        {"details", entry.details},
     };
 }
 

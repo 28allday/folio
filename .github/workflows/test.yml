@@ -14,13 +14,13 @@ jobs:
     steps:
       - name: Install the build and test dependencies
         # Arch is rolling, so update first; poppler is for the PDF thumbnail
-        # test, which skips without it.
+        # test, which skips without it, and jq for the Tailscale plugin's.
         run: |
           pacman -Syu --noconfirm --needed \
             base-devel cmake git \
             glib2 libarchive zlib xdg-utils hicolor-icon-theme \
             qt6-base qt6-declarative qt6-imageformats qt6-multimedia qt6-svg qt6-wayland \
-            poppler
+            poppler jq
 
       - name: Set up a user and a locale like a desktop's
         # The container runs as root, which can read any folder, so the tests

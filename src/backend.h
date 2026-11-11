@@ -8,17 +8,21 @@
 
 #include "foldermodel.h"
 #include "mounter.h"
+#include "plugins.h"
 
 // Where the window is and how it got there: the current folder, its
 // breadcrumbs, back/forward history, and the actions that leave the folder
-// (opening files, mounting a tailnet machine).
+// (opening files and plugins' items, mounting other machines, running
+// plugins' share entries).
 class Backend : public QObject {
     Q_OBJECT
     Q_PROPERTY(FolderModel *folder READ folder CONSTANT)
     Q_PROPERTY(Mounter *mounter READ mounter CONSTANT)
     Q_PROPERTY(QString path READ path NOTIFY pathChanged)
-    Q_PROPERTY(QString title READ title NOTIFY pathChanged)
-    Q_PROPERTY(QVariantList crumbs READ crumbs NOTIFY pathChanged)
+    // What the place is called: changes with the path, and with a plugin's
+    // labels (a poll, a language switch) while its view is shown.
+    Q_PROPERTY(QString title READ title NOTIFY placeChanged)
+    Q_PROPERTY(QVariantList crumbs READ crumbs NOTIFY placeChanged)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(QString notice READ notice NOTIFY noticeChanged)
     Q_PROPERTY(QString busy READ busy NOTIFY busyChanged)
@@ -33,6 +37,9 @@ public:
     explicit Backend(const QString &home = {}, QObject *parent = nullptr);
     ~Backend() override;
 
+    // The plugins whose views, items and share entries this window offers.
+    void setPlugins(Plugins *plugins);
+
     FolderModel *folder() { return &m_folder; }
     Mounter *mounter() { return &m_mounter; }
     QString path() const { return m_folder.path(); }
@@ -42,7 +49,8 @@ public:
     bool canForward() const { return m_index + 1 < m_history.size(); }
     QString message() const { return m_message; }
     QString notice() const { return m_notice; }
-    QString busy() const { return m_busy; }
+    // Mounting, or else the latest plugin action still running.
+    QString busy() const { return m_busy.isEmpty() && !m_runs.isEmpty() ? m_runs.last().second : m_busy; }
     bool previewing() const { return m_preview.state() != QProcess::NotRunning; }
 
     Q_INVOKABLE void navigate(const QString &path);
@@ -50,7 +58,11 @@ public:
     Q_INVOKABLE void goUp();
     Q_INVOKABLE void back();
     Q_INVOKABLE void forward();
-    Q_INVOKABLE void openPeer(const QString &host);
+    // Runs a plugin's share entry on the paths, sent to `target` (an item's
+    // id) for a submenu, showing its busy text meanwhile and what it says
+    // when it's done.
+    Q_INVOKABLE void share(const QString &plugin, const QString &entry, const QStringList &paths,
+                           const QString &target = {});
     Q_INVOKABLE void dismissMessage();
     Q_INVOKABLE void showMessage(const QString &message) { setMessage(message); }
     // Good news that needs no answer ("Link copied"): shown for a few
@@ -100,6 +112,7 @@ public:
 
 signals:
     void pathChanged();
+    void placeChanged();
     void messageChanged();
     void noticeChanged();
     void busyChanged();
@@ -108,8 +121,6 @@ signals:
     void newWindowRequested(const QString &path);
     void selectRequested(const QString &name);
     void activateRequested();
-    // A machine was asked for, for the sidebar to remember it by.
-    void peerOpened(const QString &host);
 
 private:
     static QString gvfsRoot();
@@ -119,9 +130,19 @@ private:
     bool go(const QString &path, bool record);
     void setMessage(const QString &message);
     void setBusy(const QString &busy);
-    // Mounts a server's address and goes where it points once it's mounted;
-    // a tailnet machine's home, when it has one like ours.
-    void connectTo(const QString &uri, const QString &name, bool peer);
+    // Opening a plugin's item: a folder, a mount or a command.
+    void openItem(const QString &path);
+    // Mounts `url` through GVfs (a plugin's machine, or a server typed in
+    // the path bar) and goes where it points once it's mounted.
+    void mount(const QString &url, const QString &name, bool verified);
+    // Goes to `folder` on a mount: a bare server's to the folder at home's
+    // path on it when there is one, a file's to its folder, selected.
+    void arrive(const QString &folder);
+    // A plugin action finished: its busy text goes, and what it asks for
+    // happens.
+    void finish(int run, const Plugins::Result &result);
+    // A GVfs mount's name on screen: its plugin item's name, or its host.
+    QString mountName(const QString &mount) const;
 
     QString m_home;
     FolderModel m_folder;
@@ -132,11 +153,15 @@ private:
     QTimer m_noticeTimer;
     QString m_busy;
     QString m_pendingSelection;
+    Plugins *m_plugins = nullptr;
     Mounter m_mounter;
     // What's being connected to, as the window names it, and whether it's
-    // a tailnet machine, which lands in the matching home folder.
+    // a bare server, which lands in the matching home folder.
     QString m_mountName;
-    bool m_mountPeer = false;
+    bool m_mountBare = false;
+    // The plugin actions running, each with its busy text, oldest first.
+    QList<std::pair<int, QString>> m_runs;
+    int m_lastRun = 0;
     QProcess m_preview;
     // Set while Folio closes the preview itself, which isn't a crash.
     bool m_closingPreview = false;

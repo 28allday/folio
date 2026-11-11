@@ -96,11 +96,11 @@ Rectangle {
             leftPadding: LayoutMirroring.enabled ? scope.implicitWidth + 24 : 12
             rightPadding: LayoutMirroring.enabled ? 12 : scope.implicitWidth + 24
             // Where it searches, at the end of the field. Unlike a
-            // placeholder, it stays while typing. The tailnet has nothing
-            // below it.
+            // placeholder, it stays while typing. Plugins' views have
+            // nothing below them.
             Text {
                 id: scope
-                // Recents, Trash and Tailnet are named in C++, which
+                // Recents, Trash and plugins' views are named in C++, which
                 // retranslating QML doesn't redo.
                 readonly property string here: {
                     translator.language
@@ -109,7 +109,7 @@ Rectangle {
                 anchors.right: parent.right
                 anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
-                text: backend.path === "tailnet:" ? qsTr("Search %1").arg(here) : qsTr("Search %1 and below").arg(here)
+                text: backend.path.startsWith("plugin:") ? qsTr("Search %1").arg(here) : qsTr("Search %1 and below").arg(here)
                 color: theme.secondaryForeground
                 font.pixelSize: 12
             }
@@ -151,7 +151,7 @@ Rectangle {
                 spacing: 10
 
                 Repeater {
-                    // Recents, Trash and Tailnet are named in C++, which
+                    // Recents, Trash and plugins' views are named in C++, which
                     // retranslating QML doesn't redo.
                     model: { translator.language; return backend.crumbs }
                     Row {

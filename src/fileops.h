@@ -116,14 +116,6 @@ public:
     // Unpacks each archive beside itself: an archive of one item gives
     // that item, one of several a folder named after the archive.
     Q_INVOKABLE void extract(const QStringList &paths);
-    // Sends with LocalSend to a nearby device, or with Taildrop to a
-    // machine on the tailnet.
-    Q_INVOKABLE void shareLocalSend(const QStringList &paths);
-    Q_INVOKABLE bool hasLocalSend() const;
-    // Asks Dropbox for a share link to a file in the Dropbox folder and
-    // puts it on the clipboard.
-    Q_INVOKABLE void dropboxLink(const QString &path);
-    Q_INVOKABLE void shareTaildrop(const QStringList &paths, const QString &host);
 
     Q_INVOKABLE void trash(const QStringList &paths);
 
@@ -324,11 +316,11 @@ private:
     void step(bool undoing);
     // Says the work was stopped, and how far it got.
     void sayStopped(const Job &job);
-    // Runs a helper program (bsdtar, dropbox-cli, tailscale) while showing
-    // `busy`, one piece of work at a time like the rest. `missing` says
-    // what to install when it isn't there, and `stopped` what a cancel
-    // left; `finished` gets its exit code, or -1 if it crashed. Returns the
-    // program, or null when other work is under way.
+    // Runs a helper program (bsdtar) while showing `busy`, one piece of
+    // work at a time like the rest. `missing` says what to install when it
+    // isn't there, and `stopped` what a cancel left; `finished` gets its
+    // exit code, or -1 if it crashed. Returns the program, or null when
+    // other work is under way.
     QProcess *runTool(const QString &program, const QStringList &args, const QString &busy, const QString &missing,
                       const QString &stopped, const std::function<void(QProcess *, int)> &finished);
 
