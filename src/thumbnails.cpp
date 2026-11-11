@@ -1,10 +1,16 @@
 #include "thumbnails.h"
 
+#include "foldermodel.h"
+
 #include <QBuffer>
 #include <QCryptographicHash>
 #include <QtEndian>
 #include <zlib.h>
 #include <QDir>
+#include <QFont>
+#include <QFontMetricsF>
+#include <QPainter>
+#include <QStringDecoder>
 #include <QDirIterator>
 #include <QFileInfo>
 #include <QImageReader>
@@ -195,11 +201,82 @@ QImage Thumbnails::generate(const QString &path, const QString &mime, int pixels
                 return image;
         }
     }
+    // Text shows its own first lines, on a page.
+    if (FolderModel::kindForMime(mime) == "text") {
+        attempted = true;
+        return textPage(path, pixels);
+    }
     const QString command = m_thumbnailers.value(mime);
-    if (command.isEmpty())
+    if (!command.isEmpty()) {
+        attempted = true;
+        return runThumbnailer(command, path, pixels);
+    }
+    // Without a PDF thumbnailer installed, Poppler's pdftoppm (there with
+    // CUPS) draws the first page.
+    if (mime == "application/pdf" && !QStandardPaths::findExecutable("pdftoppm").isEmpty()) {
+        attempted = true;
+        return pdfPage(path, pixels);
+    }
+    return {};
+}
+
+QImage Thumbnails::textPage(const QString &path, int pixels) {
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
         return {};
-    attempted = true;
-    return runThumbnailer(command, path, pixels);
+    const QByteArray head = file.read(4096);
+    // Binary that merely claims to be text (or a cut through a multibyte
+    // character at the very end, which is fine) gets the stand-in instead.
+    if (head.contains('\0'))
+        return {};
+    QStringDecoder decode(QStringDecoder::Utf8);
+    QString text = decode(head);
+    if (decode.hasError() && head.size() < 4096)
+        return {};
+
+    // A page in the paper's proportions, like the stand-in: dark text on
+    // white, in the monospace font, as many lines as fit and no wrapping.
+    const QSize size(qRound(pixels * 0.72), pixels);
+    QImage page(size, QImage::Format_RGB32);
+    page.fill(QColor(0xfa, 0xfa, 0xf7));
+    QPainter painter(&page);
+    painter.setRenderHint(QPainter::TextAntialiasing);
+    QFont font("monospace");
+    font.setStyleHint(QFont::Monospace);
+    font.setPixelSize(qMax(4, pixels / 26));
+    painter.setFont(font);
+    painter.setPen(QColor(0x30, 0x30, 0x34));
+    const QFontMetricsF metrics(font);
+    const qreal margin = size.width() * 0.09, line = metrics.lineSpacing();
+    // Long lines stop at the right margin rather than the page's edge.
+    painter.setClipRect(QRectF(margin, 0, size.width() - 2 * margin, size.height()));
+    qreal y = margin + metrics.ascent();
+    for (QString row : text.replace("\r\n", "\n").split('\n')) {
+        if (y > size.height() - margin)
+            break;
+        row.replace('\t', "    ");
+        painter.drawText(QPointF(margin, y), row);
+        y += line;
+    }
+    painter.end();
+    return page;
+}
+
+QImage Thumbnails::pdfPage(const QString &path, int pixels) {
+    QTemporaryDir scratch;
+    if (!scratch.isValid())
+        return {};
+    QProcess process;
+    process.start("pdftoppm", {"-f", "1", "-l", "1", "-singlefile", "-png", "-scale-to", QString::number(pixels),
+                               path, scratch.filePath("page")});
+    if (!process.waitForFinished(15000)) {
+        process.kill();
+        process.waitForFinished(1000);
+        return {};
+    }
+    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0)
+        return {};
+    return QImage(scratch.filePath("page.png"));
 }
 
 QImage Thumbnails::runThumbnailer(const QString &command, const QString &path, int pixels) const {

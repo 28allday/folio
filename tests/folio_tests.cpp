@@ -1,6 +1,9 @@
 #include <QClipboard>
 #include <QDir>
 #include <QMimeData>
+#include <QPageSize>
+#include <QPainter>
+#include <QPdfWriter>
 #include <memory>
 #include <QFile>
 #include <QGuiApplication>
@@ -1531,6 +1534,46 @@ private slots:
         // the one it names.
         write(dir.filePath("photo.heic"), "not a real heic");
         QCOMPARE(thumbnails.load(dir.filePath("photo.heic"), "image/*", 128).size(), QSize(64, 32));
+    }
+
+    void thumbnailsSetTextOnAPage()
+    {
+        QTemporaryDir dir;
+        write(dir.filePath("notes.md"), "# Packing\n\n- passport\n- charger\n");
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
+        const QImage page = thumbnails.load(dir.filePath("notes.md"), "text/markdown", 256);
+        QCOMPARE(page.size(), QSize(184, 256));
+        // Dark ink near the top left, where the first line is; plain paper
+        // at the bottom right.
+        bool ink = false;
+        for (int y = 0; y < 40 && !ink; ++y)
+            for (int x = 0; x < 120 && !ink; ++x)
+                ink = qGray(page.pixel(x, y)) < 128;
+        QVERIFY(ink);
+        QVERIFY(qGray(page.pixel(180, 250)) > 240);
+
+        // Binary that claims to be text gets the stand-in.
+        write(dir.filePath("blob.txt"), QByteArray("abc\0def", 7));
+        QVERIFY(thumbnails.load(dir.filePath("blob.txt"), "text/plain", 256).isNull());
+    }
+
+    void thumbnailsDrawAPdfsFirstPage()
+    {
+        if (QStandardPaths::findExecutable("pdftoppm").isEmpty())
+            QSKIP("pdftoppm (Poppler) isn't installed");
+        QTemporaryDir dir;
+        {
+            QPdfWriter pdf(dir.filePath("itinerary.pdf"));
+            pdf.setPageSize(QPageSize(QPageSize::A4));
+            QPainter painter(&pdf);
+            painter.fillRect(QRect(0, 0, 2000, 2000), Qt::black);
+        }
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
+        const QImage page = thumbnails.load(dir.filePath("itinerary.pdf"), "application/pdf", 256);
+        QCOMPARE(page.height(), 256);
+        QVERIFY(page.width() > 150 && page.width() < 200);
+        QVERIFY(qGray(page.pixel(5, 5)) < 64);
+        QVERIFY(qGray(page.pixel(page.width() - 3, page.height() - 3)) > 200);
     }
 
     void previewerPicksAViewerForEachType()
