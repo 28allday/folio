@@ -46,7 +46,7 @@ QVariantList parseBookmarks(const QStringList &lines, const QString &home) {
         if (!url.isLocalFile())
             continue;
         const QString path = QDir::cleanPath(url.toLocalFile());
-        // Folders right in home are already under Home; Omarchy also seeds
+        // Home's visible folders are already under Home; Omarchy also seeds
         // a few of those as bookmarks for the file dialogs.
         if (listedUnderHome(path, home) || seen.contains(path) || !QFileInfo(path).isDir())
             continue;
