@@ -241,7 +241,7 @@ QStringList FileOps::transfer(const QStringList &paths, const QString &folder, M
 void FileOps::paste(const QString &folder) {
     bool cut = false;
     const QStringList paths = pathsFrom(QGuiApplication::clipboard()->mimeData(), &cut);
-    if (paths.isEmpty() || !m_busy.isEmpty())
+    if (paths.isEmpty() || !idle())
         return;
     // Only Delete puts things in the trash, with the note Restore needs.
     if (!QFileInfo(folder).isDir() || inTrash(folder)) {
@@ -280,7 +280,7 @@ bool FileOps::canDrop(const QList<QUrl> &urls, const QString &folder) const {
 }
 
 void FileOps::dropInto(const QList<QUrl> &urls, const QString &folder) {
-    if (!canDrop(urls, folder) || !m_busy.isEmpty())
+    if (!canDrop(urls, folder) || !idle())
         return;
     transferInBackground(localPaths(urls), folder, Drop, false);
 }
@@ -331,7 +331,7 @@ void FileOps::transferInBackground(const QStringList &paths, const QString &fold
 }
 
 void FileOps::duplicate(const QString &path) {
-    if (!m_busy.isEmpty())
+    if (!idle())
         return;
     const QFileInfo info(path);
     transferInBackground({path}, info.absolutePath(), Copy, false, tr("Duplicating %1…").arg(info.fileName()));
@@ -344,7 +344,7 @@ QString FileOps::archiveName(const QStringList &paths, const QString &folder) {
 
 void FileOps::compress(const QStringList &selected) {
     const QStringList paths = outermost(selected);
-    if (paths.isEmpty() || !m_busy.isEmpty())
+    if (paths.isEmpty() || !idle())
         return;
     // Search results and Recents can span folders, so the archive goes in
     // the deepest folder holding them all, with their paths from there.
@@ -436,7 +436,7 @@ void FileOps::shareTaildrop(const QStringList &paths, const QString &host) {
 }
 
 void FileOps::trash(const QStringList &paths) {
-    if (paths.isEmpty() || !m_busy.isEmpty())
+    if (paths.isEmpty() || !idle())
         return;
     setBusy(tr("Moving %n items to the trash…", "", paths.size()));
     auto *watcher = new QFutureWatcher<QStringList>(this);
@@ -593,7 +593,7 @@ int FileOps::trashCount() const {
 }
 
 void FileOps::restore(const QStringList &paths) {
-    if (paths.isEmpty() || !m_busy.isEmpty())
+    if (paths.isEmpty() || !idle())
         return;
     // Restoring across drives copies, which for a folder can take a while.
     setBusy(tr("Restoring %n items…", "", paths.size()));
@@ -624,7 +624,7 @@ void FileOps::restore(const QStringList &paths) {
 }
 
 void FileOps::deleteForever(const QStringList &paths) {
-    if (paths.isEmpty() || !m_busy.isEmpty())
+    if (paths.isEmpty() || !idle())
         return;
     setBusy(tr("Deleting %n items…", "", paths.size()));
     auto *watcher = new QFutureWatcher<int>(this);
@@ -644,7 +644,7 @@ void FileOps::deleteForever(const QStringList &paths) {
 }
 
 void FileOps::emptyTrash() {
-    if (!m_busy.isEmpty())
+    if (!idle())
         return;
     setBusy(tr("Emptying the trash…"));
     auto *watcher = new QFutureWatcher<int>(this);
@@ -746,7 +746,7 @@ void FileOps::openTerminal(const QString &folder) {
 
 void FileOps::runTool(const QString &program, const QStringList &args, const QString &busy, const QString &missing,
                       const std::function<void(QProcess *, int)> &finished) {
-    if (!m_busy.isEmpty())
+    if (!idle())
         return;
     auto *process = new QProcess(this);
     setBusy(busy);
@@ -765,6 +765,13 @@ void FileOps::runTool(const QString &program, const QStringList &args, const QSt
         emit failed(missing);
     });
     process->start(program, args);
+}
+
+bool FileOps::idle() {
+    if (m_busy.isEmpty())
+        return true;
+    emit failed(tr("Try again once the work under way is done."));
+    return false;
 }
 
 void FileOps::setBusy(const QString &busy) {

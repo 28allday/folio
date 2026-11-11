@@ -133,6 +133,10 @@ signals:
 
 private:
     void setBusy(const QString &busy);
+    // One piece of work runs at a time: whether nothing else is running,
+    // saying why when something is, so what's refused doesn't just do
+    // nothing.
+    bool idle();
     // Copies or moves off the UI thread, showing `busy` (or how many are
     // moving or copying) meanwhile.
     void transferInBackground(const QStringList &paths, const QString &folder, Mode mode, bool releaseClipboard,

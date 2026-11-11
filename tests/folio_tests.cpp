@@ -1022,6 +1022,14 @@ private slots:
         QTRY_COMPARE(failed.count(), 1);
         QVERIFY(ops.busy().isEmpty());
         QVERIFY(failed.first().first().toString().startsWith("Couldn't move to the trash: gone.txt ("));
+
+        // One piece of work runs at a time. What's asked for meanwhile
+        // doesn't start, and says so rather than doing nothing.
+        ops.trash({data.filePath("gone.txt")});
+        ops.restore({trash + "/files/a.txt"});
+        QCOMPARE(failed.count(), 2);
+        QCOMPARE(failed.last().first().toString(), QString("Try again once the work under way is done."));
+        QTRY_COMPARE(failed.count(), 3);
     }
 
     void trashTakesNothingButDeletes()
