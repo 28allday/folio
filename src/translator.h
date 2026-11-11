@@ -3,6 +3,8 @@
 #include <QFileSystemWatcher>
 #include <QHash>
 #include <QJsonValue>
+#include <QPair>
+#include <QReadWriteLock>
 #include <QTimer>
 #include <QTranslator>
 
@@ -20,10 +22,13 @@ public:
     explicit Translator(const QString &languageFile = {}, const QString &catalogDirectory = ":/i18n",
                         QObject *parent = nullptr);
 
-    QString language() const { return m_language; }
-    bool isEmpty() const override { return m_strings.isEmpty(); }
+    QString language() const;
+    bool isEmpty() const override;
     QString translate(const char *context, const char *sourceText, const char *disambiguation = nullptr,
                       int n = -1) const override;
+    // The CLDR cardinal category ("one", "few", "other"…) of a whole count
+    // in a language, by its Omarchy code.
+    static QString pluralCategory(const QString &code, long long n);
 
 signals:
     void changed();
@@ -33,8 +38,14 @@ private:
 
     QString m_languageFile;
     QString m_catalogDirectory;
+    // Worker threads translate too (file names, errors), so the catalog is
+    // swapped under a lock rather than freed beneath them.
+    mutable QReadWriteLock m_lock;
     QString m_language;
-    QHash<QString, QJsonValue> m_strings;
+    // Each translation with the code of the catalog it came from, whose
+    // plural rule its forms follow: a string still in English counts the
+    // English way.
+    QHash<QString, QPair<QString, QJsonValue>> m_strings;
     QFileSystemWatcher m_watcher;
     QTimer m_debounce;
 };

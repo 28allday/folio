@@ -21,9 +21,11 @@ QString readLanguage(const QString &path) {
     return valid.match(code).hasMatch() ? code : "en";
 }
 
+} // namespace
+
 // CLDR cardinal plural categories for whole counts, for Omarchy's languages
 // (the same rules as Omarchy's shell/Commons/Plural.js).
-QString pluralCategory(const QString &code, long long count) {
+QString Translator::pluralCategory(const QString &code, long long count) {
     const long long n = count < 0 ? -count : count, n10 = n % 10, n100 = n % 100;
     const bool millions = n != 0 && n % 1000000 == 0;
     const bool teens = n100 >= 12 && n100 <= 14;
@@ -54,6 +56,8 @@ QString pluralCategory(const QString &code, long long count) {
     return n == 1 ? "one" : "other";
 }
 
+namespace {
+
 // The locale Omarchy formats this language with, from its registry, so the
 // app's numbers and dates match the desktop's (Arabic there uses Western
 // digits); without Omarchy, Qt's own locale for the code.
@@ -82,14 +86,25 @@ Translator::Translator(const QString &languageFile, const QString &catalogDirect
     reload();
 }
 
+QString Translator::language() const {
+    QReadLocker locker(&m_lock);
+    return m_language;
+}
+
+bool Translator::isEmpty() const {
+    QReadLocker locker(&m_lock);
+    return m_strings.isEmpty();
+}
+
 QString Translator::translate(const char *, const char *sourceText, const char *, int n) const {
+    QReadLocker locker(&m_lock);
     // A null string tells Qt there is no translation, so it shows the English.
-    const QJsonValue value = m_strings.value(QString::fromUtf8(sourceText));
+    const auto [code, value] = m_strings.value(QString::fromUtf8(sourceText));
     if (value.isString())
         return value.toString();
     if (value.isObject()) {
         const QJsonObject forms = value.toObject();
-        const QString form = forms.value(n < 0 ? "other" : pluralCategory(m_language, n)).toString();
+        const QString form = forms.value(n < 0 ? "other" : pluralCategory(code, n)).toString();
         return form.isEmpty() ? forms.value("other").toString() : form;
     }
     return {};
@@ -110,13 +125,13 @@ void Translator::reload() {
 
     // Catalogs are compiled in, so only a different language needs a reload.
     const QString language = readLanguage(m_languageFile);
-    if (language == m_language)
+    if (language == this->language())
         return;
 
     // English first (it carries the plural forms of counted strings), then
     // the base language and the regional file over it (pt, then pt-BR), so a
     // missing string falls back toward English one step at a time.
-    QHash<QString, QJsonValue> strings;
+    QHash<QString, QPair<QString, QJsonValue>> strings;
     QStringList codes{"en", language.section('-', 0, 0), language};
     codes.removeDuplicates();
     for (const auto &code : codes) {
@@ -126,14 +141,20 @@ void Translator::reload() {
         const QJsonObject object = QJsonDocument::fromJson(catalog.readAll()).object();
         for (auto it = object.begin(); it != object.end(); ++it)
             if ((it.value().isString() && !it.value().toString().isEmpty()) || it.value().isObject())
-                strings.insert(it.key(), it.value());
+                strings.insert(it.key(), {code, it.value()});
     }
 
-    m_language = language;
-    m_strings = strings;
+    {
+        QWriteLocker locker(&m_lock);
+        m_language = language;
+        m_strings = strings;
+    }
     // Dates, numbers, and Qt's own day and month names follow the language
-    // too, and right-to-left languages mirror the window.
-    const QLocale locale = formatLocale(language);
+    // too, and right-to-left languages mirror the window. Numbers aren't
+    // grouped, as in Omarchy, so a year or a picture's width never grows a
+    // separator.
+    QLocale locale = formatLocale(language);
+    locale.setNumberOptions(QLocale::OmitGroupSeparator);
     QLocale::setDefault(locale);
     QGuiApplication::setLayoutDirection(locale.textDirection());
     emit changed();

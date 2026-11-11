@@ -1971,6 +1971,31 @@ private slots:
         QCOMPARE(translator.translate("Main", "%n items", nullptr, 25), QString("%n элементов"));
     }
 
+    void translatorCountsEnglishFormsTheEnglishWay()
+    {
+        // A string no catalog has translated yet falls back to English, and
+        // its English forms follow English's rule, not the language's:
+        // Russian's "one" for 21 and Japanese's lone "other" would read
+        // "21 item" and "1 items".
+        QTemporaryDir dir;
+        write(dir.path() + "/en.json", R"({"%n items": {"one": "%n item", "other": "%n items"}})");
+        write(dir.path() + "/language", "ru\n");
+        Translator russian(dir.path() + "/language", dir.path());
+        QCOMPARE(russian.translate("Main", "%n items", nullptr, 21), QString("%n items"));
+        write(dir.path() + "/language", "ja\n");
+        Translator japanese(dir.path() + "/language", dir.path());
+        QCOMPARE(japanese.translate("Main", "%n items", nullptr, 1), QString("%n item"));
+    }
+
+    void translatorLeavesNumbersUngrouped()
+    {
+        QTemporaryDir dir;
+        write(dir.path() + "/language", "de\n");
+        Translator translator(dir.path() + "/language", dir.path());
+        QCOMPARE(QLocale().toString(12345), QString("12345"));
+        QCOMPARE(QLocale().toString(1.5, 'f', 1), QString("1,5"));
+    }
+
 private:
     static void write(const QString &path, const QByteArray &contents)
     {
