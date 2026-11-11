@@ -16,10 +16,12 @@ Rectangle {
     readonly property var item: visible && folderPane ? folderPane.current : ({})
     readonly property bool hasItem: item !== undefined && item.path !== undefined
     // An item in the trash shows where it came from and when it was
-    // deleted, and offers Restore rather than Open. Until its note has been
-    // read, it's taken to have one; what's inside a trashed folder has none.
+    // deleted, and offers Restore rather than Open. Its note is read in the
+    // background; until it's in, the item looks trashed, as nearly all there
+    // are, but Restore waits. What's inside a trashed folder has no note.
+    readonly property bool noting: hasItem && folderPane.inTrash && info.origin === undefined
     readonly property string origin: info.origin || ""
-    readonly property bool trashed: hasItem && folderPane.inTrash && info.origin !== ""
+    readonly property bool trashed: hasItem && origin.length > 0
     function homeless(path) { return path.startsWith(places.home + "/") ? "~" + path.slice(places.home.length) : path }
     // Its type's name, and a picture's size or a text's opening lines once
     // they've been read off the UI thread.
@@ -121,13 +123,13 @@ Rectangle {
                 font.pixelSize: 12
                 elide: Text.ElideMiddle
             }
-            Text { text: pane.trashed ? qsTr("Deleted") : qsTr("Modified"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            Text { text: pane.trashed || pane.noting ? qsTr("Deleted") : qsTr("Modified"); color: theme.secondaryForeground; font.pixelSize: 12 }
             Text {
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignRight
                 text: {
                     translator.language // Re-read when the language (and so the default locale) changes.
-                    const when = pane.trashed ? pane.info.deleted : pane.item.modified
+                    const when = pane.trashed ? pane.info.deleted : pane.noting ? null : pane.item.modified
                     return pane.hasItem && when ? when.toLocaleString(Qt.locale(), Locale.ShortFormat) : ""
                 }
                 color: theme.foreground
@@ -152,7 +154,8 @@ Rectangle {
             implicitHeight: 40
             focusPolicy: Qt.NoFocus
             hoverEnabled: true
-            text: pane.trashed ? qsTr("Restore") : pane.hasItem && pane.item.isDir ? qsTr("Open folder") : qsTr("Open")
+            enabled: !pane.noting
+            text: pane.trashed || pane.noting ? qsTr("Restore") : pane.hasItem && pane.item.isDir ? qsTr("Open folder") : qsTr("Open")
             Accessible.name: text
             onClicked: pane.trashed ? pane.folderPane.paneFileOps.restore([pane.item.path]) : pane.folderPane.paneBackend.open(pane.item.path)
             background: Rectangle {
