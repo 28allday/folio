@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
@@ -99,8 +100,19 @@ Theme::Theme(const QString &directory, QObject *parent, const QString &hyprctl)
     });
     m_roundingPoll.setInterval(1000);
     connect(&m_roundingPoll, &QTimer::timeout, this, &Theme::refreshRounding);
-    if (!m_hyprctl.isEmpty())
+    if (!m_hyprctl.isEmpty()) {
         m_roundingPoll.start();
+        // The rounding only needs following while Folio is in use, and it's
+        // read again the moment Folio is back.
+        connect(qGuiApp, &QGuiApplication::applicationStateChanged, this, [this](Qt::ApplicationState state) {
+            if (state == Qt::ApplicationActive) {
+                refreshRounding();
+                m_roundingPoll.start();
+            } else {
+                m_roundingPoll.stop();
+            }
+        });
+    }
     reload();
 }
 

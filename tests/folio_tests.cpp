@@ -970,6 +970,26 @@ private slots:
         QTRY_COMPARE(theme.radius(), 6);
     }
 
+    void themeAsksForRoundingOnlyWhileActive()
+    {
+        QTemporaryDir dir;
+        const QString response = dir.filePath("response.json"), command = dir.filePath("hyprctl");
+        write(command, "#!/bin/sh\ncat '" + response.toUtf8() + "'\n");
+        QVERIFY(QFile::setPermissions(command, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        write(response, "{\"int\":3}");
+
+        Theme theme(dir.path(), nullptr, command);
+        QTRY_COMPARE(theme.radius(), 3);
+        // Away from Folio, a change goes unnoticed for longer than the poll,
+        // and it's picked up once Folio is back.
+        emit qGuiApp->applicationStateChanged(Qt::ApplicationInactive);
+        write(response, "{\"int\":6}");
+        QTest::qWait(1500);
+        QCOMPARE(theme.radius(), 3);
+        emit qGuiApp->applicationStateChanged(Qt::ApplicationActive);
+        QTRY_COMPARE(theme.radius(), 6);
+    }
+
     void translatorFallsBackToEnglish()
     {
         QTemporaryDir dir;
