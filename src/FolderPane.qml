@@ -144,14 +144,14 @@ FocusScope {
     Shortcut { sequence: "Ctrl+3"; enabled: pane.active; onActivated: pane.viewMode = "columns" }
     Shortcut { sequences: ["Return", "Enter"]; enabled: pane.keys && pane.activeFocus; onActivated: if (pane.current.path) backend.open(pane.current.path) }
     Shortcut { sequences: ["Backspace", "Alt+Up"]; enabled: pane.keys; onActivated: backend.goUp() }
-    Shortcut { sequences: ["Alt+Left", StandardKey.Back]; enabled: pane.active; onActivated: backend.back() }
-    Shortcut { sequences: ["Alt+Right", StandardKey.Forward]; enabled: pane.active; onActivated: backend.forward() }
+    Shortcut { sequences: ["Alt+Left", "Back"]; enabled: pane.active; onActivated: backend.back() }
+    Shortcut { sequences: ["Alt+Right", "Forward"]; enabled: pane.active; onActivated: backend.forward() }
     Shortcut { sequence: "Alt+Home"; enabled: pane.active; onActivated: backend.navigate(places.home) }
     Shortcut { sequence: "Ctrl+H"; enabled: pane.active; onActivated: backend.folder.showHidden = !backend.folder.showHidden }
     // S steps through the sort orders, Shift+S back.
     Shortcut { sequence: "S"; enabled: pane.keys; onActivated: pathBar.stepSort(1) }
     Shortcut { sequence: "Shift+S"; enabled: pane.keys; onActivated: pathBar.stepSort(-1) }
-    Shortcut { sequences: ["F5", StandardKey.Refresh]; enabled: pane.active; onActivated: { backend.folder.reload(); places.refresh() } }
+    Shortcut { sequences: ["F5", "Refresh"]; enabled: pane.active; onActivated: { backend.folder.reload(); places.refresh() } }
 
     Connections {
         target: backend
