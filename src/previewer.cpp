@@ -178,14 +178,14 @@ void Previewer::setIndex(int index, bool report) {
     // A folder's count and first pictures, and a text's opening part, are
     // read off the UI thread: a big folder, or any file on a slow mount,
     // would hold up the window until they were in.
-    const quint64 generation = ++m_reading;
+    const quint64 generation = ++*m_reading;
     const bool count = e.isDir && e.itemCount < 0;
     const bool text = m_viewer == "text" || m_viewer == "markdown";
     if (count || text) {
         auto *watcher = new QFutureWatcher<QPair<FolderModel::Entry, QString>>(this);
         connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, text] {
             watcher->deleteLater();
-            if (generation != m_reading)
+            if (generation != *m_reading)
                 return; // Stepped on to another item while this was read.
             const auto [entry, read] = watcher->result();
             m_entries[m_index] = entry;
@@ -197,7 +197,10 @@ void Previewer::setIndex(int index, bool report) {
         });
         const bool showHidden = m_showHidden;
         const bool markdown = m_viewer == "markdown";
-        watcher->setFuture(QtConcurrent::run([entry = e, showHidden, count, text, markdown]() mutable {
+        watcher->setFuture(QtConcurrent::run([entry = e, showHidden, count, text, markdown,
+                                              latest = m_reading, generation]() mutable {
+            if (*latest != generation)
+                return qMakePair(entry, QString());
             if (count)
                 FolderModel::summarize(entry, showHidden);
             const QString read = text ? readText(entry.path) : QString();

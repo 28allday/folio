@@ -80,8 +80,9 @@ private:
     bool m_showHidden = false;
     QString m_sort = "name";
     quint64 m_generation = 0;
-    // The newest item read in the background; older readings are dropped.
-    quint64 m_reading = 0;
+    // The newest item read in the background; older readings are dropped,
+    // or skipped when they haven't started.
+    std::shared_ptr<std::atomic<quint64>> m_reading = std::make_shared<std::atomic<quint64>>(0);
     bool m_reporting = false;
     QSocketNotifier *m_stdin = nullptr;
     QByteArray m_pending;
