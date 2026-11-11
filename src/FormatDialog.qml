@@ -64,8 +64,18 @@ FolioDialog {
                 elide: Text.ElideRight
             }
         }
-        // What to format it as, exFAT unless picked otherwise; what each is
-        // good for is said on hover.
+        // What it'll be formatted as, exFAT unless another is picked when
+        // there's more than one to pick from; what it's good for is said
+        // on hover.
+        Text {
+            visible: dialog.choices.length === 1
+            text: dialog.picked.name || ""
+            color: theme.secondaryForeground
+            HoverHandler { id: fsHover }
+            ToolTip.visible: fsHover.hovered
+            ToolTip.delay: 600
+            ToolTip.text: dialog.picked.detail || ""
+        }
         PlainButton {
             id: fsButton
             visible: dialog.choices.length > 1

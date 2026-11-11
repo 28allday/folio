@@ -3507,6 +3507,49 @@ private slots:
                                            "mount " + sdb + "1"}));
     }
 
+    void formatDialogSaysWhatItMakes()
+    {
+        // The filesystem Format makes is always said: picked from a menu
+        // when there's more than one, and as it is when there's only one.
+        QTemporaryDir home;
+        auto fake = fakeDisks();
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 800; height: 600; visible: true\n"
+                          "    FormatDialog { id: dialog; anchors.fill: parent }\n"
+                          "    function shown() {\n"
+                          "        dialog.open({ id: 'stick', label: 'Photos', title: 'SanDisk Ultra' })\n"
+                          "        const texts = []\n"
+                          "        const walk = item => {\n"
+                          "            if (!item.visible) return\n"
+                          "            if (item instanceof Text) texts.push(item.text)\n"
+                          "            for (const child of item.children) walk(child)\n"
+                          "        }\n"
+                          "        walk(dialog)\n"
+                          "        return texts\n"
+                          "    }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/FormatDialogTest.qml"));
+        std::unique_ptr<QObject> window(component.create());
+        QVERIFY2(window, qPrintable(component.errorString()));
+        const auto shown = [&] {
+            QVariant texts;
+            QMetaObject::invokeMethod(window.get(), "shown", Q_RETURN_ARG(QVariant, texts));
+            return texts.toStringList();
+        };
+        fake->missing = {"ext4"};
+        QVERIFY(shown().contains("exFAT  ▾"));
+        fake->missing = {"vfat", "ext4"};
+        QVERIFY(shown().contains("exFAT"));
+        QVERIFY(!shown().contains("exFAT  ▾"));
+    }
+
     void formattingOffersWhatThisMachineCanMake()
     {
         // exFAT first, and only the filesystems whose tools are installed.
