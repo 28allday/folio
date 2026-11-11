@@ -80,13 +80,10 @@
   "Couldn't start a terminal: xdg-terminal-exec isn't installed.": "Couldn't start a terminal: xdg-terminal-exec isn't installed.",
   "Cut": "Cut",
   "Delete": "Delete",
-  "Delete %Ln Items": {
-    "one": "Delete %Ln Item",
-    "other": "Delete %Ln Items"
-  },
-  "Delete Permanently…": "Delete Permanently…",
   "Delete for good?": "Delete for good?",
+  "Delete permanently (asks first)": "Delete permanently (asks first)",
   "Deleted": "Deleted",
+  "Delete…": "Delete…",
   "Deleting %Ln items…": {
     "one": "Deleting %Ln item…",
     "other": "Deleting %Ln items…"
