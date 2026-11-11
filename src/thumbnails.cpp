@@ -195,6 +195,13 @@ Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbna
         m_thumbnailers.insert(aliased);
         m_thumbnailers.insert(named);
     }
+    // Another Folio's failure markers (fail/folio, or a fail/folio-<n> with another number) are never read here, so they
+    // are cleared away, on a worker since there may be thousands.
+    QThreadPool::globalInstance()->start([fail = m_cache + "/fail"] {
+        for (const QString &name : QDir(fail).entryList({"folio", "folio-*"}, QDir::Dirs | QDir::NoDotAndDotDot))
+            if ("fail/" + name != failures)
+                QDir(fail + "/" + name).removeRecursively();
+    });
 }
 
 QString Thumbnails::missingPackage(const QString &mime) const {

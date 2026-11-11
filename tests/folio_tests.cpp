@@ -5490,6 +5490,22 @@ private slots:
         QCOMPARE(QFileInfo(runs).size(), 8);
     }
 
+    void thumbnailsClearAwayAnOlderFoliosFailures()
+    {
+        QTemporaryDir dir;
+        const QStringList kept = {Thumbnails::failures, "fail/gnome-thumbnail-factory"}, gone = {"fail/folio", "fail/folio-1"};
+        for (const QString &folder : kept + gone) {
+            QVERIFY(QDir().mkpath(dir.filePath("cache/" + folder)));
+            write(dir.filePath("cache/" + folder + "/marker.png"), "marker");
+        }
+        const Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("none")});
+        QThreadPool::globalInstance()->waitForDone();
+        for (const QString &folder : kept)
+            QVERIFY(QFile::exists(dir.filePath("cache/" + folder + "/marker.png")));
+        for (const QString &folder : gone)
+            QVERIFY(!QFileInfo::exists(dir.filePath("cache/" + folder)));
+    }
+
     void thumbnailsLetAThumbnailerInstalledLaterDraw()
     {
         QTemporaryDir dir;
