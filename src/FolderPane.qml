@@ -35,6 +35,10 @@ FocusScope {
     // the folder. By path: Recents can list two files of the same name.
     property string lastPath: ""
     property string loadedPath: ""
+    // Set when a click on empty space lets go of the cursor: a re-read or a
+    // switch of view leaves it let go of, until it moves again or another
+    // folder arrives.
+    property bool cursorLetGo: false
     // While a text field has the keyboard (renaming, a password), single-key
     // and clipboard shortcuts stand aside so typing works.
     readonly property bool typing: rename.visible || confirm.visible || backend.mounter.asking || pathBar.editing || pathBar.searchFocused || (!!host && host.helpVisible)
@@ -162,15 +166,17 @@ FocusScope {
     Connections {
         target: view.item
         function onContextMenu(item, folder) { fileMenu.show(item, folder) }
-        function onCursorLetGo() { pane.lastPath = "" }
+        function onCursorLetGo() { pane.cursorLetGo = true }
         // The cursor's item is remembered as the cursor moves, and once the
         // folder's loaded has placed it. Not when a re-read leaves the cursor
         // on its row while a new file pushes its item down: loaded then puts
         // it back on the item.
         function onCurrentIndexChanged() {
             const path = backend.folder.get(view.item.currentIndex).path
-            if (path)
+            if (path) {
                 pane.lastPath = path
+                pane.cursorLetGo = false
+            }
         }
     }
 
@@ -208,12 +214,13 @@ FocusScope {
             const same = backend.folder.path === pane.loadedPath
             pane.loadedPath = backend.folder.path
             const row = backend.folder.indexOfPath(pane.lastPath)
+            if (pending || !same)
+                pane.cursorLetGo = false
             if (pending)
                 view.item.select(backend.folder.indexOf(pending), false)
             else if (!same)
                 view.item.select(-1, false)
-            // A cursor let go of on purpose stays let go of.
-            else if (pane.lastPath || view.item.currentIndex >= 0)
+            else if (!pane.cursorLetGo)
                 view.item.select(row >= 0 ? row : Math.min(view.item.currentIndex, backend.folder.count - 1), true)
             // Remembered here too: put on the row it was already on, the
             // cursor doesn't signal a move, and an item from the folder
@@ -291,10 +298,10 @@ FocusScope {
                            : gridView
             // A new view picks up the selection the old one had.
             onLoaded: {
-                if (pane.lastPath)
-                    item.select(backend.folder.indexOfPath(pane.lastPath), true)
-                else
+                if (pane.cursorLetGo)
                     item.letGo()
+                else
+                    item.select(backend.folder.indexOfPath(pane.lastPath), true)
                 item.focusView()
             }
 
