@@ -479,6 +479,32 @@ private slots:
         QCOMPARE(compress({"a/inner/x.txt", "a/inner"}), QStringList({dir.filePath("a"), "inner.zip", "inner/", "inner/x.txt"}));
     }
 
+    void fileOpsTakeAFolderOnceWithWhatsInIt()
+    {
+        // Search results can list a folder and what's in it. The folder
+        // takes those along, so they aren't copied twice, found gone once
+        // it has moved, or deleted twice.
+        QTemporaryDir from, copies, moves, trash;
+        QDir(from.path()).mkpath("album/inner");
+        write(from.filePath("album/inner/a.jpg"), "picture");
+        const QStringList both{from.filePath("album"), from.filePath("album/inner/a.jpg")};
+        QString error;
+        QCOMPARE(FileOps::transfer(both, copies.path(), false, &error), QStringList({"album"}));
+        QVERIFY(!QFile::exists(copies.filePath("a.jpg")));
+        QCOMPARE(FileOps::transfer(both, moves.path(), true, &error), QStringList({"album"}));
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QVERIFY(QFile::exists(moves.filePath("album/inner/a.jpg")));
+
+        QDir(trash.path()).mkpath("files/album");
+        write(trash.filePath("files/album/a.jpg"), "picture");
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.deleteForever({trash.filePath("files/album"), trash.filePath("files/album/a.jpg")});
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 0);
+        QVERIFY(!QFileInfo::exists(trash.filePath("files/album")));
+    }
+
     void fileOpsLetGoOfOnlyThePastedCut()
     {
         // Cut files are gone once pasted, so the clipboard lets go of them,

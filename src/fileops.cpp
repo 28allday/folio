@@ -156,6 +156,20 @@ bool FileOps::copyRecursively(const QString &from, const QString &to, QString *e
     return true;
 }
 
+// The paths that aren't inside another of them. A folder takes what's in it
+// along, so anything also chosen inside it (search results list both) would
+// be copied or archived twice, be gone by its turn once the folder moved, or
+// be deleted twice.
+static QStringList outermost(const QStringList &paths) {
+    QStringList outer;
+    for (const QString &path : paths)
+        if (std::none_of(paths.begin(), paths.end(), [&](const QString &other) {
+                return QDir::cleanPath(path).startsWith(QDir::cleanPath(other) + "/");
+            }))
+            outer << path;
+    return outer;
+}
+
 // Whether `folder` is the folder at `path` or inside it, wherever links lead,
 // so a link to a folder inside it counts. A link at `path` itself isn't a
 // folder here, since it's copied as a link.
@@ -168,7 +182,7 @@ static bool inside(const QString &folder, const QString &path) {
 QStringList FileOps::transfer(const QStringList &paths, const QString &folder, bool move, QString *error) {
     QStringList made;
     const QString target = QDir::cleanPath(folder);
-    for (const QString &path : paths) {
+    for (const QString &path : outermost(paths)) {
         const QFileInfo info(path);
         if (!info.exists() && !info.isSymLink()) {
             *error = QObject::tr("%1 is no longer there.").arg(info.fileName());
@@ -301,16 +315,7 @@ QString FileOps::archiveName(const QStringList &paths, const QString &folder) {
 }
 
 void FileOps::compress(const QStringList &selected) {
-    // A folder takes what's in it along, so anything also selected inside
-    // it (search results list both) is left out rather than archived twice.
-    QStringList paths;
-    for (const QString &path : selected) {
-        const bool inside = std::any_of(selected.begin(), selected.end(), [&](const QString &other) {
-            return QDir::cleanPath(path).startsWith(QDir::cleanPath(other) + "/");
-        });
-        if (!inside)
-            paths << path;
-    }
+    const QStringList paths = outermost(selected);
     if (paths.isEmpty())
         return;
     // Search results and Recents can span folders, so the archive goes in
@@ -388,7 +393,7 @@ void FileOps::trash(const QStringList &paths) {
     // GIO follows the freedesktop Trash spec, including each drive's own
     // .Trash folder, so Restore in any file manager puts things back.
     QStringList failedNames;
-    for (const QString &path : paths) {
+    for (const QString &path : outermost(paths)) {
         GFile *file = g_file_new_for_path(path.toUtf8().constData());
         GError *error = nullptr;
         if (!g_file_trash(file, nullptr, &error)) {
@@ -545,7 +550,7 @@ void FileOps::deleteForever(const QStringList &paths) {
     });
     watcher->setFuture(QtConcurrent::run([paths] {
         int failures = 0;
-        for (const QString &path : paths)
+        for (const QString &path : outermost(paths))
             if (!deleteTrashed(path))
                 ++failures;
         return failures;
