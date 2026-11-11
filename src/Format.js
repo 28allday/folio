@@ -17,6 +17,11 @@ function size(bytes) {
     return units[i].arg(value.toLocaleString(Qt.locale(), "f", i === 0 ? 0 : 1))
 }
 
+// How much room is left on a drive, as its row in the sidebar says it.
+function free(bytes) {
+    return qsTr("%1 free").arg(size(bytes))
+}
+
 // When it changed: the time for today, the date before that. A plugin's
 // items have no date.
 function when(date) {

@@ -9,8 +9,8 @@ Rectangle {
     property bool previewVisible: true
     property bool previewFits: true
     property string viewMode: "grid"
-    // Ctrl+L: the path as text to edit. Enter goes there, Escape cancels,
-    // Tab completes a folder name.
+    // Ctrl+L: the path as text to edit. Enter goes there (or connects to a
+    // server's address), Escape cancels, Tab completes a folder name.
     property bool editing: false
     // The right pane of a split has a close button (Ctrl+W).
     property bool closable: false
@@ -74,6 +74,7 @@ Rectangle {
             Layout.fillWidth: true
             visible: bar.editing
             font.pixelSize: 14
+            placeholderText: qsTr("A folder, or a server's address like sftp://host/")
             onAccepted: {
                 if (backend.goTyped(text))
                     bar.stopEditing()
@@ -160,7 +161,8 @@ Rectangle {
                         readonly property bool last: index === backend.crumbs.length - 1
                         spacing: 10
                         Text {
-                            visible: crumb.index > 0
+                            // No separator after / itself: "/ run", not "/ / run".
+                            visible: crumb.index > 0 && !(crumb.index === 1 && backend.crumbs[0].name === "/")
                             text: "/"
                             color: Qt.alpha(theme.foreground, 0.35)
                             font.pixelSize: 14

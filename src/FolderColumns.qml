@@ -57,6 +57,10 @@ Item {
     function enter() { if (view.selected.isDir) backend.navigate(view.selected.path) }
 
     component Separator: Rectangle { width: 1; height: parent ? parent.height : 0; color: Qt.alpha(theme.foreground, 0.1) }
+    // Files dropped in a column land in the folder it shows. It lies over
+    // the whole column, under its items, rather than in the list's content,
+    // which ends at its last item.
+    component ColumnDrop: FolderDrop { parent: items; anchors.fill: parent; z: -1 }
 
     Flickable {
         id: flick
@@ -107,6 +111,7 @@ Item {
                             function onChanged() { folder.reload() }
                         }
                         function revealNext() { positionViewAtIndex(Math.max(0, folder.indexOf(ancestor.next)), ListView.Contain) }
+                        ColumnDrop { items: column; folder: ancestor.path }
                         TapHandler {
                             acceptedButtons: Qt.RightButton
                             onTapped: (point) => {
@@ -152,6 +157,7 @@ Item {
                     acceptedButtons: Qt.RightButton
                     onTapped: (point) => view.contextMenu(selecting.menuAt(point), backend.path, point.scenePosition)
                 }
+                ColumnDrop { items: here; folder: backend.path }
 
                 onCurrentIndexChanged: selecting.cursorMoved()
                 Keys.onPressed: (event) => selecting.extendBy(event, event.key === Qt.Key_Up ? -1 : event.key === Qt.Key_Down ? 1 : 0)
@@ -206,6 +212,7 @@ Item {
                     target: translator
                     function onChanged() { insideFolder.reload() }
                 }
+                ColumnDrop { items: inside; folder: view.selected.path ?? "" }
                 delegate: FileRow {
                     width: inside.width
                     chevron: true

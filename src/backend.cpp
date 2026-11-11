@@ -11,6 +11,7 @@
 #include <QImageReader>
 #include <QMimeDatabase>
 #include <QPointer>
+#include <QStorageInfo>
 #include <QUrl>
 #include <QtConcurrent>
 #include <unistd.h>
@@ -28,16 +29,13 @@ Backend::Backend(const QString &home, QObject *parent)
         // The mount's folder is known now, so the plugin's row can light up.
         if (m_plugins)
             m_plugins->mountsChanged();
-        // A bare server lands in the matching home folder when the other
-        // machine has one, which among one person's machines it usually does.
-        const QString remoteHome = folder + QDir::homePath();
-        navigate(m_mountBare && QFileInfo(remoteHome).isDir() ? remoteHome : folder);
+        arrive(folder);
     });
     connect(&m_mounter, &Mounter::failed, this, [this](const QString &error) {
         setBusy({});
         // An empty error is the user cancelling the sign-in: nothing to report.
         if (!error.isEmpty())
-            setMessage(tr("Couldn't open %1: %2").arg(m_mountName, error));
+            setMessage(tr("Couldn't connect to %1: %2").arg(m_mountName, error));
     });
     // The preview reports each file it steps to, and the grid follows.
     connect(&m_preview, &QProcess::readyReadStandardOutput, this, [this] {
@@ -95,9 +93,25 @@ QString Backend::title() const {
     return QFileInfo(p).fileName();
 }
 
+// Where the removable or extra drive holding `path` is mounted, when it's one
+// (under /run/media, /media or /mnt), so its path starts at its name rather
+// than at /run/media/<user>/.
+static QString driveRoot(const QString &path) {
+    static const QStringList places{"/run/media/", "/media/", "/mnt/"};
+    for (const QString &place : places) {
+        if (!path.startsWith(place))
+            continue;
+        const QString root = QStorageInfo(path).rootPath();
+        if (root.startsWith(place) && (path == root || path.startsWith(root + "/")))
+            return root;
+    }
+    return {};
+}
+
 QVariantList Backend::crumbs() const {
     // Breadcrumbs start at the nearest root that means something to a person:
-    // ~ for home, another machine's name for its mount, / otherwise.
+    // ~ for home, another machine's name for its mount, a drive's name for
+    // a drive, / otherwise.
     const QString p = path();
     if (p == FolderModel::recentPath())
         return {QVariantMap{{"name", tr("Recents")}, {"path", p}}};
@@ -115,6 +129,9 @@ QVariantList Backend::crumbs() const {
         const QString mount = p.section('/', 0, 5);
         base = mount;
         label = mountName(mount);
+    } else if (const QString drive = driveRoot(p); !drive.isEmpty()) {
+        base = drive;
+        label = QFileInfo(drive).fileName();
     }
 
     QVariantList crumbs{QVariantMap{{"name", label}, {"path", base}}};
@@ -156,9 +173,22 @@ bool Backend::go(const QString &path, bool record) {
         m_index = m_history.size() - 1;
     }
     m_folder.setPath(clean);
+    if (s_working == this)
+        moveWorkingDirectory();
     emit pathChanged();
     emit placeChanged();
     return true;
+}
+
+void Backend::keepWorkingDirectory() {
+    s_working = this;
+    moveWorkingDirectory();
+}
+
+void Backend::moveWorkingDirectory() {
+    const QString p = path();
+    if (!FolderModel::isView(p) && !p.startsWith(gvfsRoot() + "/"))
+        QDir::setCurrent(p);
 }
 
 void Backend::open(const QString &path) {
@@ -250,13 +280,36 @@ void Backend::mount(const QString &url, const QString &name, bool verified) {
     m_mountName = name;
     // Mounted already (by Folio or another app): straight there.
     const QString folder = Mounter::destinationFor(url);
-    if (!folder.isEmpty() && QFileInfo(folder).isDir()) {
-        const QString remoteHome = folder + QDir::homePath();
-        navigate(m_mountBare && QFileInfo(remoteHome).isDir() ? remoteHome : folder);
+    if (!folder.isEmpty() && QFileInfo::exists(folder)) {
+        arrive(folder);
         return;
     }
     setBusy(tr("Connecting to %1…").arg(name));
     m_mounter.mount(url, verified);
+}
+
+void Backend::arrive(const QString &folder) {
+    // A bare server lands in the matching home folder when the other
+    // machine has one, which among one person's machines it usually does.
+    const QString remoteHome = folder + QDir::homePath();
+    const QFileInfo target(m_mountBare && QFileInfo(remoteHome).isDir() ? remoteHome : folder);
+    // An address can name a file, which opens its folder with it selected.
+    if (target.isDir() || !target.exists())
+        navigate(target.filePath());
+    else
+        showItem(target.filePath());
+}
+
+QString Backend::serverAddress(const QString &text) {
+    static const QStringList schemes{"sftp", "smb", "ftp", "dav", "davs"};
+    // Tolerant, so a path typed with spaces in it is escaped rather than
+    // refused; QUrl puts the scheme in lower case.
+    QUrl url(text.trimmed(), QUrl::TolerantMode);
+    if (!url.isValid() || !schemes.contains(url.scheme()) || url.host().isEmpty())
+        return {};
+    if (url.path().isEmpty())
+        url.setPath("/");
+    return url.toString(QUrl::FullyEncoded);
 }
 
 void Backend::share(const QString &plugin, const QString &entry, const QStringList &paths, const QString &target) {
@@ -308,7 +361,7 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
     const QString path = item.value("path").toString();
     const QString kind = item.value("kind").toString();
     const QString mime = item.value("mime").toString();
-    const quint64 generation = ++m_describing;
+    const quint64 generation = ++*m_describing;
     // The same item again (its folder re-read) keeps what it shows until
     // the new reading is in, rather than flickering.
     QVariantMap details;
@@ -325,14 +378,19 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
     auto *watcher = new QFutureWatcher<QVariantMap>(this);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, details]() mutable {
         watcher->deleteLater();
-        if (generation != m_describing)
+        if (generation != *m_describing)
             return; // The selection moved on while this was read.
         details.insert(watcher->result());
         m_details = details;
         emit detailsChanged();
     });
-    watcher->setFuture(QtConcurrent::run([path, kind, inTrash] {
+    // Stepping through files faster than they're read queues readings; the
+    // ones overtaken before they start are skipped rather than left to tie
+    // up the threads the next folder is listed on.
+    watcher->setFuture(QtConcurrent::run([path, kind, inTrash, latest = m_describing, generation] {
         QVariantMap read;
+        if (*latest != generation)
+            return read;
         // A trashed item's note: finding it looks over every mounted drive,
         // and one that's hung would hold up the window.
         if (inTrash) {
@@ -363,6 +421,8 @@ QString Backend::typeName(const QString &mime) {
 }
 
 Backend::~Backend() {
+    if (s_working == this)
+        s_working = nullptr;
     // The preview follows this window; it closes with it.
     if (previewing()) {
         m_preview.terminate();
@@ -399,6 +459,14 @@ QString Backend::expandTyped(const QString &text, const QString &home, const QSt
 }
 
 bool Backend::goTyped(const QString &text) {
+    // A server is mounted through GVfs, which also says where on the mount
+    // the address's path is (a WebDAV address's path can be part of the
+    // mount itself), and connecting goes there.
+    if (const QString address = serverAddress(text); !address.isEmpty()) {
+        if (!m_mounter.busy())
+            mount(address, QUrl(address).host(), false);
+        return true;
+    }
     // A view is typed as the path bar shows it, by its own name.
     if (const QString view = text.trimmed(); FolderModel::isView(view))
         return go(view, true);

@@ -2,11 +2,12 @@ import QtQuick
 
 // The right-click menu. On an item: Open, Open With (each app that can),
 // Preview, Rename, Duplicate, Copy, Cut, Paste Into, Copy Path, Compress,
-// Share (whatever plugins offer for it), Pin, Terminal, Delete. On empty space: Paste, New Folder, Copy Path, Terminal,
-// hidden files. In the trash: Restore, Empty Trash and Delete Permanently,
-// without the entries that change files. On a plugin's item: Open, and
-// nothing for files. Entries show their keys, so the menu also teaches the
-// shortcuts.
+// Extract (for archives), Burn (for disk images), Share (whatever plugins
+// offer for it), Pin, Terminal, Trash. On empty space: Undo, Paste, New
+// Folder, Copy Path, Terminal, hidden files. In the trash: Restore, Empty
+// Trash and Delete…, without the entries that change files. On a plugin's
+// item: Open, and nothing for files. Entries show their keys, so the menu
+// also teaches the shortcuts.
 FolioMenu {
     id: fileMenu
 
@@ -19,6 +20,8 @@ FolioMenu {
     signal deleteRequested(var paths)
     signal emptyTrashRequested()
     signal pinRequested(string path)
+    // A disk image, and the drive (from fileOps.burnTargets) to burn it to.
+    signal burnRequested(string path, var drive)
     // In the trash the menu is about getting things back, or letting go.
     readonly property bool trashView: fileOps.inTrash(folder)
     // Plugins' views list items, which only open.
@@ -31,11 +34,17 @@ FolioMenu {
     readonly property var apps: forItem && forFiles ? fileOps.appsFor(target.path) : []
     // Open With only when there's something besides what Open already does.
     readonly property bool canOpenWith: apps.length > 1
+    // A file's type only: a folder's default app is the desktop's file
+    // manager, not something to change from one folder's menu.
     // A selected item in the folder being shown stands for the whole
     // selection, so Copy, Compress or Delete act on all of it.
     readonly property bool forSelection: forItem && target.selected === true && backend.folder.selectedCount > 1
                                          && backend.folder.indexOf(target.name) >= 0
     readonly property var paths: !forItem ? [] : forSelection ? backend.folder.selectedPaths() : [target.path]
+    // One disk image, and the drives it could be burned to, asked of udisks
+    // as the menu opens rather than on every binding.
+    property bool canBurn: false
+    property var burnTargets: []
 
     // Opens at the pointer (`at`, in the window), or (from the keyboard,
     // Alt+Return) beside the item it's about. Mirrored, it opens leftward,
@@ -44,17 +53,21 @@ FolioMenu {
     function show(clicked, where, near, at) {
         target = clicked
         folder = where
+        shifted = fileOps.shiftHeld()
         shares = forItem && forFiles ? plugins.shareFor(paths) : []
         // Empty space among a plugin's items has nothing to offer.
         if (!forItem && !forFiles)
             return
-        // Submenus (Open With, Share) show only when they have entries.
+        canBurn = forItem && forFiles && !trashView && !forSelection && fileOps.canBurn(target.path)
+        burnTargets = canBurn ? fileOps.burnTargets(target.path) : []
+        // Submenus (Open With, Share, Burn) show only when they apply.
         // Menu makes their entries itself, so they're set here rather than
         // bound where they're declared.
         for (let i = 0; i < count; ++i) {
             const entry = itemAt(i)
             if (entry && entry.subMenu)
-                entry.shown = entry.subMenu === shareMenu ? canShare : canOpenWith
+                entry.shown = entry.subMenu === shareMenu ? canShare
+                            : entry.subMenu === burnMenu ? canBurn : canOpenWith
         }
         // The menu's own `mirrored` is only set once it's open.
         const rtl = Qt.application.layoutDirection === Qt.RightToLeft
@@ -69,6 +82,14 @@ FolioMenu {
         }
     }
 
+    // Names the change it undoes ("Undo Rename"), whichever window made it.
+    FolioMenuItem {
+        shown: !fileMenu.forItem && fileOps.undoName.length > 0
+        text: fileOps.undoName
+        keys: "Ctrl+Z"
+        onTriggered: fileOps.undo()
+    }
+    MenuLine { shown: !fileMenu.forItem && fileOps.undoName.length > 0 }
     FolioMenuItem {
         shown: fileMenu.forItem && fileMenu.trashView
         text: fileMenu.forSelection ? qsTr("Restore %Ln Items", "", fileMenu.paths.length) : qsTr("Restore")
@@ -81,7 +102,10 @@ FolioMenu {
     }
     FolioMenuItem {
         shown: fileMenu.forItem
-        text: fileMenu.forFolder ? qsTr("Open Folder") : qsTr("Open")
+        // Names the app it opens in: "Open with Plain".
+        readonly property string app: fileMenu.forItem && !fileMenu.forFolder ? fileOps.defaultAppName(fileMenu.target.mime || "") : ""
+        //: %1 is the name of the app the file opens in, like "Plain".
+        text: fileMenu.forFolder ? qsTr("Open Folder") : app ? qsTr("Open With %1").arg(app) : qsTr("Open")
         keys: "⏎"
         onTriggered: backend.open(fileMenu.target.path)
     }
@@ -102,6 +126,12 @@ FolioMenu {
         text: qsTr("Preview")
         keys: "Space"
         onTriggered: backend.togglePreview(fileMenu.target.path)
+    }
+    FolioMenuItem {
+        shown: fileMenu.forFolder
+        text: fileMenu.forFolder && places.isPinned(fileMenu.target.path) ? qsTr("Unpin") : qsTr("Pin")
+        keys: "Ctrl+P"
+        onTriggered: fileMenu.pinRequested(fileMenu.target.path)
     }
     MenuLine { shown: fileMenu.forItem && fileMenu.forFiles }
     FolioMenuItem {
@@ -148,10 +178,39 @@ FolioMenu {
         onTriggered: fileOps.newFolder(fileMenu.folder)
     }
     MenuLine { shown: fileMenu.forFiles }
+    // Archives are extracted, not compressed again.
+    readonly property bool archives: !trashView && forItem && forFiles && fileOps.canExtract(paths)
     FolioMenuItem {
-        shown: !fileMenu.trashView && fileMenu.forItem && fileMenu.forFiles
+        shown: !fileMenu.trashView && fileMenu.forItem && fileMenu.forFiles && !fileMenu.archives
         text: qsTr("Compress")
         onTriggered: fileOps.compress(fileMenu.paths)
+    }
+    FolioMenuItem {
+        shown: fileMenu.archives
+        text: qsTr("Extract")
+        onTriggered: fileOps.extract(fileMenu.paths)
+    }
+    // Each USB stick or SD card the image could go on, those too small for
+    // it listed but greyed out. Asked before anything's erased.
+    FolioMenu {
+        id: burnMenu
+        title: qsTr("Burn")
+        Repeater {
+            model: fileMenu.burnTargets
+            FolioMenuItem {
+                required property var modelData
+                text: modelData.text
+                enabled: modelData.enabled
+                onTriggered: fileMenu.burnRequested(fileMenu.target.path, modelData)
+            }
+        }
+        Repeater {
+            model: fileMenu.burnTargets.length === 0 ? 1 : 0
+            FolioMenuItem {
+                text: qsTr("No USB drives or SD cards")
+                enabled: false
+            }
+        }
     }
     // Share offers whatever the plugins offer for these (a Dropbox link,
     // Taildrop, LocalSend), as it stands when the menu opens: plain entries
@@ -192,14 +251,10 @@ FolioMenu {
         onObjectAdded: (index, object) => shareMenu.addMenu(object)
         onObjectRemoved: (index, object) => shareMenu.removeMenu(object)
     }
+    // On empty space, only where the folder shown is one to work in.
     FolioMenuItem {
-        shown: fileMenu.forFolder
-        text: fileMenu.forFolder && places.isPinned(fileMenu.target.path) ? qsTr("Unpin") : qsTr("Pin")
-        keys: "Ctrl+D"
-        onTriggered: fileMenu.pinRequested(fileMenu.target.path)
-    }
-    FolioMenuItem {
-        shown: fileMenu.forFiles && (!fileMenu.forItem || fileMenu.forFolder)
+        shown: fileMenu.forItem ? fileMenu.forFolder && fileMenu.forFiles
+                                : fileMenu.folder.startsWith("/") && !fileMenu.trashView
         text: qsTr("Open Terminal Here")
         onTriggered: fileOps.openTerminal(fileMenu.forItem ? fileMenu.target.path : fileMenu.folder)
     }
@@ -210,12 +265,24 @@ FolioMenu {
         onTriggered: backend.folder.showHidden = !backend.folder.showHidden
     }
     MenuLine { shown: fileMenu.forItem && fileMenu.forFiles }
-    // Delete moves to the trash; Restore in any file manager brings it back.
+    // Moving to the trash and deleting for good are two things: Trash
+    // (Delete) moves it there, where Restore in any file manager brings it
+    // back, and with Shift held it becomes Delete… (Shift+Delete), which
+    // deletes for good after asking. In the trash there's only the second.
+    property bool shifted: false
+    // Shift can go down or up anywhere while the menu's open, so it's
+    // checked a few times a second rather than through key events.
+    Timer {
+        interval: 50
+        repeat: true
+        running: fileMenu.visible
+        onTriggered: fileMenu.shifted = fileOps.shiftHeld()
+    }
     FolioMenuItem {
+        readonly property bool forGood: fileMenu.shifted || fileMenu.trashView
         shown: fileMenu.forItem && fileMenu.forFiles
-        text: fileMenu.trashView ? qsTr("Delete Permanently…")
-            : fileMenu.forSelection ? qsTr("Delete %Ln Items", "", fileMenu.paths.length) : qsTr("Delete")
-        keys: "Delete"
-        onTriggered: fileMenu.trashView ? fileMenu.deleteRequested(fileMenu.paths) : fileOps.trash(fileMenu.paths)
+        text: forGood ? qsTr("Delete…") : qsTr("Trash")
+        keys: fileMenu.trashView ? "Delete" : forGood ? "Shift+Delete" : "Delete"
+        onTriggered: forGood ? fileMenu.deleteRequested(fileMenu.paths) : fileOps.trash(fileMenu.paths)
     }
 }

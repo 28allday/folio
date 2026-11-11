@@ -20,10 +20,10 @@ struct MounterCallbacks {
     // first time and about a host whose key differs from the key for its IP
     // address, and both list "Log In Anyway" first. A verified machine (one
     // on a tailnet, reached over WireGuard and already authenticated by
-    // Tailscale) gets yes. Anything else gets no, and the question becomes
-    // the reason the mount failed. A changed key for a known machine never
-    // gets here: ssh refuses it outright.
-    static void question(GMountOperation *op, const char *message, const char **, gpointer data) {
+    // Tailscale) gets yes. A changed key for a known machine never gets
+    // here: ssh refuses it outright. Any other server's questions (a WebDAV
+    // server's certificate that can't be verified, too) are the user's.
+    static void question(GMountOperation *op, const char *message, const char **choices, gpointer data) {
         g_signal_stop_emission_by_name(op, "ask-question");
         auto *self = static_cast<Mounter *>(data);
         if (self->m_verified) {
@@ -31,8 +31,10 @@ struct MounterCallbacks {
             g_mount_operation_reply(op, G_MOUNT_OPERATION_HANDLED);
             return;
         }
-        self->m_declined = QString::fromUtf8(message).section('\n', 0, 0).trimmed();
-        g_mount_operation_reply(op, G_MOUNT_OPERATION_ABORTED);
+        self->m_prompt = QString::fromUtf8(message).trimmed();
+        for (const char **choice = choices; choice && *choice; ++choice)
+            self->m_choices << QString::fromUtf8(*choice);
+        self->setAsking(true);
     }
 
     static void password(GMountOperation *op, const char *message, const char *user, const char *,
@@ -73,7 +75,7 @@ struct MounterCallbacks {
                     emit self->mounted(local);
             } else {
                 const bool cancelled = error && g_error_matches(error, G_IO_ERROR, G_IO_ERROR_FAILED_HANDLED);
-                const QString message = cancelled ? self->m_declined : QString::fromUtf8(error ? error->message : "");
+                const QString message = cancelled ? QString() : QString::fromUtf8(error ? error->message : "");
                 self->finish();
                 emit self->failed(message);
             }
@@ -123,7 +125,6 @@ void Mounter::mount(const QString &uri, bool verified) {
         return;
     m_verified = verified;
     m_url = uri;
-    m_declined.clear();
     GFile *file = g_file_new_for_uri(uri.toUtf8().constData());
     m_operation = g_mount_operation_new();
     g_signal_connect(m_operation, "ask-question", G_CALLBACK(MounterCallbacks::question), this);
@@ -149,6 +150,14 @@ void Mounter::providePassword(const QString &user, const QString &password) {
     g_mount_operation_reply(m_operation, G_MOUNT_OPERATION_HANDLED);
 }
 
+void Mounter::choose(int choice) {
+    if (!m_operation || !m_asking || choice < 0 || choice >= m_choices.size())
+        return;
+    setAsking(false);
+    g_mount_operation_set_choice(m_operation, choice);
+    g_mount_operation_reply(m_operation, G_MOUNT_OPERATION_HANDLED);
+}
+
 void Mounter::cancel() {
     if (!m_operation || !m_asking)
         return;
@@ -158,8 +167,10 @@ void Mounter::cancel() {
 
 void Mounter::setAsking(bool asking) {
     m_asking = asking;
-    if (!asking)
+    if (!asking) {
         m_prompt.clear();
+        m_choices.clear();
+    }
     emit askingChanged();
 }
 

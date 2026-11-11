@@ -106,13 +106,14 @@ void Windows::closeSplit(QObject *window) {
 }
 
 void Windows::release(Pane &pane) {
-    // The pane goes first, then what its QML was bound to.
+    // The pane goes first, then what its QML was bound to. Its file work
+    // goes once it's done, so what that changes can still be undone.
     if (pane.item)
         pane.item->deleteLater();
     if (pane.backend)
         pane.backend->deleteLater();
     if (pane.fileOps)
-        pane.fileOps->deleteLater();
+        pane.fileOps->deleteWhenDone();
     if (pane.context)
         pane.context->deleteLater();
     pane = {};

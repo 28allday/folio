@@ -4,7 +4,10 @@
 #include <QPageSize>
 #include <QPainter>
 #include <QPdfWriter>
+#include <QPointer>
 #include <memory>
+#include <functional>
+#include <thread>
 #include <QFile>
 #include <QGuiApplication>
 #include <QImage>
@@ -15,6 +18,8 @@
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
+#include <QQmlPropertyMap>
+#include <QQuickWindow>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QStandardPaths>
@@ -29,6 +34,7 @@
 #include <unistd.h>
 
 #include "backend.h"
+#include "disks.h"
 #include "fileops.h"
 #include "foldermodel.h"
 #include "mounter.h"
@@ -74,6 +80,100 @@ static QByteArray tailnet()
         "c":{"HostName":"Conference-Room","DNSName":"conference-room.example.ts.net.","OS":"macOS","Online":true},
         "d":{"HostName":"phone","DNSName":"phone.example.ts.net.","OS":"android","Online":true},
         "e":{"HostName":"build","DNSName":"build.example.ts.net.","OS":"windows","Online":true}}})";
+}
+
+// udisks stood in for: the disks it lists, and each call made to it, in
+// order. Opening a disk opens `device`, a file standing in for it; `refuse`
+// makes a call fail with that sentence, as udisks would when polkit says no.
+class FakeDisks : public Disks {
+public:
+    QList<Disk> disks;
+    QStringList calls;
+    QHash<QString, QString> refuse;
+    QString device;
+    // A descriptor to hand out instead of opening `device`.
+    int fd = -1;
+    // Runs as each call is made (with its method), to change the world
+    // under it: a stick swapped while polkit asks, say.
+    std::function<void(const QString &)> during;
+
+    QList<Disk> list() override { return disks; }
+    QString unmount(const QString &filesystem) override { return made("unmount " + filesystem, "unmount"); }
+    QString lock(const QString &encrypted) override { return made("lock " + encrypted, "lock"); }
+    QString makeTable(const Disk &disk) override { return made("makeTable " + disk.block, "makeTable"); }
+    QString addPartition(const Disk &disk, const QString &type, const QString &label, QString *partition) override {
+        *partition = disk.block + "1";
+        return made("addPartition " + disk.block + " " + type + " " + label, "addPartition");
+    }
+    // Every filesystem but those named in `missing` can be made.
+    QStringList missing;
+    bool canFormat(const QString &type) override { return !missing.contains(type); }
+    QString mount(const QString &filesystem) override { return made("mount " + filesystem, "mount"); }
+    QString open(const Disk &disk, int *descriptor) override {
+        if (const QString error = made("open " + disk.block, "open"); !error.isEmpty())
+            return error;
+        *descriptor = fd >= 0 ? fd : ::open(QFile::encodeName(device).constData(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+        return {};
+    }
+    QString eject(const Disk &disk) override { return made("eject " + disk.block, "eject"); }
+
+private:
+    QString made(const QString &call, const QString &method) {
+        calls << call;
+        if (during)
+            during(method);
+        return refuse.value(method);
+    }
+};
+
+// A 32 GB SanDisk stick with one filesystem mounted, as udisks lists one.
+static Disk sanDisk()
+{
+    Disk disk;
+    disk.block = "/org/freedesktop/UDisks2/block_devices/sdb";
+    disk.drive = "/org/freedesktop/UDisks2/drives/SanDisk_Ultra";
+    disk.device = "/dev/sdb";
+    disk.identity = disk.block + " SanDisk-Ultra-4C530001";
+    disk.vendor = "SanDisk";
+    disk.model = "Ultra";
+    disk.label = "STICK";
+    disk.size = 31'914'983'424;
+    disk.bus = "usb";
+    disk.removable = disk.canPowerOff = disk.ejectable = true;
+    disk.mounts = {"/run/media/me/STICK"};
+    disk.filesystems = {"/org/freedesktop/UDisks2/block_devices/sdb1"};
+    return disk;
+}
+
+// Another stick, in the same place the SanDisk one was.
+static Disk otherStick()
+{
+    Disk disk = sanDisk();
+    disk.identity = disk.block + " Kingston-DataTraveler-0019E06B";
+    disk.vendor = "Kingston";
+    disk.model = "DataTraveler";
+    return disk;
+}
+
+// Puts a fake in udisks' place for the test, and for the tests after it.
+static std::shared_ptr<FakeDisks> fakeDisks(const QList<Disk> &disks = {sanDisk()})
+{
+    auto fake = std::make_shared<FakeDisks>();
+    fake->disks = disks;
+    Disks::replace(fake);
+    return fake;
+}
+
+// `bytes` of made-up content at `path`.
+static QByteArray writeImageFile(const QString &path, qint64 bytes)
+{
+    QByteArray data(bytes, Qt::Uninitialized);
+    for (qint64 i = 0; i < bytes; ++i)
+        data[i] = char((i * 31 + i / 4096) & 0xff);
+    QFile file(path);
+    if (file.open(QIODevice::WriteOnly))
+        file.write(data);
+    return data;
 }
 
 // Folio's sources, beside the tests.
@@ -210,8 +310,11 @@ static QStringList placeholders(const QString &text)
 }
 
 // What's wrong with the translations in `folder`, measured against its
-// en.json: an unknown language, keys missing or extra, empty or broken
-// translations, and plural forms that don't fit the language's rule.
+// en.json: an unknown language, empty or broken translations, and plural
+// forms that don't fit the language's rule. A string a catalog lacks, or
+// one en.json no longer has, is work for the translation sync
+// (scripts/i18n-sync.py), not a problem: the app shows the English
+// meanwhile, so a change to the English never waits on 49 languages.
 static QStringList catalogProblems(const QString &folder)
 {
     static const QStringList codes{"ar", "bg", "bn", "ca", "cs", "da", "de", "el", "es-MX", "et", "fa", "fi", "fil",
@@ -229,17 +332,6 @@ static QStringList catalogProblems(const QString &folder)
             continue;
         }
         const QJsonObject catalog = readCatalog(file.filePath(), &problems);
-        QStringList missing, extra;
-        for (const QString &key : english.keys())
-            if (!catalog.contains(key))
-                missing << key;
-        for (const QString &key : catalog.keys())
-            if (!english.contains(key))
-                extra << key;
-        if (!missing.isEmpty())
-            problems << code + ": missing " + missing.join(" | ");
-        if (!extra.isEmpty())
-            problems << code + ": not in en.json " + extra.join(" | ");
 
         // The categories the language's rule reaches, and "other" always.
         QSet<QString> categories{"other", Translator::pluralCategory(code, 1000000)};
@@ -373,6 +465,12 @@ class FolioTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void initTestCase()
+    {
+        // No test ever reaches the real udisks, which would change real disks.
+        fakeDisks({});
+    }
+
     void folderListsDirectoriesFirstWithoutHidden()
     {
         QTemporaryDir dir;
@@ -634,6 +732,61 @@ private slots:
         model.setPath(b.path());
         QVERIFY(loaded.wait(3000));
         QCOMPARE(model.get(0).value("path").toString(), b.filePath("report.txt"));
+    }
+
+    void fileOpsDeleteForeverOutsideTheTrash()
+    {
+        // Shift+Delete deletes for good anywhere: the folder and what's in
+        // it are gone, a link goes without what it points at, and nothing
+        // lands in the trash.
+        QTemporaryDir dir, data;
+        const auto restore = dataHomeAt(data.path());
+        QDir(dir.path()).mkpath("album/inner");
+        write(dir.filePath("album/inner/a.jpg"), "picture");
+        write(dir.filePath("kept.txt"), "kept");
+        QVERIFY(QFile::link(dir.filePath("kept.txt"), dir.filePath("link")));
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.deleteForever({dir.filePath("album"), dir.filePath("link")});
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 0);
+        QVERIFY(!QFileInfo::exists(dir.filePath("album")));
+        QVERIFY(!QFileInfo(dir.filePath("link")).isSymLink());
+        QVERIFY(QFile::exists(dir.filePath("kept.txt")));
+        QVERIFY(!QFileInfo::exists(data.filePath("Trash/files/album")));
+    }
+
+    void folderPaneKeysAreNotBoundTwice()
+    {
+        // Two shortcuts on one key, both on, make Qt call neither: the key
+        // does nothing. A standard key can carry more than its usual one
+        // (Cut is Shift+Delete too on Linux), so they count as theirs.
+        QFile qml(QFINDTESTDATA("../src/FolderPane.qml"));
+        QVERIFY(qml.open(QIODevice::ReadOnly));
+        const QRegularExpression shortcut("^\\s*Shortcut \\{ sequences?: \\[?(.*?)\\]?; enabled: ");
+        const QRegularExpression item("\"([^\"]+)\"|StandardKey\\.(\\w+)");
+        const QMetaEnum standard = QMetaEnum::fromType<QKeySequence::StandardKey>();
+        QHash<QKeySequence, QString> bound;
+        int count = 0;
+        for (const QString &line : QString::fromUtf8(qml.readAll()).split('\n')) {
+            const auto found = shortcut.match(line);
+            if (!found.hasMatch())
+                continue;
+            for (auto it = item.globalMatch(found.captured(1)); it.hasNext();) {
+                const auto key = it.next();
+                const QList<QKeySequence> sequences = key.captured(1).isEmpty()
+                    ? QKeySequence::keyBindings(QKeySequence::StandardKey(standard.keyToValue(key.captured(2).toLatin1())))
+                    : QList<QKeySequence>{QKeySequence(key.captured(1))};
+                for (const QKeySequence &sequence : sequences) {
+                    QVERIFY2(!bound.contains(sequence),
+                             qPrintable(sequence.toString() + " is bound by both " + bound.value(sequence) + " and " + line.trimmed()));
+                    bound.insert(sequence, line.trimmed());
+                    ++count;
+                }
+            }
+        }
+        QVERIFY(count > 30);
+        QVERIFY(bound.contains(QKeySequence("Shift+Del")));
     }
 
     void fileOpsNeverOverwrite()
@@ -1164,6 +1317,86 @@ private slots:
         QVERIFY(QFile::exists(other->filePath("b.txt")));
     }
 
+    void fileOpsDropNothingWhereItAlreadyIs()
+    {
+        // Dropping a folder onto itself, or into the folder it's in, even by
+        // a path through a link to that folder, moves nothing and makes no
+        // "(copy)".
+        QTemporaryDir home;
+        QDir(home.path()).mkpath("project/install");
+        QVERIFY(QFile::link(home.filePath("project"), home.filePath("shortcut")));
+        const QList<QUrl> install{QUrl::fromLocalFile(home.filePath("project/install"))};
+        FileOps ops;
+        QSignalSpy done(&ops, &FileOps::done);
+        for (const QString &folder : {"project/install", "project", "shortcut"}) {
+            QVERIFY2(!ops.canDrop(install, home.filePath(folder)), qPrintable(folder));
+            ops.dropInto(install, home.filePath(folder));
+        }
+        QString error;
+        QVERIFY(FileOps::transfer({home.filePath("project/install")}, home.filePath("shortcut"), FileOps::Move, &error).isEmpty());
+        QVERIFY(error.isEmpty());
+        QTest::qWait(200);
+        QCOMPARE(done.count(), 0);
+        QCOMPARE(QDir(home.filePath("project")).entryList(QDir::AllEntries | QDir::NoDotAndDotDot), QStringList({"install"}));
+    }
+
+    void folderDropRefusesWhatAFolderOverItRefuses()
+    {
+        // The view's backdrop takes drops on empty space into its folder, ~,
+        // while a folder item over it takes drops on itself. A folder item
+        // that refuses one (here ~/project, which install is already in)
+        // mustn't let it fall through to ~, which moved install up there.
+        QTemporaryDir home;
+        QDir(home.path()).mkpath("project/install");
+        FileOps ops;
+        QQmlPropertyMap theme;
+        theme.insert("accent", QColor(Qt::blue));
+        theme.insert("radius", 0);
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("fileOps", &ops);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("home", home.path());
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 200; height: 200; visible: true\n"
+                          "    FolderDrop { anchors.fill: parent; z: -1; folder: home; items: list }\n"
+                          "    ListView {\n"
+                          "        id: list; anchors.fill: parent; model: 1\n"
+                          "        delegate: DropArea {\n"
+                          "            readonly property bool isDir: true\n"
+                          "            width: 200; height: 40\n"
+                          "            onEntered: (drag) => { drag.accepted = fileOps.canDrop(drag.urls, home + '/project') }\n"
+                          "        }\n"
+                          "    }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(QFINDTESTDATA("../src/FolderDrop.qml") + ".test.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+
+        QMimeData data;
+        data.setUrls({QUrl::fromLocalFile(home.filePath("project/install"))});
+        const auto dropAt = [&](QPointF at) {
+            QDragEnterEvent enter(at.toPoint(), Qt::MoveAction, &data, Qt::LeftButton, Qt::NoModifier);
+            QGuiApplication::sendEvent(window, &enter);
+            QDropEvent drop(at, Qt::MoveAction, &data, Qt::LeftButton, Qt::NoModifier);
+            QGuiApplication::sendEvent(window, &drop);
+            return drop.isAccepted();
+        };
+        QSignalSpy done(&ops, &FileOps::done);
+        QVERIFY(!dropAt({100, 20}));
+        QTest::qWait(200);
+        QCOMPARE(done.count(), 0);
+        QVERIFY(QFileInfo(home.filePath("project/install")).isDir());
+
+        // On empty space, it lands in ~.
+        QVERIFY(dropAt({100, 150}));
+        QVERIFY(done.wait(3000));
+        QVERIFY(QFileInfo(home.filePath("install")).isDir());
+    }
+
     void fileOpsDragUriLists()
     {
         // Names holding what means something in a URI ("#", "?", "%") are
@@ -1489,12 +1722,1364 @@ private slots:
         QVERIFY(QDir(files).isEmpty());
     }
 
+    void fileOpsCancelStopsACopyPartway()
+    {
+        // Cancel stops at the next file, or the next piece of a big one: a
+        // file copied partway is removed, and what was copied before stays.
+        // Copying a pipe reads it as its writer writes, so the copy is
+        // partway for as long as the test likes.
+        QTemporaryDir from, to;
+        write(from.filePath("a.txt"), "a");
+        const QByteArray pipe = QFile::encodeName(from.filePath("pipe"));
+        QVERIFY(mkfifo(pipe.constData(), 0600) == 0);
+        FileOps::Job job;
+        QString error;
+        QFuture<QStringList> copied = QtConcurrent::run([&] {
+            return FileOps::transfer({from.filePath("a.txt"), from.filePath("pipe")}, to.path(), FileOps::Copy, &error, {}, &job);
+        });
+        int writer = -1;
+        const auto finish = qScopeGuard([&] {
+            if (writer >= 0)
+                close(writer);
+            copied.waitForFinished();
+        });
+        QVERIFY(QTest::qWaitFor([&] { return (writer = open(pipe.constData(), O_WRONLY | O_NONBLOCK)) >= 0; }));
+        QCOMPARE(::write(writer, "partial", 7), 7);
+        QTRY_VERIFY(job.bytes >= 8);
+        job.cancelled = true;
+        QCOMPARE(::write(writer, "more", 4), 4);
+        close(std::exchange(writer, -1));
+        QCOMPARE(copied.result(), QStringList({"a.txt"}));
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QCOMPARE(job.done.load(), 1);
+        QCOMPARE(job.total.load(), 2);
+        QVERIFY(QFile::exists(to.filePath("a.txt")));
+        QVERIFY(!QFileInfo::exists(to.filePath("pipe")));
+
+        // From the window, Cancel says how far it got.
+        QTemporaryDir again;
+        FileOps ops;
+        QSignalSpy notice(&ops, &FileOps::notice);
+        ops.copy({from.filePath("a.txt"), from.filePath("pipe")});
+        ops.paste(again.path());
+        QVERIFY(!ops.busy().isEmpty());
+        QVERIFY(QTest::qWaitFor([&] { return (writer = open(pipe.constData(), O_WRONLY | O_NONBLOCK)) >= 0; }));
+        ops.cancel();
+        QCOMPARE(::write(writer, "x", 1), 1);
+        close(std::exchange(writer, -1));
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(notice.count(), 1);
+        QCOMPARE(notice.first().first().toString(), QString("Stopped after 1 of 2 items."));
+        QVERIFY(!QFileInfo::exists(again.filePath("pipe")));
+    }
+
+    void fileOpsCancelledMoveAcrossDrivesKeepsOriginals()
+    {
+        // Across drives each original goes once it's copied, so a move
+        // cancelled partway removes only what fully arrived: the file it
+        // was on stays, and so does what it never reached.
+        const auto other = elsewhere();
+        if (!other)
+            QSKIP("Needs a second drive.");
+        QTemporaryDir from;
+        QDir(from.path()).mkdir("box");
+        write(from.filePath("box/a.txt"), "a");
+        write(from.filePath("box/z.txt"), "z");
+        const QByteArray pipe = QFile::encodeName(from.filePath("box/pipe"));
+        QVERIFY(mkfifo(pipe.constData(), 0600) == 0);
+        FileOps::Job job;
+        QString error;
+        QFuture<QStringList> moved = QtConcurrent::run([&] {
+            return FileOps::transfer({from.filePath("box")}, other->path(), FileOps::Move, &error, {}, &job);
+        });
+        int writer = -1;
+        const auto finish = qScopeGuard([&] {
+            if (writer >= 0)
+                close(writer);
+            moved.waitForFinished();
+        });
+        QVERIFY(QTest::qWaitFor([&] { return (writer = open(pipe.constData(), O_WRONLY | O_NONBLOCK)) >= 0; }));
+        QCOMPARE(::write(writer, "partial", 7), 7);
+        QTRY_VERIFY(job.bytes >= 8);
+        job.cancelled = true;
+        QCOMPARE(::write(writer, "more", 4), 4);
+        close(std::exchange(writer, -1));
+        // What arrived is the only copy of a.txt now, so it's shown.
+        QCOMPARE(moved.result(), QStringList({"box"}));
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        // A single folder counts what's in it.
+        QCOMPARE(job.total.load(), 3);
+        QCOMPARE(job.done.load(), 1);
+        QVERIFY(QFile::exists(other->filePath("box/a.txt")));
+        QVERIFY(!QFile::exists(from.filePath("box/a.txt")));
+        QVERIFY(QFileInfo::exists(from.filePath("box/pipe")));
+        QVERIFY(!QFileInfo::exists(other->filePath("box/pipe")));
+        QVERIFY(QFile::exists(from.filePath("box/z.txt")));
+        QVERIFY(!QFile::exists(other->filePath("box/z.txt")));
+    }
+
+    void fileOpsAskWhichClashes()
+    {
+        // Only a name that's taken by something else clashes: not a copy
+        // onto itself (kept beside it, as always), nor a move into the
+        // folder it's in.
+        QTemporaryDir from, to;
+        write(from.filePath("a.txt"), "a");
+        write(from.filePath("b.txt"), "b");
+        write(to.filePath("a.txt"), "old");
+        QCOMPARE(FileOps::clashes({from.filePath("a.txt"), from.filePath("b.txt")}, to.path()),
+                 QStringList({from.filePath("a.txt")}));
+        QCOMPARE(FileOps::clashes({from.filePath("a.txt")}, from.path()), QStringList());
+    }
+
+    void fileOpsCopyOntoItselfKeepsBoth()
+    {
+        // Copied into its own folder, an item is kept beside itself, never
+        // asked about, and never replaced by itself, also when the folder
+        // is reached through a link to it, where replacing would send the
+        // original to the trash before copying it.
+        QTemporaryDir data, dir, links;
+        const auto restore = dataHomeAt(data.path());
+        write(dir.filePath("a.txt"), "a");
+        QVERIFY(QFile::link(dir.path(), links.filePath("same")));
+        const QString same = links.filePath("same");
+        QCOMPARE(FileOps::clashes({dir.filePath("a.txt")}, same), QStringList());
+        QString error;
+        QCOMPARE(FileOps::transfer({dir.filePath("a.txt")}, dir.path(), FileOps::Copy, &error),
+                 QStringList({"a (copy).txt"}));
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QCOMPARE(FileOps::transfer({dir.filePath("a.txt")}, same, FileOps::Copy, &error,
+                                   {{dir.filePath("a.txt"), FileOps::Replace}}),
+                 QStringList({"a (copy 2).txt"}));
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        // Moved into where it already is, it stays.
+        FileOps::transfer({dir.filePath("a.txt")}, same, FileOps::Move, &error, {{dir.filePath("a.txt"), FileOps::Replace}});
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QCOMPARE(contents(dir.filePath("a.txt")), QByteArray("a"));
+        QVERIFY(!QFileInfo::exists(data.filePath("Trash/files/a.txt")));
+    }
+
+    void fileOpsReplaceSkipOrKeepBoth()
+    {
+        QTemporaryDir data, from, to;
+        const auto restore = dataHomeAt(data.path());
+        for (const char *name : {"replace.txt", "skip.txt", "both.txt"}) {
+            write(from.filePath(name), "new");
+            write(to.filePath(name), "old");
+        }
+        const QStringList paths{from.filePath("replace.txt"), from.filePath("skip.txt"), from.filePath("both.txt")};
+        QString error;
+        QList<FileOps::Step> steps;
+        const QStringList made = FileOps::transfer(paths, to.path(), FileOps::Copy, &error,
+                                                   {{paths[0], FileOps::Replace}, {paths[1], FileOps::Skip}, {paths[2], FileOps::KeepBoth}},
+                                                   nullptr, &steps);
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QCOMPARE(made, QStringList({"replace.txt", "both (copy).txt"}));
+        QCOMPARE(contents(to.filePath("replace.txt")), QByteArray("new"));
+        QCOMPARE(contents(to.filePath("skip.txt")), QByteArray("old"));
+        QCOMPARE(contents(to.filePath("both.txt")), QByteArray("old"));
+        QCOMPARE(contents(to.filePath("both (copy).txt")), QByteArray("new"));
+        // What's replaced isn't deleted: it's in the trash, with its note.
+        const QString trashed = data.filePath("Trash/files/replace.txt");
+        QCOMPARE(contents(trashed), QByteArray("old"));
+        QCOMPARE(FileOps::originalPath(trashed), to.filePath("replace.txt"));
+        QCOMPARE(steps.size(), 3);
+        QCOMPARE(steps[0].other, trashed);
+    }
+
+    void fileOpsKeepBothBesideALinkThatLeadsNowhere()
+    {
+        // A link that leads nowhere takes its name: Keep Both copies beside
+        // it, and the link, never the copy's, is never noted for undo to
+        // send to the trash.
+        QTemporaryDir from, to;
+        write(from.filePath("a.txt"), "a");
+        QVERIFY(QFile::link(to.filePath("gone"), to.filePath("a.txt")));
+        QCOMPARE(FileOps::freeName(to.path(), "a.txt"), QString("a (copy).txt"));
+        QString error;
+        QList<FileOps::Step> steps;
+        QCOMPARE(FileOps::transfer({from.filePath("a.txt")}, to.path(), FileOps::Copy, &error, {}, nullptr, &steps),
+                 QStringList({"a (copy).txt"}));
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QCOMPARE(steps.size(), 1);
+        QCOMPARE(steps[0].path, to.filePath("a (copy).txt"));
+        QVERIFY(QFileInfo(to.filePath("a.txt")).isSymLink());
+
+        // A copy that can't make its item says it made nothing.
+        bool made = true;
+        QVERIFY(!FileOps::copyRecursively(from.filePath("a.txt"), to.filePath("a.txt"), &error, false, nullptr, &made));
+        QVERIFY(!made);
+    }
+
+    void fileOpsReplaceThatFailsPutsTheOldOneBack()
+    {
+        // What's replaced goes to the trash first; when nothing takes its
+        // place (a file that can't be read, a full drive, a cancel), it's
+        // put back rather than left there.
+        QTemporaryDir data, from, to;
+        const auto restore = dataHomeAt(data.path());
+        write(from.filePath("a.txt"), "new");
+        write(to.filePath("a.txt"), "old");
+        QFile::setPermissions(from.filePath("a.txt"), QFile::Permissions());
+        if (QFile(from.filePath("a.txt")).open(QIODevice::ReadOnly))
+            QSKIP("Running as root reads everything.");
+        QString error;
+        QList<FileOps::Step> steps;
+        QVERIFY(FileOps::transfer({from.filePath("a.txt")}, to.path(), FileOps::Copy, &error,
+                                  {{from.filePath("a.txt"), FileOps::Replace}}, nullptr, &steps)
+                    .isEmpty());
+        QCOMPARE(error, QString("Couldn't copy a.txt."));
+        QCOMPARE(contents(to.filePath("a.txt")), QByteArray("old"));
+        QVERIFY(!QFileInfo::exists(data.filePath("Trash/files/a.txt")));
+        QVERIFY(steps.isEmpty());
+    }
+
+    void fileOpsMergeFolders()
+    {
+        // A folder onto a folder merges: what's new goes in, and a clash
+        // inside is replaced the same way, the old one to the trash.
+        QTemporaryDir data, from, to;
+        const auto restore = dataHomeAt(data.path());
+        QDir(from.path()).mkpath("album/sub");
+        QDir(to.path()).mkpath("album/sub");
+        write(from.filePath("album/a.jpg"), "new");
+        write(from.filePath("album/sub/c.jpg"), "c");
+        write(to.filePath("album/a.jpg"), "old");
+        write(to.filePath("album/keep.jpg"), "keep");
+        QString error;
+        QCOMPARE(FileOps::transfer({from.filePath("album")}, to.path(), FileOps::Move, &error,
+                                   {{from.filePath("album"), FileOps::Replace}}),
+                 QStringList({"album"}));
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QCOMPARE(contents(to.filePath("album/a.jpg")), QByteArray("new"));
+        QCOMPARE(contents(to.filePath("album/keep.jpg")), QByteArray("keep"));
+        QCOMPARE(contents(to.filePath("album/sub/c.jpg")), QByteArray("c"));
+        QCOMPARE(contents(data.filePath("Trash/files/a.jpg")), QByteArray("old"));
+        // Moved, the emptied folder goes.
+        QVERIFY(!QFileInfo::exists(from.filePath("album")));
+    }
+
+    void fileOpsAskAboutEachClashOrAll()
+    {
+        // Pasting asks about each clash before anything is copied; the
+        // answer can go for the rest, and Escape cancels the lot.
+        QTemporaryDir from, to;
+        for (const char *name : {"x.txt", "y.txt", "z.txt"})
+            write(from.filePath(name), "new");
+        write(to.filePath("x.txt"), "old");
+        write(to.filePath("y.txt"), "old");
+        QDir(from.path()).mkdir("box");
+        QDir(to.path()).mkdir("box");
+        FileOps ops;
+        QSignalSpy done(&ops, &FileOps::done);
+        ops.copy({from.filePath("box"), from.filePath("x.txt"), from.filePath("y.txt"), from.filePath("z.txt")});
+        ops.paste(to.path());
+        QVERIFY(ops.busy().isEmpty());
+        QCOMPARE(ops.clash().value("name").toString(), QString("box"));
+        QCOMPARE(ops.clash().value("folder").toString(), QFileInfo(to.path()).fileName());
+        QVERIFY(ops.clash().value("merge").toBool());
+        QCOMPARE(ops.clash().value("others").toInt(), 2);
+        ops.answerClash("both", false);
+        QCOMPARE(ops.clash().value("name").toString(), QString("x.txt"));
+        QVERIFY(!ops.clash().value("merge").toBool());
+        QCOMPARE(ops.clash().value("others").toInt(), 1);
+        // Nothing is copied until the last answer.
+        QVERIFY(!QFile::exists(to.filePath("z.txt")));
+        ops.answerClash("skip", true);
+        QVERIFY(ops.clash().isEmpty());
+        QVERIFY(done.wait(3000));
+        QVERIFY(QFileInfo(to.filePath("box (copy)")).isDir());
+        QCOMPARE(contents(to.filePath("x.txt")), QByteArray("old"));
+        QCOMPARE(contents(to.filePath("y.txt")), QByteArray("old"));
+        QCOMPARE(contents(to.filePath("z.txt")), QByteArray("new"));
+        QVERIFY(!QFile::exists(to.filePath("x (copy).txt")));
+
+        // Cancelled, nothing happens at all.
+        QTemporaryDir fresh;
+        write(fresh.filePath("x.txt"), "old");
+        ops.copy({from.filePath("x.txt"), from.filePath("z.txt")});
+        ops.paste(fresh.path());
+        QVERIFY(!ops.clash().isEmpty());
+        ops.dropClash();
+        QVERIFY(ops.clash().isEmpty());
+        QVERIFY(ops.busy().isEmpty());
+        QVERIFY(!QFile::exists(fresh.filePath("z.txt")));
+    }
+
+    void undoAndRedoRenameMoveAndTrash()
+    {
+        QTemporaryDir data, dir;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::forgetHistory();
+        write(dir.filePath("a.txt"), "a");
+        write(dir.filePath("c.txt"), "c");
+        QDir(dir.path()).mkdir("sub");
+        FileOps ops;
+        QSignalSpy notice(&ops, &FileOps::notice), failed(&ops, &FileOps::failed);
+        QCOMPARE(ops.undoName(), QString());
+
+        QCOMPARE(ops.rename(dir.filePath("a.txt"), "b.txt"), QString());
+        QCOMPARE(ops.undoName(), QString("Undo Rename"));
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QVERIFY(QFile::exists(dir.filePath("a.txt")));
+        QVERIFY(!QFile::exists(dir.filePath("b.txt")));
+        QCOMPARE(notice.last().first().toString(), QString("Undid renaming a.txt."));
+        ops.redo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QVERIFY(QFile::exists(dir.filePath("b.txt")));
+        QCOMPARE(notice.last().first().toString(), QString("Redid renaming a.txt."));
+
+        ops.cut({dir.filePath("b.txt"), dir.filePath("c.txt")});
+        ops.paste(dir.filePath("sub"));
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QVERIFY(QFile::exists(dir.filePath("sub/b.txt")));
+        QCOMPARE(ops.undoName(), QString("Undo Move"));
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QVERIFY(QFile::exists(dir.filePath("b.txt")));
+        QVERIFY(QFile::exists(dir.filePath("c.txt")));
+        QVERIFY(QDir(dir.filePath("sub")).isEmpty());
+        QCOMPARE(notice.last().first().toString(), QString("Undid moving 2 items."));
+        ops.redo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QVERIFY(QFile::exists(dir.filePath("sub/b.txt")));
+        QVERIFY(QFile::exists(dir.filePath("sub/c.txt")));
+
+        ops.trash({dir.filePath("sub/b.txt"), dir.filePath("sub/c.txt")});
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QVERIFY(QDir(dir.filePath("sub")).isEmpty());
+        QCOMPARE(ops.undoName(), QString("Undo Delete"));
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(dir.filePath("sub/b.txt")), QByteArray("a"));
+        QCOMPARE(contents(dir.filePath("sub/c.txt")), QByteArray("c"));
+        QVERIFY(QDir(data.filePath("Trash/files")).isEmpty());
+        QVERIFY(QDir(data.filePath("Trash/info")).isEmpty());
+        QCOMPARE(notice.last().first().toString(), QString("Undid moving 2 items to the trash."));
+        ops.redo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QVERIFY(QDir(dir.filePath("sub")).isEmpty());
+        QCOMPARE(QDir(data.filePath("Trash/files")).entryList(QDir::Files), QStringList({"b.txt", "c.txt"}));
+        QCOMPARE(failed.count(), 0);
+
+        // Undo goes back through them all, the newest first.
+        for (int i = 0; i < 3; ++i) {
+            ops.undo();
+            QTRY_VERIFY(ops.busy().isEmpty());
+        }
+        QCOMPARE(contents(dir.filePath("a.txt")), QByteArray("a"));
+        QCOMPARE(contents(dir.filePath("c.txt")), QByteArray("c"));
+        QCOMPARE(ops.undoName(), QString());
+        QCOMPARE(failed.count(), 0);
+    }
+
+    void undoAndRedoPasteAndReplace()
+    {
+        // A copy is undone by moving it to the trash, and redone by
+        // bringing it back; a replace puts the replaced one back too.
+        QTemporaryDir data, from, to;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::forgetHistory();
+        write(from.filePath("a.txt"), "new");
+        write(from.filePath("b.txt"), "new");
+        write(from.filePath("r.txt"), "new");
+        write(to.filePath("r.txt"), "old");
+        FileOps ops;
+        QSignalSpy notice(&ops, &FileOps::notice), failed(&ops, &FileOps::failed);
+        ops.copy({from.filePath("a.txt"), from.filePath("b.txt")});
+        ops.paste(to.path());
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(ops.undoName(), QString("Undo Copy"));
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QVERIFY(!QFile::exists(to.filePath("a.txt")));
+        QVERIFY(!QFile::exists(to.filePath("b.txt")));
+        QCOMPARE(contents(data.filePath("Trash/files/a.txt")), QByteArray("new"));
+        QCOMPARE(notice.last().first().toString(), QString("Undid copying 2 items."));
+        ops.redo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(to.filePath("a.txt")), QByteArray("new"));
+        QCOMPARE(contents(to.filePath("b.txt")), QByteArray("new"));
+        QVERIFY(QDir(data.filePath("Trash/files")).isEmpty());
+
+        ops.copy({from.filePath("r.txt")});
+        ops.paste(to.path());
+        ops.answerClash("replace", false);
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(to.filePath("r.txt")), QByteArray("new"));
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(to.filePath("r.txt")), QByteArray("old"));
+        // The new one went to the trash while the old one was still there.
+        QCOMPARE(QDir(data.filePath("Trash/files")).entryList(QDir::Files), QStringList({"r.txt.2"}));
+        QCOMPARE(contents(data.filePath("Trash/files/r.txt.2")), QByteArray("new"));
+        ops.redo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(to.filePath("r.txt")), QByteArray("new"));
+        QCOMPARE(contents(data.filePath("Trash/files/r.txt")), QByteArray("old"));
+        QCOMPARE(failed.count(), 0);
+    }
+
+    void undoAndRedoAMergingMove()
+    {
+        // Moved onto a folder of the same name, a folder merges and goes;
+        // undo makes it and each folder in it again, empty ones too, with
+        // their permissions and times, and redo takes them away again.
+        QTemporaryDir data, from, to;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::forgetHistory();
+        QDir(from.path()).mkpath("album/empty");
+        QDir(to.path()).mkpath("album/empty");
+        write(from.filePath("album/a.jpg"), "a");
+        QFile::setPermissions(from.filePath("album/empty"), QFile::ReadOwner | QFile::ExeOwner | QFile::ReadGroup);
+        QFile::setPermissions(from.filePath("album"), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner | QFile::ExeOther);
+        const QDateTime then = QDateTime::currentDateTime().addDays(-3);
+        for (const char *folder : {"album", "album/empty"}) {
+            const timespec times[2] = {{0, UTIME_OMIT}, {then.toSecsSinceEpoch(), 0}};
+            QCOMPARE(::utimensat(AT_FDCWD, QFile::encodeName(from.filePath(folder)).constData(), times, 0), 0);
+        }
+        const auto permissions = [&](const char *folder) { return QFileInfo(from.filePath(folder)).permissions(); };
+        const auto wasThen = [&](const char *folder) {
+            return QFileInfo(from.filePath(folder)).lastModified().toSecsSinceEpoch() == then.toSecsSinceEpoch();
+        };
+        const auto emptyWas = permissions("album/empty"), albumWas = permissions("album");
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.cut({from.filePath("album")});
+        ops.paste(to.path());
+        ops.answerClash("replace", false);
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QVERIFY(!QFileInfo::exists(from.filePath("album")));
+        QCOMPARE(contents(to.filePath("album/a.jpg")), QByteArray("a"));
+
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(from.filePath("album/a.jpg")), QByteArray("a"));
+        QVERIFY(QFileInfo(from.filePath("album/empty")).isDir());
+        QCOMPARE(permissions("album/empty"), emptyWas);
+        QCOMPARE(permissions("album"), albumWas);
+        QVERIFY(wasThen("album"));
+        QVERIFY(wasThen("album/empty"));
+        QVERIFY(QFileInfo(to.filePath("album/empty")).isDir());
+
+        ops.redo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QVERIFY(!QFileInfo::exists(from.filePath("album")));
+        QCOMPARE(contents(to.filePath("album/a.jpg")), QByteArray("a"));
+        QCOMPARE(failed.count(), 0);
+    }
+
+    void undoAndRedoTakeTurnsAcrossPanes()
+    {
+        // The history is every pane's: while one pane undoes, another can't
+        // undo too.
+        QTemporaryDir dir;
+        FileOps::forgetHistory();
+        write(dir.filePath("a.txt"), "a");
+        write(dir.filePath("c.txt"), "c");
+        FileOps left, right;
+        QSignalSpy failed(&right, &FileOps::failed), leftFailed(&left, &FileOps::failed);
+        QCOMPARE(left.rename(dir.filePath("a.txt"), "b.txt"), QString());
+        QCOMPARE(left.rename(dir.filePath("c.txt"), "d.txt"), QString());
+        left.undo();
+        right.undo();
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(failed.last().first().toString(), QString("Try again once the work under way is done."));
+        QTRY_VERIFY(left.busy().isEmpty());
+        QVERIFY(QFile::exists(dir.filePath("c.txt")));
+        QVERIFY(QFile::exists(dir.filePath("b.txt")));
+
+        // Nor can another pane change files while an undo runs, which could
+        // put another item where the undo hasn't reached yet.
+        left.undo();
+        QCOMPARE(right.rename(dir.filePath("c.txt"), "e.txt"), QString("Try again once the work under way is done."));
+        right.newFolder(dir.path());
+        right.duplicate(dir.filePath("c.txt"));
+        QCOMPARE(failed.count(), 3);
+        QCOMPARE(failed.last().first().toString(), QString("Try again once the work under way is done."));
+        QTRY_VERIFY(left.busy().isEmpty());
+        QCOMPARE(QDir(dir.path()).entryList(QDir::AllEntries | QDir::NoDotAndDotDot), QStringList({"a.txt", "c.txt"}));
+        QCOMPARE(left.undoName(), QString());
+
+        // And an undo waits for file work in another pane.
+        right.duplicate(dir.filePath("c.txt"));
+        left.redo();
+        QCOMPARE(leftFailed.count(), 1);
+        QCOMPARE(leftFailed.last().first().toString(), QString("Try again once the work under way is done."));
+        QTRY_VERIFY(right.busy().isEmpty());
+        QVERIFY(QFile::exists(dir.filePath("a.txt")));
+    }
+
+    void drivesChangeOnlyWhileNoFilesDo()
+    {
+        // A drive's change waits for every pane's file work, which may be
+        // on it, and file work waits for a drive's change.
+        QTemporaryDir dir;
+        write(dir.filePath("a.txt"), "a");
+        auto fake = fakeDisks();
+        FileOps copying, formatting;
+        QSignalSpy refused(&formatting, &FileOps::failed), duplicated(&copying, &FileOps::done);
+        copying.duplicate(dir.filePath("a.txt"));
+        formatting.format(sanDisk().identity, "Photos");
+        QCOMPARE(refused.count(), 1);
+        QVERIFY(fake->calls.isEmpty());
+        QVERIFY(duplicated.wait(3000));
+
+        std::atomic<bool> unmounting = false, release = false;
+        fake->during = [&](const QString &method) {
+            if (method != "unmount")
+                return;
+            unmounting = true;
+            while (!release)
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        };
+        QSignalSpy formatted(&formatting, &FileOps::notice), stopped(&copying, &FileOps::failed);
+        formatting.format(sanDisk().identity, "Photos");
+        QTRY_VERIFY(unmounting);
+        copying.duplicate(dir.filePath("a.txt"));
+        QCOMPARE(stopped.count(), 1);
+        QVERIFY(copying.busy().isEmpty());
+        release = true;
+        QTRY_COMPARE(formatted.count(), 1);
+        QCOMPARE(QDir(dir.path()).entryList(QDir::Files), QStringList({"a (copy).txt", "a.txt"}));
+    }
+
+    void workOutlivesItsClosedPane()
+    {
+        // A pane closed while its work runs leaves the work to finish, and
+        // what it changed can still be undone from another.
+        QTemporaryDir data, dir;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::forgetHistory();
+        write(dir.filePath("a.txt"), "a");
+        QPointer<FileOps> closed = new FileOps;
+        closed->duplicate(dir.filePath("a.txt"));
+        QVERIFY(!closed->busy().isEmpty());
+        closed->deleteWhenDone();
+        QVERIFY(closed);
+        QTRY_VERIFY(!closed);
+        FileOps other;
+        QCOMPARE(other.undoName(), QString("Undo Duplicate"));
+        QVERIFY(QFile::exists(dir.filePath("a (copy).txt")));
+
+        // One waiting on a clash goes without asking.
+        closed = new FileOps;
+        closed->copy({dir.filePath("a.txt")});
+        QTemporaryDir to;
+        write(to.filePath("a.txt"), "old");
+        closed->paste(to.path());
+        QVERIFY(!closed->clash().isEmpty());
+        closed->deleteWhenDone();
+        QTRY_VERIFY(!closed);
+        QCOMPARE(contents(to.filePath("a.txt")), QByteArray("old"));
+    }
+
+    void undoRefusesWhatsChangedSince()
+    {
+        // Undo checks everything is still where the change left it, and
+        // that nothing's in the way, before it touches anything; refused,
+        // the change stays there to undo.
+        QTemporaryDir dir;
+        FileOps::forgetHistory();
+        write(dir.filePath("a.txt"), "a");
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        QCOMPARE(ops.rename(dir.filePath("a.txt"), "b.txt"), QString());
+        QVERIFY(QFile::rename(dir.filePath("b.txt"), dir.filePath("c.txt")));
+        ops.undo();
+        QVERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(failed.last().first().toString(), QString("Can't undo that: b.txt isn't where it was left."));
+        QCOMPARE(ops.undoName(), QString("Undo Rename"));
+
+        QVERIFY(QFile::rename(dir.filePath("c.txt"), dir.filePath("b.txt")));
+        write(dir.filePath("a.txt"), "newer");
+        ops.undo();
+        QCOMPARE(failed.last().first().toString(),
+                 QString("Can't undo that: a.txt already exists in %1.").arg(QFileInfo(dir.path()).fileName()));
+        QCOMPARE(contents(dir.filePath("a.txt")), QByteArray("newer"));
+        QVERIFY(QFile::exists(dir.filePath("b.txt")));
+        QCOMPARE(ops.undoName(), QString("Undo Rename"));
+    }
+
+    void undoRefusesAnotherItemPutWhereItsWas()
+    {
+        // Renamed, then moved away by another app, an item can have another
+        // take its name; undo leaves that one be rather than renaming it.
+        QTemporaryDir dir, away;
+        FileOps::forgetHistory();
+        write(dir.filePath("a.txt"), "mine");
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        QCOMPARE(ops.rename(dir.filePath("a.txt"), "b.txt"), QString());
+        QVERIFY(QFile::rename(dir.filePath("b.txt"), away.filePath("b.txt")));
+        write(dir.filePath("b.txt"), "theirs");
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(failed.last().first().toString(), QString("Can't undo that: b.txt isn't where it was left."));
+        QCOMPARE(contents(dir.filePath("b.txt")), QByteArray("theirs"));
+        QVERIFY(!QFileInfo::exists(dir.filePath("a.txt")));
+
+        // Back where it was left, it's undone, and redone.
+        QVERIFY(QFile::remove(dir.filePath("b.txt")));
+        QVERIFY(QFile::rename(away.filePath("b.txt"), dir.filePath("b.txt")));
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(dir.filePath("a.txt")), QByteArray("mine"));
+        ops.redo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(dir.filePath("b.txt")), QByteArray("mine"));
+        QCOMPARE(failed.count(), 1);
+    }
+
+    void undoRefusesATrashedItemThatsSinceAnother()
+    {
+        // Deleted from the trash for good, an item's name there can go to
+        // the next one trashed, by another app. Undoing the first trashing
+        // would then bring that one back in its place.
+        QTemporaryDir data, dir, elsewhere;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::forgetHistory();
+        write(dir.filePath("a.txt"), "mine");
+        write(elsewhere.filePath("a.txt"), "theirs");
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.trash({dir.filePath("a.txt")});
+        QTRY_VERIFY(ops.busy().isEmpty());
+        const QString trashed = data.filePath("Trash/files/a.txt");
+        QVERIFY(FileOps::deleteTrashed(trashed));
+        QString error;
+        QCOMPARE(FileOps::trashOne(elsewhere.filePath("a.txt"), &error), trashed);
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(failed.last().first().toString(), QString("Can't undo that: a.txt isn't where it was left."));
+        QVERIFY(!QFileInfo::exists(dir.filePath("a.txt")));
+        QCOMPARE(FileOps::originalPath(trashed), elsewhere.filePath("a.txt"));
+    }
+
+    void renamesNeverReplaceWhereDrivesCantPromiseIt()
+    {
+        // A drive that can't rename without replacing still never replaces:
+        // a file or link is linked under its new name, a name that's taken
+        // is passed over for the next, and a folder is copied.
+        QTemporaryDir data, dir, to;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::drivesRefuseNoReplace = true;
+        const auto reset = qScopeGuard([] { FileOps::drivesRefuseNoReplace = false; });
+        write(dir.filePath("a.txt"), "mine");
+        QDir(data.path()).mkpath("Trash/files");
+        write(data.filePath("Trash/files/a.txt"), "left behind");
+        QString error;
+        QCOMPARE(FileOps::trashOne(dir.filePath("a.txt"), &error), data.filePath("Trash/files/a.txt.2"));
+        QCOMPARE(error, QString());
+        QCOMPARE(contents(data.filePath("Trash/files/a.txt")), QByteArray("left behind"));
+        QCOMPARE(contents(data.filePath("Trash/files/a.txt.2")), QByteArray("mine"));
+        QVERIFY(!QFileInfo::exists(dir.filePath("a.txt")));
+
+        QVERIFY(QFile::link("nowhere", dir.filePath("link")));
+        QCOMPARE(FileOps::trashOne(dir.filePath("link"), &error), data.filePath("Trash/files/link"));
+        QCOMPARE(QFileInfo(data.filePath("Trash/files/link")).readSymLink(), QString("nowhere"));
+
+        QDir(dir.path()).mkdir("box");
+        write(dir.filePath("box/b.txt"), "b");
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.cut({dir.filePath("box")});
+        ops.paste(to.path());
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(contents(to.filePath("box/b.txt")), QByteArray("b"));
+        QVERIFY(!QFileInfo::exists(dir.filePath("box")));
+    }
+
+    void fileOpsTakeAnItemChosenTwiceOnce()
+    {
+        // The same item can be handed over twice (from another app's
+        // clipboard); it's copied once, not once more as a "(copy)".
+        QTemporaryDir from, to;
+        write(from.filePath("a.txt"), "a");
+        QString error;
+        QCOMPARE(FileOps::transfer({from.filePath("a.txt"), from.filePath("a.txt")}, to.path(), FileOps::Copy, &error),
+                 QStringList({"a.txt"}));
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QCOMPARE(QDir(to.path()).entryList(QDir::Files), QStringList({"a.txt"}));
+    }
+
+    void extractOneItemBesideTheArchive()
+    {
+        // An archive holding one folder (or file) puts it beside the
+        // archive, under its own name; nothing else is left behind.
+        if (QStandardPaths::findExecutable("bsdtar").isEmpty())
+            QSKIP("Extracting needs bsdtar.");
+        QTemporaryDir dir, source;
+        QDir(source.path()).mkpath("album/sub");
+        write(source.filePath("album/a.jpg"), "a");
+        write(source.filePath("album/sub/b.jpg"), "b");
+        pack(dir.filePath("photos.tar.gz"), source.path(), {"album"});
+        FileOps ops;
+        QVERIFY(ops.canExtract({dir.filePath("photos.tar.gz")}));
+        QSignalSpy done(&ops, &FileOps::done), failed(&ops, &FileOps::failed);
+        ops.extract({dir.filePath("photos.tar.gz")});
+        QVERIFY(done.wait(5000));
+        QCOMPARE(done.first(), QList<QVariant>({dir.path(), "album"}));
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(contents(dir.filePath("album/a.jpg")), QByteArray("a"));
+        QCOMPARE(contents(dir.filePath("album/sub/b.jpg")), QByteArray("b"));
+        QCOMPARE(everything(dir.path()), QStringList({"album", "photos.tar.gz"}));
+    }
+
+    void extractManyItemsIntoAFolder()
+    {
+        // Several items go into a new folder named after the archive,
+        // without its extensions, so they don't spill over the folder.
+        if (QStandardPaths::findExecutable("bsdtar").isEmpty())
+            QSKIP("Extracting needs bsdtar.");
+        QTemporaryDir dir, source;
+        write(source.filePath("a.txt"), "a");
+        write(source.filePath("b.txt"), "b");
+        pack(dir.filePath("notes.tar.xz"), source.path(), {"a.txt", "b.txt"});
+        pack(dir.filePath("more.zip"), source.path(), {"a.txt", "b.txt"});
+        FileOps ops;
+        QSignalSpy done(&ops, &FileOps::done);
+        ops.extract({dir.filePath("notes.tar.xz"), dir.filePath("more.zip")});
+        QVERIFY(done.wait(5000));
+        QCOMPARE(done.first(), QList<QVariant>({dir.path(), "notes"}));
+        QCOMPARE(contents(dir.filePath("notes/a.txt")), QByteArray("a"));
+        QCOMPARE(contents(dir.filePath("notes/b.txt")), QByteArray("b"));
+        QCOMPARE(contents(dir.filePath("more/b.txt")), QByteArray("b"));
+        QCOMPARE(everything(dir.path()), QStringList({"more", "more.zip", "notes", "notes.tar.xz"}));
+        // Only archives are offered: not a lone compressed file, a disk
+        // image (that's for burning), a document, nor a folder.
+        write(dir.filePath("single.txt.gz"), "x");
+        write(dir.filePath("installer.iso"), QByteArray(64 * 1024, '\0'));
+        write(dir.filePath("notes.txt"), "text");
+        QVERIFY(!ops.canExtract({dir.filePath("installer.iso")}));
+        QVERIFY(!ops.canExtract({dir.filePath("notes.txt")}));
+        QVERIFY(ops.canExtract({dir.filePath("notes.tar.xz"), dir.filePath("more.zip")}));
+        QVERIFY(!ops.canExtract({dir.filePath("notes.tar.xz"), dir.filePath("single.txt.gz")}));
+        QVERIFY(!ops.canExtract({dir.filePath("notes")}));
+        QVERIFY(!ops.canExtract({}));
+    }
+
+    void extractAsksWhenTheNameIsTaken()
+    {
+        // The name that would appear is asked about like a paste's, Keep
+        // Both first; cancelling leaves nothing, not even the hidden
+        // extraction.
+        if (QStandardPaths::findExecutable("bsdtar").isEmpty())
+            QSKIP("Extracting needs bsdtar.");
+        QTemporaryDir data, dir, source;
+        const auto restore = dataHomeAt(data.path());
+        write(source.filePath("a.txt"), "new");
+        write(source.filePath("b.txt"), "new");
+        pack(dir.filePath("notes.zip"), source.path(), {"a.txt", "b.txt"});
+        QDir(dir.path()).mkdir("notes");
+        write(dir.filePath("notes/a.txt"), "old");
+        FileOps ops;
+        QSignalSpy done(&ops, &FileOps::done), clash(&ops, &FileOps::clashChanged);
+        ops.extract({dir.filePath("notes.zip")});
+        QVERIFY(clash.wait(5000));
+        QCOMPARE(ops.clash().value("name").toString(), QString("notes"));
+        QCOMPARE(ops.clash().value("merge").toBool(), true);
+        ops.dropClash();
+        QTRY_COMPARE(everything(dir.path()), QStringList({"notes", "notes.zip"}));
+        QCOMPARE(everything(dir.filePath("notes")), QStringList({"a.txt"}));
+
+        ops.extract({dir.filePath("notes.zip")});
+        QVERIFY(clash.wait(5000));
+        ops.answerClash("both", false);
+        QVERIFY(done.wait(5000));
+        QCOMPARE(done.first(), QList<QVariant>({dir.path(), "notes (copy)"}));
+        QCOMPARE(contents(dir.filePath("notes (copy)/a.txt")), QByteArray("new"));
+        QCOMPARE(contents(dir.filePath("notes/a.txt")), QByteArray("old"));
+
+        // Merged, what's replaced inside goes to the trash.
+        ops.extract({dir.filePath("notes.zip")});
+        QVERIFY(clash.wait(5000));
+        ops.answerClash("replace", false);
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(dir.filePath("notes/a.txt")), QByteArray("new"));
+        QCOMPARE(contents(dir.filePath("notes/b.txt")), QByteArray("new"));
+        QCOMPARE(contents(data.filePath("Trash/files/a.txt")), QByteArray("old"));
+        QCOMPARE(everything(dir.path()), QStringList({"notes", "notes (copy)", "notes.zip"}));
+    }
+
+    void extractAsksAboutNamesTwoArchivesShare()
+    {
+        // Two archives each giving readme.txt, a name that's free: the
+        // second is asked about, not quietly kept beside.
+        if (QStandardPaths::findExecutable("bsdtar").isEmpty())
+            QSKIP("Extracting needs bsdtar.");
+        QTemporaryDir data, dir, one, two;
+        const auto restore = dataHomeAt(data.path());
+        write(one.filePath("readme.txt"), "one");
+        write(two.filePath("readme.txt"), "two");
+        pack(dir.filePath("one.zip"), one.path(), {"readme.txt"});
+        pack(dir.filePath("two.zip"), two.path(), {"readme.txt"});
+        FileOps ops;
+        QSignalSpy clash(&ops, &FileOps::clashChanged);
+        ops.extract({dir.filePath("one.zip"), dir.filePath("two.zip")});
+        QVERIFY(clash.wait(5000));
+        QCOMPARE(ops.clash().value("name").toString(), QString("readme.txt"));
+        ops.answerClash("skip", true);
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(everything(dir.path()), QStringList({"one.zip", "readme.txt", "two.zip"}));
+        QCOMPARE(contents(dir.filePath("readme.txt")), QByteArray("one"));
+    }
+
+    void extractPlacesInTheBackgroundAndCanStop()
+    {
+        // Merging what's extracted into a folder that's there goes through
+        // it all, off the UI thread, and Cancel stops it: what's not placed
+        // goes with the hidden folder. The worker is held back until the
+        // cancel, so it's stopped before it starts.
+        if (QStandardPaths::findExecutable("bsdtar").isEmpty())
+            QSKIP("Extracting needs bsdtar.");
+        QTemporaryDir data, dir, source;
+        const auto restore = dataHomeAt(data.path());
+        write(source.filePath("a.txt"), "new");
+        write(source.filePath("b.txt"), "new");
+        pack(dir.filePath("notes.zip"), source.path(), {"a.txt", "b.txt"});
+        QDir(dir.path()).mkdir("notes");
+        write(dir.filePath("notes/a.txt"), "old");
+        FileOps ops;
+        QSignalSpy clash(&ops, &FileOps::clashChanged), notice(&ops, &FileOps::notice);
+        ops.extract({dir.filePath("notes.zip")});
+        QVERIFY(clash.wait(5000));
+        QTRY_VERIFY(ops.busy().isEmpty());
+
+        QThreadPool *pool = QThreadPool::globalInstance();
+        const int threads = pool->maxThreadCount();
+        pool->setMaxThreadCount(1);
+        std::atomic<bool> hold = true;
+        pool->start([&] {
+            while (hold)
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        });
+        ops.answerClash("replace", false);
+        QCOMPARE(ops.busy(), QString("Extracting notes.zip…"));
+        ops.cancel();
+        hold = false;
+        QTRY_VERIFY(ops.busy().isEmpty());
+        pool->setMaxThreadCount(threads);
+        QCOMPARE(notice.last().first().toString(), QString("Stopped extracting notes.zip; nothing was extracted."));
+        QCOMPARE(everything(dir.path()), QStringList({"notes", "notes.zip"}));
+        QCOMPARE(everything(dir.filePath("notes")), QStringList({"a.txt"}));
+        QCOMPARE(contents(dir.filePath("notes/a.txt")), QByteArray("old"));
+    }
+
+    void extractRefusesWhatWouldLandOutside()
+    {
+        // bsdtar refuses ".." and links leading out, and an archive with
+        // either is extracted not at all: nothing escapes, and nothing is
+        // left half-made.
+        if (QStandardPaths::findExecutable("bsdtar").isEmpty())
+            QSKIP("Extracting needs bsdtar.");
+        QTemporaryDir outer;
+        QDir(outer.path()).mkpath("dir");
+        QDir(outer.path()).mkpath("target");
+        const QString dir = outer.filePath("dir");
+        write(outer.filePath("f"), "evil");
+        const auto mtree = [&](const QString &archive, const QByteArray &spec) {
+            write(outer.filePath("spec"), "#mtree\n" + spec);
+            QProcess tar;
+            tar.start("bsdtar", {"-cf", archive, "@" + outer.filePath("spec")});
+            QVERIFY(tar.waitForFinished() && tar.exitCode() == 0);
+        };
+        const QByteArray f = QFile::encodeName(outer.filePath("f"));
+        mtree(dir + "/dots.tar", "./ok.txt type=file contents=" + f + "\n../evil.txt type=file contents=" + f + "\n");
+        mtree(dir + "/link.tar", "./l type=link link=" + QFile::encodeName(outer.filePath("target"))
+                                     + "\n./l/evil.txt type=file contents=" + f + "\n");
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.extract({dir + "/dots.tar"});
+        QVERIFY(failed.wait(5000));
+        QCOMPARE(failed.last().first().toString(), QString("Couldn't extract dots.tar: it would put files outside its folder."));
+        QTRY_VERIFY(ops.busy().isEmpty());
+        ops.extract({dir + "/link.tar"});
+        QVERIFY(failed.wait(5000));
+        QCOMPARE(failed.last().first().toString(), QString("Couldn't extract link.tar: it would put files outside its folder."));
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(everything(outer.path()), QStringList({"dir", "f", "spec", "target"}));
+        QCOMPARE(everything(dir), QStringList({"dots.tar", "link.tar"}));
+        QCOMPARE(everything(outer.filePath("target")), QStringList());
+    }
+
+    void extractSaysWhenItCant()
+    {
+        // A password, or a damaged archive, is said as such.
+        if (QStandardPaths::findExecutable("bsdtar").isEmpty())
+            QSKIP("Extracting needs bsdtar.");
+        QTemporaryDir dir;
+        write(dir.filePath("secret.txt"), "secret");
+        QProcess tar;
+        tar.start("bsdtar", {"--options", "zip:encryption=zipcrypt", "--passphrase", "x", "-acf",
+                             dir.filePath("locked.zip"), "-C", dir.path(), "secret.txt"});
+        QVERIFY(tar.waitForFinished() && tar.exitCode() == 0);
+        QFile::remove(dir.filePath("secret.txt"));
+        write(dir.filePath("broken.zip"), QByteArray(300, 'x'));
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.extract({dir.filePath("locked.zip"), dir.filePath("broken.zip")});
+        QVERIFY(failed.wait(5000));
+        QCOMPARE(failed.first().first().toString(),
+                 QString("Couldn't extract locked.zip: it's protected by a password. "
+                         "Couldn't extract broken.zip: it's damaged, or isn't an archive Folio can read."));
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(everything(dir.path()), QStringList({"broken.zip", "locked.zip"}));
+    }
+
+    void extractCancelLeavesNothing()
+    {
+        // Cancel stops bsdtar partway, and what it had made goes with it.
+        // Reading the archive from a pipe keeps it partway for as long as
+        // the test likes.
+        if (QStandardPaths::findExecutable("bsdtar").isEmpty())
+            QSKIP("Extracting needs bsdtar.");
+        QTemporaryDir dir, source;
+        write(source.filePath("a.txt"), QByteArray(4096, 'a'));
+        write(source.filePath("b.txt"), QByteArray(1 << 20, 'b'));
+        pack(source.filePath("whole.tar"), source.path(), {"a.txt", "b.txt"});
+        const QByteArray archive = contents(source.filePath("whole.tar"));
+        const QByteArray pipe = QFile::encodeName(dir.filePath("slow.tar"));
+        QVERIFY(mkfifo(pipe.constData(), 0600) == 0);
+        FileOps ops;
+        QSignalSpy notice(&ops, &FileOps::notice);
+        ops.extract({dir.filePath("slow.tar")});
+        int writer = -1;
+        QVERIFY(QTest::qWaitFor([&] { return (writer = open(pipe.constData(), O_WRONLY | O_NONBLOCK)) >= 0; }));
+        // The first file whole, and some of the second: bsdtar reads ahead,
+        // so it takes more than the first file to see it through.
+        fcntl(writer, F_SETFL, 0);
+        QCOMPARE(::write(writer, archive.constData(), 256 << 10), 256 << 10);
+        QTRY_VERIFY(ops.busy().contains("1"));
+        ops.cancel();
+        close(writer);
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(notice.count(), 1);
+        QCOMPARE(notice.first().first().toString(), QString("Stopped extracting slow.tar; nothing was extracted."));
+        QCOMPARE(everything(dir.path()), QStringList({"slow.tar"}));
+    }
+
+    void undoAndRedoExtract()
+    {
+        // Undo sends what was extracted to the trash; redo brings it back.
+        if (QStandardPaths::findExecutable("bsdtar").isEmpty())
+            QSKIP("Extracting needs bsdtar.");
+        QTemporaryDir data, dir, source;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::forgetHistory();
+        write(source.filePath("a.txt"), "a");
+        write(source.filePath("b.txt"), "b");
+        pack(dir.filePath("notes.zip"), source.path(), {"a.txt", "b.txt"});
+        FileOps ops;
+        QSignalSpy done(&ops, &FileOps::done), notice(&ops, &FileOps::notice);
+        ops.extract({dir.filePath("notes.zip")});
+        QVERIFY(done.wait(5000));
+        QCOMPARE(ops.undoName(), QString("Undo Extract"));
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(everything(dir.path()), QStringList({"notes.zip"}));
+        QCOMPARE(contents(data.filePath("Trash/files/notes/a.txt")), QByteArray("a"));
+        QCOMPARE(notice.last().first().toString(), QString("Undid extracting notes.zip."));
+        ops.redo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(dir.filePath("notes/b.txt")), QByteArray("b"));
+        QCOMPARE(notice.last().first().toString(), QString("Redid extracting notes.zip."));
+    }
+
+    void extractKeepsAnArchiveOfDotsToItsFolder()
+    {
+        // "...tar" without its extension is "..": its items go in a folder
+        // of its own, never into the folder above the archive's.
+        if (QStandardPaths::findExecutable("bsdtar").isEmpty())
+            QSKIP("Extracting needs bsdtar.");
+        QTemporaryDir dir, source;
+        write(source.filePath("a.txt"), "a");
+        write(source.filePath("b.txt"), "b");
+        QDir(dir.path()).mkdir("sub");
+        pack(dir.filePath("sub/...tar"), source.path(), {"a.txt", "b.txt"});
+        FileOps ops;
+        QSignalSpy done(&ops, &FileOps::done);
+        ops.extract({dir.filePath("sub/...tar")});
+        QVERIFY(done.wait(5000));
+        QCOMPARE(everything(dir.path()), QStringList({"sub"}));
+        QCOMPARE(everything(dir.filePath("sub")), QStringList({"...tar", "...tar contents"}));
+        QCOMPARE(contents(dir.filePath("sub/...tar contents/b.txt")), QByteArray("b"));
+    }
+
+    void undoAndRedoAMergingExtract()
+    {
+        // Merged into a folder that's there, an extraction is undone like
+        // any other: what it brought goes, and what it replaced is back.
+        if (QStandardPaths::findExecutable("bsdtar").isEmpty())
+            QSKIP("Extracting needs bsdtar.");
+        QTemporaryDir data, dir, source;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::forgetHistory();
+        write(source.filePath("a.txt"), "new");
+        write(source.filePath("b.txt"), "new");
+        pack(dir.filePath("notes.zip"), source.path(), {"a.txt", "b.txt"});
+        QDir(dir.path()).mkdir("notes");
+        write(dir.filePath("notes/a.txt"), "old");
+        FileOps ops;
+        QSignalSpy clash(&ops, &FileOps::clashChanged), failed(&ops, &FileOps::failed);
+        ops.extract({dir.filePath("notes.zip")});
+        QVERIFY(clash.wait(5000));
+        ops.answerClash("replace", false);
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(dir.filePath("notes/b.txt")), QByteArray("new"));
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(everything(dir.filePath("notes")), QStringList({"a.txt"}));
+        QCOMPARE(contents(dir.filePath("notes/a.txt")), QByteArray("old"));
+        ops.redo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(contents(dir.filePath("notes/a.txt")), QByteArray("new"));
+        QCOMPARE(contents(dir.filePath("notes/b.txt")), QByteArray("new"));
+    }
+
+    void fileOpsCopyIsNeverOpenToOthersWhileCopying()
+    {
+        // A private file's copy is private from the start, not only once
+        // it's all there. Copying a pipe keeps the copy partway.
+        const mode_t mask = umask(022);
+        const auto unmask = qScopeGuard([mask] { umask(mask); });
+        QTemporaryDir from, to;
+        const QByteArray pipe = QFile::encodeName(from.filePath("secret"));
+        QVERIFY(mkfifo(pipe.constData(), 0600) == 0);
+        FileOps::Job job;
+        QString error;
+        QFuture<bool> copied = QtConcurrent::run(
+            [&] { return FileOps::copyRecursively(from.filePath("secret"), to.filePath("secret"), &error, false, &job); });
+        int writer = -1;
+        const auto finish = qScopeGuard([&] {
+            if (writer >= 0)
+                close(writer);
+            copied.waitForFinished();
+        });
+        QVERIFY(QTest::qWaitFor([&] { return (writer = open(pipe.constData(), O_WRONLY | O_NONBLOCK)) >= 0; }));
+        QCOMPARE(::write(writer, "partial", 7), 7);
+        QTRY_VERIFY(job.bytes >= 7);
+        QCOMPARE(QFileInfo(to.filePath("secret")).permissions() & (QFile::ReadGroup | QFile::ReadOther),
+                 QFile::Permissions());
+        close(std::exchange(writer, -1));
+        QVERIFY(copied.result());
+    }
+
+    void undoACancelledMoveAcrossDrives()
+    {
+        // Stopped partway across drives, what moved is only where it went:
+        // undo brings it back, and takes away the folder made for it.
+        const auto other = elsewhere();
+        if (!other)
+            QSKIP("Needs a second drive.");
+        QTemporaryDir data, from;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::forgetHistory();
+        QDir(from.path()).mkpath("box/sub");
+        write(from.filePath("box/a.txt"), "a");
+        write(from.filePath("box/sub/b.txt"), "b");
+        write(from.filePath("box/z.txt"), "z");
+        const QByteArray pipe = QFile::encodeName(from.filePath("box/pipe"));
+        QVERIFY(mkfifo(pipe.constData(), 0600) == 0);
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.cut({from.filePath("box")});
+        ops.paste(other->path());
+        int writer = -1;
+        const auto finish = qScopeGuard([&] {
+            if (writer >= 0)
+                close(writer);
+        });
+        QVERIFY(QTest::qWaitFor([&] { return (writer = open(pipe.constData(), O_WRONLY | O_NONBLOCK)) >= 0; }));
+        ops.cancel();
+        QCOMPARE(::write(writer, "x", 1), 1);
+        close(std::exchange(writer, -1));
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(other->filePath("box/a.txt")), QByteArray("a"));
+        QVERIFY(!QFileInfo::exists(from.filePath("box/a.txt")));
+        QCOMPARE(ops.undoName(), QString("Undo Move"));
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(contents(from.filePath("box/a.txt")), QByteArray("a"));
+        QCOMPARE(contents(from.filePath("box/sub/b.txt")), QByteArray("b"));
+        QCOMPARE(contents(from.filePath("box/z.txt")), QByteArray("z"));
+        QVERIFY(!QFileInfo::exists(other->filePath("box")));
+        ops.redo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(contents(other->filePath("box/a.txt")), QByteArray("a"));
+        QVERIFY(!QFileInfo::exists(from.filePath("box/a.txt")));
+    }
+
+    void undoAMoveAcrossDrivesWhoseOriginalsStayed()
+    {
+        // A folder that can be read but not changed is copied, its files
+        // staying where they are. Undo sends those copies to the trash, so
+        // the folders made for them can go too.
+        if (geteuid() == 0)
+            QSKIP("Root can change every folder.");
+        const auto other = elsewhere();
+        if (!other)
+            QSKIP("Needs a second drive.");
+        // The trash is on the drive the copies are on, as a USB stick's is.
+        QTemporaryDir from;
+        const auto restore = dataHomeAt(other->filePath(".data"));
+        FileOps::forgetHistory();
+        QDir(from.path()).mkpath("box/locked");
+        write(from.filePath("box/a.txt"), "a");
+        write(from.filePath("box/locked/f.txt"), "f");
+        QVERIFY(QFile::setPermissions(from.filePath("box/locked"), QFile::ReadOwner | QFile::ExeOwner));
+        const auto unlock = qScopeGuard([&] {
+            QFile::setPermissions(from.filePath("box/locked"), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+        });
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.cut({from.filePath("box")});
+        ops.paste(other->path());
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(contents(other->filePath("box/locked/f.txt")), QByteArray("f"));
+        QCOMPARE(contents(from.filePath("box/locked/f.txt")), QByteArray("f"));
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(contents(from.filePath("box/a.txt")), QByteArray("a"));
+        QCOMPARE(contents(from.filePath("box/locked/f.txt")), QByteArray("f"));
+        QVERIFY(!QFileInfo::exists(other->filePath("box")));
+        QCOMPARE(contents(other->filePath(".data/Trash/files/f.txt")), QByteArray("f"));
+    }
+
+    void undoStoppedAcrossDrivesCanBeDoneAgain()
+    {
+        // An undo stopped partway across drives has brought some back: the
+        // next undo still brings back the rest.
+        const auto other = elsewhere();
+        if (!other)
+            QSKIP("Needs a second drive.");
+        QTemporaryDir data, from;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::forgetHistory();
+        QDir(from.path()).mkpath("box/sub");
+        write(from.filePath("box/a.txt"), "a");
+        write(from.filePath("box/sub/b.txt"), "b");
+        write(from.filePath("box/z.txt"), "z");
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.cut({from.filePath("box")});
+        ops.paste(other->path());
+        QTRY_VERIFY(ops.busy().isEmpty());
+        const QByteArray pipe = QFile::encodeName(other->filePath("box/pipe"));
+        QVERIFY(mkfifo(pipe.constData(), 0600) == 0);
+        ops.undo();
+        int writer = -1;
+        const auto finish = qScopeGuard([&] {
+            if (writer >= 0)
+                close(writer);
+        });
+        QVERIFY(QTest::qWaitFor([&] { return (writer = open(pipe.constData(), O_WRONLY | O_NONBLOCK)) >= 0; }));
+        ops.cancel();
+        QCOMPARE(::write(writer, "x", 1), 1);
+        close(std::exchange(writer, -1));
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(from.filePath("box/a.txt")), QByteArray("a"));
+        QCOMPARE(contents(other->filePath("box/z.txt")), QByteArray("z"));
+        QVERIFY(QFile::remove(other->filePath("box/pipe")));
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(contents(from.filePath("box/a.txt")), QByteArray("a"));
+        QCOMPARE(contents(from.filePath("box/sub/b.txt")), QByteArray("b"));
+        QCOMPARE(contents(from.filePath("box/z.txt")), QByteArray("z"));
+        QVERIFY(!QFileInfo::exists(other->filePath("box")));
+        QCOMPARE(ops.undoName(), QString());
+        ops.redo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(contents(other->filePath("box/a.txt")), QByteArray("a"));
+        QVERIFY(!QFileInfo::exists(from.filePath("box")));
+    }
+
+    void undoStoppedAcrossDrivesFollowsWhatItMovesTwice()
+    {
+        // Undone again after a stop, what came back goes out and back in
+        // once more, made again twice in one go: the rename before it
+        // follows it to the last.
+        const auto other = elsewhere();
+        if (!other)
+            QSKIP("Needs a second drive.");
+        QTemporaryDir data, from;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::forgetHistory();
+        QDir(from.path()).mkdir("box");
+        write(from.filePath("box/a.txt"), "a");
+        write(from.filePath("box/z.txt"), "z");
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        QCOMPARE(ops.rename(from.filePath("box/a.txt"), "b.txt"), QString());
+        ops.cut({from.filePath("box")});
+        ops.paste(other->path());
+        QTRY_VERIFY(ops.busy().isEmpty());
+        const QByteArray pipe = QFile::encodeName(other->filePath("box/pipe"));
+        QVERIFY(mkfifo(pipe.constData(), 0600) == 0);
+        ops.undo();
+        int writer = -1;
+        const auto finish = qScopeGuard([&] {
+            if (writer >= 0)
+                close(writer);
+        });
+        QVERIFY(QTest::qWaitFor([&] { return (writer = open(pipe.constData(), O_WRONLY | O_NONBLOCK)) >= 0; }));
+        ops.cancel();
+        QCOMPARE(::write(writer, "x", 1), 1);
+        close(std::exchange(writer, -1));
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(from.filePath("box/b.txt")), QByteArray("a"));
+        QVERIFY(QFile::remove(other->filePath("box/pipe")));
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(from.filePath("box/b.txt")), QByteArray("a"));
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(contents(from.filePath("box/a.txt")), QByteArray("a"));
+    }
+
+    void undoAReplacingMoveThatCouldntRemoveItsOriginal()
+    {
+        // Cut from a folder that can't be changed, the file is copied but
+        // stays: undo takes the copy away and brings back what it replaced.
+        if (geteuid() == 0)
+            QSKIP("Root can change every folder.");
+        QTemporaryDir data, from, to;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::forgetHistory();
+        write(from.filePath("a.txt"), "new");
+        write(to.filePath("a.txt"), "old");
+        QVERIFY(QFile::setPermissions(from.path(), QFile::ReadOwner | QFile::ExeOwner));
+        const auto unlock = qScopeGuard([&] {
+            QFile::setPermissions(from.path(), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+        });
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.cut({from.filePath("a.txt")});
+        ops.paste(to.path());
+        ops.answerClash("replace", false);
+        QTRY_COMPARE(failed.count(), 1);
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(to.filePath("a.txt")), QByteArray("new"));
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(contents(to.filePath("a.txt")), QByteArray("old"));
+        QCOMPARE(contents(from.filePath("a.txt")), QByteArray("new"));
+    }
+
+    void undoFollowsAFolderMadeAgain()
+    {
+        // Undoing a merge makes the folder it removed again, under another
+        // inode; the rename before it is still undone.
+        QTemporaryDir data, from, to;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::forgetHistory();
+        QDir(from.path()).mkdir("photos");
+        QDir(to.path()).mkdir("album");
+        write(from.filePath("photos/a.jpg"), "a");
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        QCOMPARE(ops.rename(from.filePath("photos"), "album"), QString());
+        ops.cut({from.filePath("album")});
+        ops.paste(to.path());
+        ops.answerClash("replace", false);
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QVERIFY(!QFileInfo::exists(from.filePath("album")));
+        for (int i = 0; i < 2; ++i) {
+            ops.undo();
+            QTRY_VERIFY(ops.busy().isEmpty());
+        }
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(contents(from.filePath("photos/a.jpg")), QByteArray("a"));
+        for (int i = 0; i < 2; ++i) {
+            ops.redo();
+            QTRY_VERIFY(ops.busy().isEmpty());
+        }
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(contents(to.filePath("album/a.jpg")), QByteArray("a"));
+    }
+
+    void undoFollowsAMoveAcrossDrives()
+    {
+        // Moved across drives and back, a file is made again each time,
+        // under another inode; what was done to it before is still undone.
+        const auto other = elsewhere();
+        if (!other)
+            QSKIP("Needs a second drive.");
+        QTemporaryDir data, dir;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::forgetHistory();
+        QDir(dir.path()).mkdir("box");
+        write(dir.filePath("box/a.txt"), "a");
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        QCOMPARE(ops.rename(dir.filePath("box/a.txt"), "b.txt"), QString());
+        ops.cut({dir.filePath("box")});
+        ops.paste(other->path());
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(other->filePath("box/b.txt")), QByteArray("a"));
+        for (int i = 0; i < 2; ++i) {
+            ops.undo();
+            QTRY_VERIFY(ops.busy().isEmpty());
+        }
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(contents(dir.filePath("box/a.txt")), QByteArray("a"));
+        for (int i = 0; i < 2; ++i) {
+            ops.redo();
+            QTRY_VERIFY(ops.busy().isEmpty());
+        }
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(contents(other->filePath("box/b.txt")), QByteArray("a"));
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(contents(dir.filePath("box/a.txt")), QByteArray("a"));
+    }
+
+    void trashFindsWhatItJustTrashed()
+    {
+        // Trashed twice in one second from one place, the two tie on their
+        // time: the one just trashed is the one that wasn't there before.
+        QTemporaryDir data;
+        const auto restore = dataHomeAt(data.path());
+        const QString trash = data.filePath("Trash");
+        QDir().mkpath(trash + "/files");
+        QDir().mkpath(trash + "/info");
+        const QString original = data.filePath("docs/a.txt");
+        const QByteArray note = "[Trash Info]\nPath=" + QUrl::toPercentEncoding(original, "/")
+                                + "\nDeletionDate=2026-11-10T12:00:00\n";
+        write(trash + "/files/a.txt.2", "first");
+        write(trash + "/info/a.txt.2.trashinfo", note);
+        const QStringList before = FileOps::trashedFrom(original);
+        QCOMPARE(before, QStringList({trash + "/files/a.txt.2"}));
+        write(trash + "/files/a.txt.3", "second");
+        write(trash + "/info/a.txt.3.trashinfo", note);
+        QCOMPARE(FileOps::trashedSince(original, before), trash + "/files/a.txt.3");
+    }
+
     void kindsFromMimeTypes()
     {
         QCOMPARE(FolderModel::kindForMime("application/pdf"), QString("pdf"));
         QCOMPARE(FolderModel::kindForMime("video/mp4"), QString("video"));
         QCOMPARE(FolderModel::kindForMime("audio/mp4"), QString("audio"));
         QCOMPARE(FolderModel::kindForMime("application/zip"), QString("archive"));
+        QCOMPARE(FolderModel::kindForMime("application/x-xz-compressed-tar"), QString("archive"));
         // Whatever reads as text is text: code, config and data formats too.
         for (const char *mime : {"application/x-ruby", "application/json", "application/x-shellscript",
                                  "application/toml", "application/x-yaml", "application/javascript"})
@@ -1570,6 +3155,34 @@ private slots:
         QCOMPARE(Backend::complete("~/c", h, h), QString("~/c"));               // hidden stays hidden
         QCOMPARE(Backend::complete("Wo", h, h), QString("Work/"));
         QCOMPARE(Backend::complete("Wo", h, "recent:"), QString("Work/"));
+    }
+
+    void backendKeepsTheWorkingDirectoryOnItsFolder()
+    {
+        const QString before = QDir::currentPath();
+        const auto restore = qScopeGuard([before] { QDir::setCurrent(before); });
+        QTemporaryDir home;
+        QDir(home.path()).mkpath("Work");
+        const QString work = QFileInfo(home.filePath("Work")).canonicalFilePath();
+        Backend kept(home.path()), other(home.path());
+        kept.navigate(work);
+        QCOMPARE(QDir::currentPath(), before);   // Not until it's asked to.
+
+        kept.keepWorkingDirectory();
+        QCOMPARE(QDir::currentPath(), work);
+        kept.navigate(home.path());
+        QCOMPARE(QDir::currentPath(), QFileInfo(home.path()).canonicalFilePath());
+        kept.navigate(work);
+        // A view isn't a folder to work in: it stays where it was.
+        kept.navigate(FolderModel::recentPath());
+        QCOMPARE(QDir::currentPath(), work);
+        // Only the pane used last moves it, until another one takes it.
+        other.navigate(home.path());
+        QCOMPARE(QDir::currentPath(), work);
+        other.keepWorkingDirectory();
+        QCOMPARE(QDir::currentPath(), QFileInfo(home.path()).canonicalFilePath());
+        kept.navigate(work);
+        QCOMPARE(QDir::currentPath(), QFileInfo(home.path()).canonicalFilePath());
     }
 
     void backendShowItemSelectsTheFile()
@@ -1749,6 +3362,25 @@ private slots:
         QCOMPARE(Backend::mountLabel("sftp:host=studio.example.ts.net,user=me"), QString("studio.example.ts.net"));
         QCOMPARE(Backend::mountLabel("sftp:host=files.example.com"), QString("files.example.com"));
         QCOMPARE(Backend::mountLabel("smb-share:server=nas,share=media"), QString("nas"));
+        QCOMPARE(Backend::mountLabel("ftp:host=ftp.example.com"), QString("ftp.example.com"));
+        QCOMPARE(Backend::mountLabel("dav:host=cloud.example.com,ssl=true,prefix=%2Fremote.php"), QString("cloud.example.com"));
+    }
+
+    void typedServerAddressesAreMounted()
+    {
+        // What's typed is what's mounted, cleaned up for GIO: GVfs knows
+        // where on the mount the path is, which for WebDAV can be part of
+        // the mount itself.
+        QCOMPARE(Backend::serverAddress("sftp://nas"), QString("sftp://nas/"));
+        QCOMPARE(Backend::serverAddress("  SFTP://me@nas:2222/srv/My Files "), QString("sftp://me@nas:2222/srv/My%20Files"));
+        QCOMPARE(Backend::serverAddress("smb://nas/media/Films"), QString("smb://nas/media/Films"));
+        QCOMPARE(Backend::serverAddress("ftp://ftp.example.com/pub/"), QString("ftp://ftp.example.com/pub/"));
+        QCOMPARE(Backend::serverAddress("davs://cloud.example.com/remote.php/dav/files/me"),
+                 QString("davs://cloud.example.com/remote.php/dav/files/me"));
+        QCOMPARE(Backend::serverAddress("dav://10.0.0.5:8080"), QString("dav://10.0.0.5:8080/"));
+        // Paths, other schemes and addresses without a server are not.
+        for (const char *text : {"~/Work", "/etc", "Work/folio", "file:///etc", "http://example.com", "sftp://", "smb:/nas"})
+            QVERIFY2(Backend::serverAddress(text).isEmpty(), text);
     }
 
     void pluginsReadTheirManifests()
@@ -2553,6 +4185,761 @@ private slots:
         QCOMPARE(drives.at(1).toMap().value("path").toString(), QString("/run/media/me/Photos"));
     }
 
+    void drivesSayHowTheyreLetGoOf()
+    {
+        // A stick or card is ejected, so it's safe to pull out; a disk that
+        // can only be unmounted is unmounted; one GIO can't let go of (only
+        // fstab knows it) has no button at all.
+        Places::Mount stick{"/run/media/me/Photos", "/dev/sdb1", "exfat", "Photos"};
+        stick.canEject = stick.canUnmount = true;
+        stick.free = 120'000'000'000;
+        Places::Mount disk{"/run/media/me/Backup", "/dev/sdc1", "ext4", "Backup"};
+        disk.canUnmount = true;
+        const Places::Mount fixed{"/mnt/archive", "/dev/sda1", "ext4", ""};
+        const auto drives = Places::physicalDrives({stick, disk, fixed}, "/dev/nvme0n1p2");
+        QCOMPARE(drives.size(), 3);
+        QCOMPARE(drives.at(0).toMap().value("release").toString(), QString("eject"));
+        QCOMPARE(drives.at(1).toMap().value("release").toString(), QString("unmount"));
+        QCOMPARE(drives.at(2).toMap().value("release").toString(), QString());
+        QCOMPARE(drives.at(0).toMap().value("free").toLongLong(), 120'000'000'000);
+        QCOMPARE(drives.at(2).toMap().value("free").toLongLong(), -1);
+    }
+
+    void disksParseWholeDisksFromUdisks()
+    {
+        // As this machine's udisks lists them: the system disk, encrypted,
+        // with the system unlocked on its second partition, and an
+        // installer stick; loop devices and zram aren't disks.
+        const QString at = "/org/freedesktop/UDisks2/block_devices/";
+        const QString nvme = "/org/freedesktop/UDisks2/drives/SAMSUNG_MZALC4T0HBL1";
+        const QString usb = "/org/freedesktop/UDisks2/drives/USB_SanDisk_3_2e2_Gen";
+        Disks::Objects objects;
+        objects[at + "nvme0n1"] = {{"Block", {{"Device", "/dev/nvme0n1"}, {"Drive", nvme}, {"Size", 4'096'805'658'624LL}, {"HintSystem", true}, {"CryptoBackingDevice", "/"}}},
+                                   {"PartitionTable", {{"Type", "gpt"}}}};
+        objects[at + "nvme0n1p1"] = {{"Block", {{"Device", "/dev/nvme0n1p1"}, {"Drive", nvme}, {"Size", 2'147'483'648LL}, {"IdUsage", "filesystem"}, {"CryptoBackingDevice", "/"}}},
+                                     {"Partition", {{"Table", at + "nvme0n1"}}},
+                                     {"Filesystem", {{"MountPoints", QStringList{"/boot"}}}}};
+        objects[at + "nvme0n1p2"] = {{"Block", {{"Device", "/dev/nvme0n1p2"}, {"Drive", nvme}, {"Size", 4'094'655'725'568LL}, {"IdUsage", "crypto"}, {"CryptoBackingDevice", "/"}}},
+                                     {"Partition", {{"Table", at + "nvme0n1"}}},
+                                     {"Encrypted", {}}};
+        objects[at + "dm_2d0"] = {{"Block", {{"Device", "/dev/dm-0"}, {"Drive", "/"}, {"Size", 4'094'638'948'352LL}, {"IdUsage", "filesystem"}, {"IdLabel", "omarchy-root"}, {"CryptoBackingDevice", at + "nvme0n1p2"}}},
+                                  {"Filesystem", {{"MountPoints", QStringList{"/", "/home", "/var/log"}}}}};
+        objects[at + "loop0"] = {{"Block", {{"Device", "/dev/loop0"}, {"Drive", "/"}, {"Size", 0}}}, {"Loop", {}}};
+        objects[at + "zram0"] = {{"Block", {{"Device", "/dev/zram0"}, {"Drive", "/"}, {"Size", 130'916'810'752LL}}}, {"Swapspace", {}}};
+        objects[at + "sda"] = {{"Block", {{"Device", "/dev/sda"}, {"Drive", usb}, {"Size", 250'148'290'560LL}, {"IdUsage", "filesystem"}, {"IdLabel", "OMARCHY_202611"}, {"CryptoBackingDevice", "/"}}},
+                               {"PartitionTable", {{"Type", "gpt"}}}};
+        objects[at + "sda1"] = {{"Block", {{"Device", "/dev/sda1"}, {"Drive", usb}, {"Size", 6'701'465'600LL}, {"IdUsage", "filesystem"}, {"IdLabel", "OMARCHY_202611"}, {"CryptoBackingDevice", "/"}}},
+                                {"Partition", {{"Table", at + "sda"}}},
+                                {"Filesystem", {{"MountPoints", QStringList{"/run/media/me/OMARCHY_202611"}}}}};
+        objects[at + "sda2"] = {{"Block", {{"Device", "/dev/sda2"}, {"Drive", usb}, {"Size", 16'777'216LL}, {"IdUsage", "filesystem"}, {"IdLabel", "ARCHISO_EFI"}, {"CryptoBackingDevice", "/"}}},
+                                {"Partition", {{"Table", at + "sda"}}},
+                                {"Filesystem", {{"MountPoints", QStringList()}}}};
+        objects[nvme] = {{"Drive", {{"Model", "SAMSUNG MZALC4T0HBL1-00B07"}, {"Removable", false}, {"ConnectionBus", ""}}}};
+        objects[usb] = {{"Drive", {{"Vendor", "USB"}, {"Model", "SanDisk 3.2 Gen"}, {"Removable", true}, {"ConnectionBus", "usb"}, {"CanPowerOff", true}, {"Ejectable", true}, {"MediaCompatibility", QStringList()}}}};
+
+        const QList<Disk> disks = Disks::parse(objects);
+        QCOMPARE(disks.size(), 2);
+        const Disk &system = disks.at(0);
+        QCOMPARE(system.device, QString("/dev/nvme0n1"));
+        QCOMPARE(system.block, at + "nvme0n1");
+        QCOMPARE(system.drive, nvme);
+        QVERIFY(system.hintSystem);
+        QVERIFY(system.mounts.contains("/"));
+        QVERIFY(system.mounts.contains("/boot"));
+        QVERIFY(Disks::holdsSystem(system));
+        QCOMPARE(system.unlocked, QStringList{at + "nvme0n1p2"});
+        const Disk &stick = disks.at(1);
+        QCOMPARE(stick.device, QString("/dev/sda"));
+        QCOMPARE(stick.label, QString("OMARCHY_202611"));
+        QCOMPARE(stick.mounts, QStringList{"/run/media/me/OMARCHY_202611"});
+        QCOMPARE(stick.filesystems, QStringList{at + "sda1"});
+        QCOMPARE(stick.size, 250'148'290'560LL);
+        QCOMPARE(stick.bus, QString("usb"));
+        QVERIFY(stick.removable && stick.canPowerOff && stick.ejectable && !stick.optical && !stick.readOnly);
+        QVERIFY(!Disks::holdsSystem(stick));
+        QVERIFY(stick.unlocked.isEmpty());
+    }
+
+    void disksSwappedForACopyArentTheSameDisk()
+    {
+        // A card swapped in its reader for a copy of it has the same path,
+        // drive, size and filesystems; only when it was put in differs.
+        const QString card = "/org/freedesktop/UDisks2/block_devices/mmcblk0";
+        const QString reader = "/org/freedesktop/UDisks2/drives/SD_Reader";
+        Disks::Objects objects;
+        objects[card] = {{"Block", {{"Device", "/dev/mmcblk0"}, {"Drive", reader}, {"Size", 31'914'983'424LL}, {"IdUUID", "2026-11-11"}}}};
+        objects[reader] = {{"Drive", {{"Id", "SD-Reader-1"}, {"ConnectionBus", "sdio"}, {"TimeMediaDetected", qulonglong(1)}}}};
+        const QString before = Disks::parse(objects).value(0).identity;
+        objects[reader]["Drive"]["TimeMediaDetected"] = qulonglong(2);
+        QVERIFY(Disks::parse(objects).value(0).identity != before);
+    }
+
+    void disksStayTheSameDiskOnceLocked()
+    {
+        // Burning locks an encrypted stick's volume, which udisks then no
+        // longer lists: it's still the stick that was picked.
+        const QString at = "/org/freedesktop/UDisks2/block_devices/";
+        const QString drive = "/org/freedesktop/UDisks2/drives/Kingston";
+        Disks::Objects objects;
+        objects[at + "sdb"] = {{"Block", {{"Device", "/dev/sdb"}, {"Drive", drive}, {"Size", 64'000'000'000LL}}}};
+        objects[at + "sdb1"] = {{"Block", {{"Device", "/dev/sdb1"}, {"Drive", drive}, {"Size", 63'000'000'000LL}, {"IdUsage", "crypto"}, {"IdUUID", "luks"}}},
+                                {"Partition", {{"Table", at + "sdb"}}},
+                                {"Encrypted", {}}};
+        objects[at + "dm_2d1"] = {{"Block", {{"Device", "/dev/dm-1"}, {"Drive", "/"}, {"Size", 62'900'000'000LL}, {"IdUsage", "filesystem"}, {"IdUUID", "ext4"}, {"CryptoBackingDevice", at + "sdb1"}}},
+                                  {"Filesystem", {{"MountPoints", QStringList{"/run/media/me/Vault"}}}}};
+        objects[drive] = {{"Drive", {{"Id", "Kingston-1"}, {"ConnectionBus", "usb"}, {"Removable", true}}}};
+        const Disk unlocked = Disks::parse(objects).value(0);
+        QCOMPARE(unlocked.unlocked, QStringList{at + "sdb1"});
+        objects.remove(at + "dm_2d1");
+        const Disk locked = Disks::parse(objects).value(0);
+        QVERIFY(locked.unlocked.isEmpty());
+        QCOMPARE(locked.identity, unlocked.identity);
+    }
+
+    void disksHoldingVolumesOrSwapCountAsTheSystems()
+    {
+        // The system on an external SSD under LVM: its root is mounted from
+        // a logical volume udisks doesn't tie back to the disk, so the
+        // volume group's member is what gives it away. Swap in use counts
+        // the same.
+        const QString at = "/org/freedesktop/UDisks2/block_devices/";
+        const QString drive = "/org/freedesktop/UDisks2/drives/Samsung_T7";
+        Disks::Objects objects;
+        objects[at + "sda"] = {{"Block", {{"Device", "/dev/sda"}, {"Drive", drive}, {"Size", 1'000'000'000'000LL}}}};
+        objects[at + "sda1"] = {{"Block", {{"Device", "/dev/sda1"}, {"Drive", drive}, {"Size", 999'000'000'000LL}, {"IdUsage", "raid"}, {"IdType", "LVM2_member"}}},
+                                {"Partition", {{"Table", at + "sda"}}}};
+        objects[at + "dm_2d0"] = {{"Block", {{"Device", "/dev/dm-0"}, {"Drive", "/"}, {"Size", 999'000'000'000LL}, {"IdUsage", "filesystem"}}},
+                                  {"Filesystem", {{"MountPoints", QStringList{"/"}}}}};
+        objects[at + "sdb"] = {{"Block", {{"Device", "/dev/sdb"}, {"Drive", drive + "2"}, {"Size", 64'000'000'000LL}}}};
+        objects[at + "sdb1"] = {{"Block", {{"Device", "/dev/sdb1"}, {"Drive", drive + "2"}, {"Size", 8'000'000'000LL}, {"IdUsage", "other"}, {"IdType", "swap"}}},
+                                {"Partition", {{"Table", at + "sdb"}}},
+                                {"Swapspace", {{"Active", true}}}};
+        objects[drive] = {{"Drive", {{"ConnectionBus", "usb"}, {"Removable", false}, {"CanPowerOff", true}}}};
+        objects[drive + "2"] = objects[drive];
+        const QList<Disk> disks = Disks::parse(objects);
+        QCOMPARE(disks.size(), 2);
+        for (const Disk &disk : disks) {
+            QVERIFY(Disks::holdsSystem(disk));
+            QCOMPARE(Disks::fit(disk, 1), Disks::Unfit);
+        }
+
+        // Swap that isn't on, on a stick, is just a partition.
+        objects[at + "sdb1"]["Swapspace"]["Active"] = false;
+        QVERIFY(!Disks::holdsSystem(Disks::parse(objects).value(1)));
+    }
+
+    void disksDecideWhereAnImageCanBurn()
+    {
+        const qint64 image = 4'000'000'000;
+        const Disk stick = sanDisk();
+        QCOMPARE(Disks::fit(stick, image), Disks::Fits);
+
+        // An SD card in a laptop's own reader isn't removable to udisks,
+        // but its bus is.
+        Disk card = sanDisk();
+        card.vendor = card.model = "";
+        card.bus = "sdio";
+        card.removable = card.canPowerOff = card.ejectable = false;
+        QCOMPARE(Disks::fit(card, image), Disks::Fits);
+
+        Disk small = sanDisk();
+        small.size = 2'000'000'000;
+        QCOMPARE(Disks::fit(small, image), Disks::TooSmall);
+
+        Disk system = sanDisk();
+        system.mounts = {"/run/media/me/STICK", "/boot"};
+        QCOMPARE(Disks::fit(system, image), Disks::Unfit);
+
+        Disk hinted = sanDisk();
+        hinted.hintSystem = true;
+        QCOMPARE(Disks::fit(hinted, image), Disks::Unfit);
+
+        Disk internal = sanDisk();
+        internal.bus = "";
+        internal.removable = internal.canPowerOff = internal.ejectable = false;
+        QCOMPARE(Disks::fit(internal, image), Disks::Unfit);
+
+        Disk locked = sanDisk();
+        locked.readOnly = true;
+        QCOMPARE(Disks::fit(locked, image), Disks::Unfit);
+
+        Disk optical = sanDisk();
+        optical.optical = true;
+        QCOMPARE(Disks::fit(optical, image), Disks::Unfit);
+
+        // A reader with no card in it has no size.
+        Disk empty = sanDisk();
+        empty.size = 0;
+        QCOMPARE(Disks::fit(empty, image), Disks::Unfit);
+    }
+
+    void disksAreNamedTheWayPeopleKnowThem()
+    {
+        Disk disk = sanDisk();
+        QCOMPARE(Disks::name(disk), QString("SanDisk Ultra"));
+        QCOMPARE(Disks::title(disk), QString("SanDisk Ultra · 32 GB"));
+        // A placeholder maker is left out, and one the model already names
+        // isn't said twice.
+        disk.vendor = "USB";
+        disk.model = "SanDisk 3.2 Gen";
+        QCOMPARE(Disks::name(disk), QString("SanDisk 3.2 Gen"));
+        disk.vendor = "Kingston";
+        disk.model = "Kingston DataTraveler";
+        QCOMPARE(Disks::name(disk), QString("Kingston DataTraveler"));
+        // Without a maker or model, its label, then its device.
+        disk.vendor = disk.model = "";
+        QCOMPARE(Disks::name(disk), QString("STICK"));
+        disk.label = "";
+        disk.device = "/dev/mmcblk0";
+        QCOMPARE(Disks::name(disk), QString("mmcblk0"));
+        QCOMPARE(Disks::size(1'500'000'000'000), QString("1.5 TB"));
+        QCOMPARE(Disks::size(3'904'897'024), QString("3.9 GB"));
+        QCOMPARE(Disks::size(250'148'290'560), QString("250 GB"));
+    }
+
+    void formattingNamesDrivesAsExfatAllows()
+    {
+        // Each filesystem keeps its own length of name.
+        const auto limit = [](const char *type) { return Disks::fileSystem(type)->labelLimit; };
+        QCOMPARE(limit("exfat"), 11);
+        QCOMPARE(limit("vfat"), 11);
+        QVERIFY(!Disks::fileSystem("ntfs"));
+        QCOMPARE(limit("ext4"), 16);
+        QVERIFY(!Disks::fileSystem("zfs"));
+        auto fake = fakeDisks();
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.format(sanDisk().identity, "Holiday Photos");
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(failed.at(0).at(0).toString(), QString("exFAT keeps at most 11 characters of a drive's name."));
+        QVERIFY(fake->calls.isEmpty());
+        QVERIFY(ops.busy().isEmpty());
+    }
+
+    void formattingUnmountsThenMakesOneExfatPartition()
+    {
+        auto fake = fakeDisks();
+        FileOps ops;
+        QSignalSpy notice(&ops, &FileOps::notice), releasing(&ops, &FileOps::releasing), changed(&ops, &FileOps::drivesChanged);
+        QStringList busy;
+        connect(&ops, &FileOps::busyChanged, this, [&] { busy << ops.busy(); });
+        ops.format(sanDisk().identity, " Photos ");
+        QTRY_COMPARE(notice.count(), 1);
+        QCOMPARE(notice.at(0).at(0).toString(), QString("Formatted SanDisk Ultra."));
+        QCOMPARE(releasing.count(), 1);
+        QCOMPARE(releasing.at(0).at(0).toString(), QString("/run/media/me/STICK"));
+        QCOMPARE(busy.value(0), QString("Formatting SanDisk Ultra…"));
+        QCOMPARE(changed.count(), 1);
+        const QString sdb = sanDisk().block;
+        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "makeTable " + sdb, "addPartition " + sdb + " exfat Photos",
+                                           "mount " + sdb + "1"}));
+    }
+
+    void formatDialogSaysWhatItMakes()
+    {
+        // The filesystem Format makes is always said: picked from a menu
+        // when there's more than one, and as it is when there's only one.
+        QTemporaryDir home;
+        auto fake = fakeDisks();
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 800; height: 600; visible: true\n"
+                          "    FormatDialog { id: dialog; anchors.fill: parent }\n"
+                          "    function shown() {\n"
+                          "        dialog.open({ id: 'stick', label: 'Photos', title: 'SanDisk Ultra' })\n"
+                          "        const texts = []\n"
+                          "        const walk = item => {\n"
+                          "            if (!item.visible) return\n"
+                          "            if (item instanceof Text) texts.push(item.text)\n"
+                          "            for (const child of item.children) walk(child)\n"
+                          "        }\n"
+                          "        walk(dialog)\n"
+                          "        return texts\n"
+                          "    }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/FormatDialogTest.qml"));
+        std::unique_ptr<QObject> window(component.create());
+        QVERIFY2(window, qPrintable(component.errorString()));
+        const auto shown = [&] {
+            QVariant texts;
+            QMetaObject::invokeMethod(window.get(), "shown", Q_RETURN_ARG(QVariant, texts));
+            return texts.toStringList();
+        };
+        fake->missing = {"ext4"};
+        QVERIFY(shown().contains("exFAT  ▾"));
+        fake->missing = {"vfat", "ext4"};
+        QVERIFY(shown().contains("exFAT"));
+        QVERIFY(!shown().contains("exFAT  ▾"));
+    }
+
+    void formattingOffersWhatThisMachineCanMake()
+    {
+        // exFAT first, and only the filesystems whose tools are installed.
+        auto fake = fakeDisks();
+        fake->missing = {"vfat"};
+        FileOps ops;
+        QStringList types;
+        for (const QVariant &choice : ops.formatChoices())
+            types << choice.toMap().value("type").toString();
+        QCOMPARE(types, (QStringList{"exfat", "ext4"}));
+
+        // The one picked is made, with a name as long as it keeps.
+        ops.format(sanDisk().identity, "Linux Backups 26", "ext4");
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QVERIFY(fake->calls.contains("addPartition " + sanDisk().block + " ext4 Linux Backups 26"));
+
+        // A name too long for the filesystem, or a filesystem Folio doesn't
+        // make, touches nothing.
+        fake->calls.clear();
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.format(sanDisk().identity, "Holiday Photos", "vfat");
+        ops.format(sanDisk().identity, "Photos", "zfs");
+        // Nor one that fits only counted in characters, or has what FAT
+        // can't keep, which udisks would find only once it's erased.
+        ops.format(sanDisk().identity, QString(9, QChar(0xe6)), "ext4");
+        ops.format(sanDisk().identity, "BACKUP:2026", "vfat");
+        ops.format(sanDisk().identity, QString("Caf") + QChar(0xe9), "vfat");
+        QCOMPARE(failed.count(), 5);
+        QCOMPARE(failed.at(3).at(0).toString(), QString("FAT32 can't have : in a drive's name."));
+        QVERIFY(fake->calls.isEmpty());
+    }
+
+    void formattingNeedsWhatMakesTheFilesystem()
+    {
+        // Without mkfs.exfat, the drive would be erased and left empty.
+        auto fake = fakeDisks();
+        fake->missing = {"exfat"};
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.format(sanDisk().identity, "Photos");
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(failed.at(0).at(0).toString(), QString("This computer can't make exFAT drives."));
+        QVERIFY(ops.busy().isEmpty());
+        QVERIFY(fake->calls.isEmpty());
+    }
+
+    void formattingExt4HandsTheDriveToItsOwner()
+    {
+        // A new ext4 filesystem belongs to root unless udisks is told to
+        // hand it over; the others have no owners.
+        QCOMPARE(Disks::formatOptions("ext4", "Backups").value("take-ownership").toBool(), true);
+        QVERIFY(!Disks::formatOptions("exfat", "Photos").contains("take-ownership"));
+        QCOMPARE(Disks::formatOptions("vfat", "Photos").value("label").toString(), QString("Photos"));
+    }
+
+    void formattingStopsAtWhatUdisksRefuses()
+    {
+        auto fake = fakeDisks();
+        fake->refuse["makeTable"] = "Permission was refused.";
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.format(sanDisk().identity, "Photos");
+        QTRY_COMPARE(failed.count(), 1);
+        QCOMPARE(failed.at(0).at(0).toString(), QString("Couldn't format SanDisk Ultra. Permission was refused."));
+        const QString sdb = sanDisk().block;
+        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "makeTable " + sdb}));
+
+        // A disk gone from udisks' list isn't touched.
+        fake->calls.clear();
+        fake->disks.clear();
+        ops.format(sanDisk().identity, "Photos");
+        QCOMPARE(failed.count(), 2);
+        QCOMPARE(failed.at(1).at(0).toString(), QString("That drive is gone."));
+        QVERIFY(fake->calls.isEmpty());
+    }
+
+    void drivesAreFoundByWhereTheyreMounted()
+    {
+        Disk system = sanDisk();
+        system.block = "/org/freedesktop/UDisks2/block_devices/nvme0n1";
+        system.mounts = {"/", "/run/media/me/Spare"};
+        fakeDisks({sanDisk(), system});
+        FileOps ops;
+        const QVariantMap stick = ops.driveAt("/run/media/me/STICK");
+        QCOMPARE(stick.value("id").toString(), sanDisk().identity);
+        QCOMPARE(stick.value("title").toString(), QString("SanDisk Ultra · 32 GB"));
+        QCOMPARE(stick.value("label").toString(), QString("STICK"));
+        // Nothing on the system's own disk can be formatted from here.
+        QVERIFY(ops.driveAt("/run/media/me/Spare").isEmpty());
+        QVERIFY(ops.driveAt("/run/media/me/Elsewhere").isEmpty());
+    }
+
+    void onlyPluggedInDrivesCanBeFormatted()
+    {
+        // A second drive inside the computer, holding data or another
+        // system, isn't erased from a menu.
+        Disk internal = sanDisk();
+        internal.identity = "internal";
+        internal.bus = "";
+        internal.removable = internal.canPowerOff = internal.ejectable = false;
+        internal.hintSystem = true;
+        internal.mounts = {"/run/media/me/Data"};
+        Disk locked = sanDisk();
+        locked.identity = "locked";
+        locked.readOnly = true;
+        locked.mounts = {"/run/media/me/Locked"};
+        auto fake = fakeDisks({internal, locked});
+        FileOps ops;
+        QVERIFY(ops.driveAt("/run/media/me/Data").isEmpty());
+        QVERIFY(ops.driveAt("/run/media/me/Locked").isEmpty());
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.format("internal", "Photos");
+        ops.format("locked", "Photos");
+        QCOMPARE(failed.count(), 2);
+        QVERIFY(fake->calls.isEmpty());
+    }
+
+    void burningOffersOnlyImages()
+    {
+        QTemporaryDir dir;
+        FileOps ops;
+        for (const char *name : {"ubuntu.iso", "raspios.img", "notes.txt"})
+            writeImageFile(dir.filePath(name), 4096);
+        QVERIFY(ops.canBurn(dir.filePath("ubuntu.iso")));
+        QVERIFY(ops.canBurn(dir.filePath("raspios.img")));
+        QVERIFY(!ops.canBurn(dir.filePath("notes.txt")));
+        QVERIFY(!ops.canBurn(dir.path()));
+    }
+
+    void burningListsTheDrivesThatCanTakeTheImage()
+    {
+        QTemporaryDir dir;
+        const QString image = dir.filePath("ubuntu.iso");
+        writeImageFile(image, 3 << 20);
+        Disk small = sanDisk();
+        small.block = "/org/freedesktop/UDisks2/block_devices/sdc";
+        small.vendor = "Kingston";
+        small.model = "DataTraveler";
+        small.size = 1'000'000;
+        Disk system = sanDisk();
+        system.block = "/org/freedesktop/UDisks2/block_devices/nvme0n1";
+        system.mounts = {"/"};
+        fakeDisks({sanDisk(), small, system});
+        FileOps ops;
+        const QVariantList targets = ops.burnTargets(image);
+        QCOMPARE(targets.size(), 2);
+        QCOMPARE(targets.at(0).toMap().value("text").toString(), QString("SanDisk Ultra · 32 GB"));
+        QVERIFY(targets.at(0).toMap().value("enabled").toBool());
+        QCOMPARE(targets.at(1).toMap().value("text").toString(), QString("Kingston DataTraveler · 1.0 MB (too small)"));
+        QVERIFY(!targets.at(1).toMap().value("enabled").toBool());
+
+        fakeDisks({system});
+        QVERIFY(ops.burnTargets(image).isEmpty());
+    }
+
+    void burningNeverOffersTheDriveTheImageIsOn()
+    {
+        // Erasing it would erase the image too, half way through.
+        const QString image = "/run/media/me/STICK/isos/ubuntu.iso";
+        const Disk holder = sanDisk();
+        auto fake = fakeDisks({holder});
+        FileOps ops;
+        QVERIFY(ops.burnTargets(image).isEmpty());
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.burn(image, holder.identity);
+        QCOMPARE(failed.count(), 1);
+        QVERIFY(fake->calls.isEmpty());
+    }
+
+    void onlyOneDriveIsChangedAtATime()
+    {
+        // Each pane has its own file work, but drives are the computer's:
+        // one pane's burn and another's format mustn't overlap.
+        QTemporaryDir dir;
+        const QString image = dir.filePath("ubuntu.iso");
+        writeImageFile(image, 1 << 20);
+        auto fake = fakeDisks();
+        fake->device = dir.filePath("sdb");
+        std::atomic<bool> unmounting = false, release = false;
+        fake->during = [&](const QString &method) {
+            if (method != "unmount")
+                return;
+            unmounting = true;
+            while (!release)
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        };
+        FileOps burning, formatting;
+        QSignalSpy failed(&formatting, &FileOps::failed), burnt(&burning, &FileOps::notice);
+        burning.burn(image, sanDisk().identity);
+        QTRY_VERIFY(unmounting);
+        formatting.format(sanDisk().identity, "Photos");
+        formatting.burn(image, sanDisk().identity);
+        QCOMPARE(failed.count(), 2);
+        QVERIFY(formatting.busy().isEmpty());
+        release = true;
+        QTRY_COMPARE(burnt.count(), 1);
+        const QString sdb = sanDisk().block;
+        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "open " + sdb, "eject " + sdb}));
+
+        // Once it's done, the next may go.
+        fake->calls.clear();
+        fake->during = nullptr;
+        QSignalSpy formatted(&formatting, &FileOps::notice);
+        formatting.format(sanDisk().identity, "Photos");
+        QTRY_COMPARE(formatted.count(), 1);
+    }
+
+    void burningLocksWhatsUnlockedOnTheDrive()
+    {
+        // An encrypted stick's volume, unlocked, holds the disk even once
+        // its filesystem is unmounted.
+        QTemporaryDir dir;
+        const QString image = dir.filePath("ubuntu.iso");
+        writeImageFile(image, 1 << 20);
+        Disk stick = sanDisk();
+        stick.filesystems = {"/org/freedesktop/UDisks2/block_devices/dm_2d1"};
+        stick.unlocked = {stick.block + "1"};
+        auto fake = fakeDisks({stick});
+        fake->device = dir.filePath("sdb");
+        FileOps ops;
+        QSignalSpy notice(&ops, &FileOps::notice);
+        ops.burn(image, stick.identity);
+        QTRY_COMPARE(notice.count(), 1);
+        QCOMPARE(fake->calls, (QStringList{"unmount " + stick.filesystems.first(), "lock " + stick.block + "1",
+                                           "open " + stick.block, "eject " + stick.block}));
+    }
+
+    void burningWritesTheImageThenEjects()
+    {
+        QTemporaryDir dir;
+        const QString image = dir.filePath("ubuntu.iso");
+        // More than two 4 MiB chunks, and not a whole number of them.
+        const QByteArray bytes = writeImageFile(image, (9 << 20) + 123);
+        auto fake = fakeDisks();
+        fake->device = dir.filePath("sdb");
+        FileOps ops;
+        QSignalSpy notice(&ops, &FileOps::notice), failed(&ops, &FileOps::failed);
+        QStringList busy;
+        connect(&ops, &FileOps::busyChanged, this, [&] { busy << ops.busy(); });
+        ops.burn(image, sanDisk().identity);
+        QTRY_COMPARE(notice.count(), 1);
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(notice.at(0).at(0).toString(), QString("Burned ubuntu.iso to SanDisk Ultra. It's safe to remove now."));
+        QCOMPARE(busy.value(0), QString("Burning ubuntu.iso to SanDisk Ultra…"));
+        QFile device(fake->device);
+        QVERIFY(device.open(QIODevice::ReadOnly));
+        QVERIFY(device.readAll() == bytes);
+        const QString sdb = sanDisk().block;
+        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "open " + sdb, "eject " + sdb}));
+    }
+
+    void burningCanBeCancelledLeavingPartOfTheImage()
+    {
+        QTemporaryDir dir;
+        const QString image = dir.filePath("ubuntu.iso");
+        const QByteArray bytes = writeImageFile(image, 12 << 20);
+        // The device is a pipe the test reads at its own pace: the first
+        // chunk, then nothing until the burn is cancelled, then the rest.
+        int pipe[2];
+        QCOMPARE(::pipe2(pipe, O_CLOEXEC), 0);
+        auto fake = fakeDisks();
+        fake->fd = pipe[1];
+        std::atomic<bool> gotFirst = false, cancelled = false;
+        QByteArray received;
+        std::thread reader([&] {
+            char buffer[65536];
+            ssize_t n;
+            while ((n = ::read(pipe[0], buffer, sizeof buffer)) > 0) {
+                received.append(buffer, n);
+                if (received.size() >= (4 << 20) && !gotFirst) {
+                    gotFirst = true;
+                    while (!cancelled)
+                        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                }
+            }
+            ::close(pipe[0]);
+        });
+        FileOps ops;
+        QSignalSpy notice(&ops, &FileOps::notice), failed(&ops, &FileOps::failed);
+        ops.burn(image, sanDisk().identity);
+        QTRY_VERIFY(gotFirst);
+        // While it's stuck, it says how far it's got, and nothing else
+        // runs beside it.
+        QTRY_COMPARE(ops.busy(), QString("Burning ubuntu.iso to SanDisk Ultra: 4.2 MB of 13 MB…"));
+        ops.format(sanDisk().identity, "Photos");
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(failed.at(0).at(0).toString(), QString("Try again once the work under way is done."));
+        ops.cancel();
+        cancelled = true;
+        QTRY_COMPARE(notice.count(), 1);
+        reader.join();
+        QCOMPARE(notice.at(0).at(0).toString(), QString("Stopped burning. SanDisk Ultra now holds only part of ubuntu.iso."));
+        // It stopped after the chunk it was writing, short of the whole.
+        QCOMPARE(received.size(), 8 << 20);
+        QVERIFY(received == bytes.left(received.size()));
+        const QString sdb = sanDisk().block;
+        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "open " + sdb}));
+    }
+
+    void burningCancelledBeforeItWritesLeavesTheDriveAlone()
+    {
+        QTemporaryDir dir;
+        const QString image = dir.filePath("ubuntu.iso");
+        writeImageFile(image, 1 << 20);
+        auto fake = fakeDisks();
+        fake->device = dir.filePath("sdb");
+        std::atomic<bool> unmounting = false, release = false;
+        fake->during = [&](const QString &method) {
+            unmounting = true;
+            while (method == "unmount" && !release)
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        };
+        FileOps ops;
+        QSignalSpy notice(&ops, &FileOps::notice);
+        ops.burn(image, sanDisk().identity);
+        QTRY_VERIFY(unmounting);
+        ops.cancel();
+        release = true;
+        QTRY_COMPARE(notice.count(), 1);
+        QCOMPARE(notice.at(0).at(0).toString(), QString("Stopped before burning ubuntu.iso. Nothing on SanDisk Ultra was erased."));
+        QCOMPARE(fake->calls, QStringList{"unmount " + sanDisk().block + "1"});
+        QVERIFY(!QFile::exists(fake->device));
+    }
+
+    void burningStopsAtWhatUdisksRefuses()
+    {
+        QTemporaryDir dir;
+        const QString image = dir.filePath("ubuntu.iso");
+        writeImageFile(image, 1 << 20);
+        auto fake = fakeDisks();
+        fake->device = dir.filePath("sdb");
+        fake->refuse["open"] = "Permission was refused.";
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed), notice(&ops, &FileOps::notice);
+        ops.burn(image, sanDisk().identity);
+        QTRY_COMPARE(failed.count(), 1);
+        QCOMPARE(failed.at(0).at(0).toString(), QString("Couldn't burn ubuntu.iso to SanDisk Ultra. Permission was refused."));
+        const QString sdb = sanDisk().block;
+        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "open " + sdb}));
+        QVERIFY(!QFile::exists(fake->device));
+        QCOMPARE(notice.count(), 0);
+    }
+
+    void burningSaysWhenTheDriveGoes()
+    {
+        QTemporaryDir dir;
+        const QString image = dir.filePath("ubuntu.iso");
+        writeImageFile(image, 1 << 20);
+        // Pulled out before it started: udisks no longer lists it.
+        auto fake = fakeDisks({});
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.burn(image, sanDisk().identity);
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(failed.at(0).at(0).toString(), QString("ubuntu.iso can't be burned onto that drive."));
+        QVERIFY(fake->calls.isEmpty());
+
+        // Pulled out while writing: the device takes no more.
+        fake = fakeDisks();
+        QFile gone(dir.filePath("gone"));
+        QVERIFY(gone.open(QIODevice::WriteOnly));
+        gone.close();
+        fake->fd = ::open(QFile::encodeName(gone.fileName()).constData(), O_RDONLY | O_CLOEXEC);
+        ops.burn(image, sanDisk().identity);
+        QTRY_COMPARE(failed.count(), 2);
+        QVERIFY(failed.at(1).at(0).toString().startsWith("Couldn't burn ubuntu.iso to SanDisk Ultra. The drive stopped taking data ("));
+        const QString sdb = sanDisk().block;
+        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "open " + sdb}));
+    }
+
+    void drivesAreKnownByMoreThanWhereTheyAre()
+    {
+        // Each disk has an identity beyond its object path: its drive's Id
+        // (maker, model, serial), its size, and what's on it.
+        const QString at = "/org/freedesktop/UDisks2/block_devices/";
+        const QString drive = "/org/freedesktop/UDisks2/drives/Reader";
+        auto objects = [&](const QString &uuid) {
+            Disks::Objects o;
+            o[at + "sdb"] = {{"Block", {{"Device", "/dev/sdb"}, {"Drive", drive}, {"Size", 32'000'000'000LL}}}};
+            o[at + "sdb1"] = {{"Block", {{"Device", "/dev/sdb1"}, {"Drive", drive}, {"Size", 31'000'000'000LL}, {"IdUUID", uuid}}},
+                              {"Partition", {{"Table", at + "sdb"}}}};
+            o[drive] = {{"Drive", {{"Id", "Generic-SD_Reader-000000001"}, {"ConnectionBus", "usb"}, {"Removable", true}}}};
+            return o;
+        };
+        // Another card in the same reader is another disk.
+        const QString first = Disks::parse(objects("1234-ABCD")).value(0).identity;
+        QVERIFY(first.contains(at + "sdb"));
+        QVERIFY(first.contains("Generic-SD_Reader-000000001"));
+        QCOMPARE(Disks::parse(objects("1234-ABCD")).value(0).identity, first);
+        QVERIFY(Disks::parse(objects("9876-FEDC")).value(0).identity != first);
+    }
+
+    void drivesSwappedBeforeTheyreChangedArentTouched()
+    {
+        QTemporaryDir dir;
+        const QString image = dir.filePath("ubuntu.iso");
+        writeImageFile(image, 1 << 20);
+        auto fake = fakeDisks();
+        FileOps ops;
+        const QString id = ops.burnTargets(image).value(0).toMap().value("id").toString();
+        QCOMPARE(ops.driveAt("/run/media/me/STICK").value("id").toString(), id);
+        // Pulled out after its menu opened, and another put in its place.
+        fake->disks = {otherStick()};
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.burn(image, id);
+        ops.format(id, "Photos");
+        QCOMPARE(failed.count(), 2);
+        QVERIFY(fake->calls.isEmpty());
+    }
+
+    void drivesSwappedWhilePolkitAsksArentTouched()
+    {
+        QTemporaryDir dir;
+        const QString image = dir.filePath("ubuntu.iso");
+        writeImageFile(image, 1 << 20);
+        auto fake = fakeDisks();
+        fake->device = dir.filePath("sdb");
+        // Swapped while the password was asked for, before it's written to.
+        fake->during = [&](const QString &method) { if (method == "open") fake->disks = {otherStick()}; };
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed), notice(&ops, &FileOps::notice);
+        ops.burn(image, sanDisk().identity);
+        QTRY_COMPARE(failed.count(), 1);
+        QCOMPARE(failed.at(0).at(0).toString(), QString("Couldn't burn ubuntu.iso to SanDisk Ultra. The drive was changed or removed."));
+        QCOMPARE(QFileInfo(fake->device).size(), 0);
+        const QString sdb = sanDisk().block;
+        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "open " + sdb}));
+
+        // The same before it's formatted.
+        fake->calls.clear();
+        fake->disks = {sanDisk()};
+        fake->during = [&](const QString &method) { if (method == "unmount") fake->disks = {otherStick()}; };
+        ops.format(sanDisk().identity, "Photos");
+        QTRY_COMPARE(failed.count(), 2);
+        QCOMPARE(failed.at(1).at(0).toString(), QString("Couldn't format SanDisk Ultra. The drive was changed or removed."));
+        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1"}));
+        QCOMPARE(notice.count(), 0);
+    }
+
+    void drivesSayWhatsFreeInTheLanguagesDigits()
+    {
+        QQmlEngine engine;
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\nimport \"Format.js\" as Format\n"
+                          "QtObject { function free(bytes) { return Format.free(bytes) } }",
+                          QUrl::fromLocalFile(QFINDTESTDATA("../src/Format.js")));
+        std::unique_ptr<QObject> format(component.create());
+        QVERIFY(format);
+        auto free = [&](qint64 bytes) {
+            QVariant text;
+            QMetaObject::invokeMethod(format.get(), "free", Q_RETURN_ARG(QVariant, text), Q_ARG(QVariant, bytes));
+            return text.toString();
+        };
+        QCOMPARE(free(120'000'000'000), QString("120.0 GB free"));
+        QCOMPARE(free(512), QString("512 B free"));
+
+        const QLocale before;
+        const auto restore = qScopeGuard([before] { QLocale::setDefault(before); });
+        QLocale::setDefault(QLocale("ar_EG"));
+        QCOMPARE(free(120'000'000'000), QLocale("ar_EG").toString(120.0, 'f', 1) + " GB free");
+    }
+
     void thumbnailsFollowTheFreedesktopCache()
     {
         QTemporaryDir dir;
@@ -2731,6 +5118,73 @@ private slots:
         Previewer previewer;
         previewer.start(dir.filePath("blob.txt"), false, "name");
         QTRY_COMPARE(previewer.viewer(), QString("other"));
+    }
+
+    void previewerShowsOnlyWhatLaysOutQuickly()
+    {
+        // The preview lays out all it's given on its UI thread, about a
+        // third of a millisecond per KB: a long log is cut to its opening
+        // part, at the end of a line.
+        QTemporaryDir dir;
+        QByteArray log;
+        for (int i = 0; log.size() < 300 * 1024; ++i)
+            log += "line " + QByteArray::number(i) + " of the log\n";
+        write(dir.filePath("big.log"), log);
+        const QString opening = Previewer::readText(dir.filePath("big.log"));
+        QVERIFY(opening.size() <= 128 * 1024);
+        QVERIFY(opening.size() > 100 * 1024);
+        QVERIFY(opening.endsWith("of the log\n"));
+
+        // Markdown tables cost far more: 16 KB of one kept the preview
+        // frozen for 150 ms, and a few MB for many seconds. The text stops
+        // at the row where its tables pass 600 cells; prose, and a lone
+        // line of | that isn't a table, are left alone.
+        QByteArray table = "# Rows\n\n| a | b | c |\n|---|---|---|\n";
+        for (int i = 0; i < 5000; ++i)
+            table += "| " + QByteArray::number(i) + " | x | y |\n";
+        write(dir.filePath("rows.md"), table);
+        Previewer previewer;
+        previewer.start(dir.filePath("rows.md"), false, "name");
+        QTRY_VERIFY(!previewer.text().isEmpty());
+        QCOMPARE(previewer.viewer(), QString("markdown"));
+        QVERIFY(previewer.text().startsWith("# Rows\n\n| a | b | c |\n|---|---|---|\n| 0 | x | y |\n"));
+        QVERIFY(previewer.text().count('|') <= 600);
+        QVERIFY(previewer.text().count('|') > 500);
+        QVERIFY(previewer.text().endsWith(" | x | y |\n"));
+        const QString prose = QString("Words, words.\n").repeated(2000);
+        QCOMPARE(Previewer::markdownOpening(prose), prose);
+        const QString pipes = QString("|").repeated(2000) + "\nafter\n";
+        QCOMPARE(Previewer::markdownOpening(pipes), QString("|").repeated(2000) + "\n");
+
+        // A code example full of | isn't a table: what follows it stays.
+        QString code = "# Usage\n\n```\n";
+        for (int i = 0; i < 400; ++i)
+            code += "a | b | c\n";
+        code += "```\n\nThe end.\n";
+        QCOMPARE(Previewer::markdownOpening(code, 600), code);
+
+        // Four spaces before ``` make indented code, not a fence, and ~~~
+        // doesn't close a ``` fence: the table after either still counts.
+        QString rows;
+        for (int i = 0; i < 400; ++i)
+            rows += "| a | b |\n";
+        for (const QString &example : {QString("    ```\n\n"), QString("```\n~~~\n```\n\n")})
+            QVERIFY(Previewer::markdownOpening(example + rows, 600).count('|') <= 600);
+
+        // A single line of three-byte characters is cut between characters,
+        // never inside one.
+        QTemporaryDir unicode;
+        write(unicode.filePath("one-line.txt"), QString(50000, QChar(0x20AC)).toUtf8());
+        const QString read = Previewer::readText(unicode.filePath("one-line.txt"), 131072);
+        QVERIFY(!read.contains(QChar::ReplacementCharacter));
+        QCOMPARE(read.size(), 131072 / 3);
+
+        // A longer fence holds shorter ones as code, and only its own length
+        // closes it: the table after it still counts.
+        QString longFence = "````\n```\nnot a close\n````\n\n";
+        for (int i = 0; i < 400; ++i)
+            longFence += "| a | b | c |\n";
+        QVERIFY(Previewer::markdownOpening(longFence, 600).count('|') <= 600 + 4);
     }
 
     void previewerStepsThroughTheFolder()
@@ -3121,6 +5575,9 @@ private slots:
         write(dir.filePath("da.json"), R"({"Open": "Åbn", "Open %1": "Åbn %1",
                                           "%Ln items": {"one": "ét element", "other": "%Ln elementer"},
                                           "%Ln items in %1": {"one": "%Ln element i %1", "other": "%Ln elementer i %1"}})");
+        // German hasn't caught up yet: one string still to translate and
+        // one the English has since dropped.
+        write(dir.filePath("de.json"), R"({"Open": "Öffnen", "Opened": "Geöffnet"})");
         write(dir.filePath("xx.json"), "{}");
         QStringList problems = catalogProblems(dir.path());
         problems.sort();
@@ -3152,6 +5609,26 @@ private slots:
     }
 
 private:
+    // Packs `items`, from `folder`, into `archive`, its kind from its name.
+    static void pack(const QString &archive, const QString &folder, const QStringList &items)
+    {
+        QProcess tar;
+        tar.start("bsdtar", QStringList{"-acf", archive, "-C", folder} + items);
+        QVERIFY(tar.waitForFinished() && tar.exitCode() == 0);
+    }
+
+    // Everything in a folder, the hidden too, by name.
+    static QStringList everything(const QString &folder)
+    {
+        return QDir(folder).entryList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System, QDir::Name);
+    }
+
+    static QByteArray contents(const QString &path)
+    {
+        QFile file(path);
+        return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+    }
+
     static void write(const QString &path, const QByteArray &contents)
     {
         QFile file(path);

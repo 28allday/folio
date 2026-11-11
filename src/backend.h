@@ -79,8 +79,9 @@ public:
     // what "Show in folder" asked for); empty means the first item.
     Q_INVOKABLE QString takeSelection();
     // The path as it's shown for editing (~ for home), going to a typed
-    // path (a folder, or a file to select in its folder; ~ works), and
-    // completing the last part of one to a folder name.
+    // path (a folder, or a file to select in its folder; ~ works; or a
+    // server's address, connecting to it), and completing the last part of
+    // one to a folder name.
     Q_INVOKABLE QString typedPath() const;
     Q_INVOKABLE bool goTyped(const QString &text);
     Q_INVOKABLE QString completePath(const QString &text) const;
@@ -91,6 +92,11 @@ public:
     Q_INVOKABLE void newWindow();
     // Keeps an open preview on the item selected in the grid.
     Q_INVOKABLE void followSelection(const QString &path);
+    // Omarchy's Super+Return opens a terminal in the focused window's working
+    // directory, so the process works in the folder this pane shows, from
+    // now on as it moves, until another pane asks for it. Views and servers
+    // aren't local folders and leave it where it was.
+    Q_INVOKABLE void keepWorkingDirectory();
 
     // Called for org.freedesktop.FileManager1: open a folder, or open the
     // folder holding a file and select it.
@@ -100,6 +106,9 @@ public:
     static QString expandTyped(const QString &text, const QString &home, const QString &current);
     static QString complete(const QString &text, const QString &home, const QString &current);
     static QString mountLabel(const QString &mountFolder);
+    // A server address (sftp://, smb://, ftp://, dav://, davs://) as GIO
+    // mounts it, or empty when the text isn't one.
+    static QString serverAddress(const QString &text);
 
 signals:
     void pathChanged();
@@ -123,9 +132,12 @@ private:
     void setBusy(const QString &busy);
     // Opening a plugin's item: a folder, a mount or a command.
     void openItem(const QString &path);
-    // Mounts `url` through GVfs and goes to its folder; a bare server lands
-    // in the folder at home's path on it when there is one.
+    // Mounts `url` through GVfs (a plugin's machine, or a server typed in
+    // the path bar) and goes where it points once it's mounted.
     void mount(const QString &url, const QString &name, bool verified);
+    // Goes to `folder` on a mount: a bare server's to the folder at home's
+    // path on it when there is one, a file's to its folder, selected.
+    void arrive(const QString &folder);
     // A plugin action finished: its busy text goes, and what it asks for
     // happens.
     void finish(int run, const Plugins::Result &result);
@@ -143,6 +155,8 @@ private:
     QString m_pendingSelection;
     Plugins *m_plugins = nullptr;
     Mounter m_mounter;
+    // What's being connected to, as the window names it, and whether it's
+    // a bare server, which lands in the matching home folder.
     QString m_mountName;
     bool m_mountBare = false;
     // The plugin actions running, each with its busy text, oldest first.
@@ -155,7 +169,10 @@ private:
     QVariantMap m_details;
     // Whose details they are (the path and its type, as a file can be
     // replaced by a folder of the same name), and the newest describe(),
-    // which a reading has to match to be shown.
+    // which a reading has to match to be shown, or even to start.
     QString m_described;
-    quint64 m_describing = 0;
+    std::shared_ptr<std::atomic<quint64>> m_describing = std::make_shared<std::atomic<quint64>>(0);
+    // The pane the working directory follows: the one used last.
+    static inline Backend *s_working = nullptr;
+    void moveWorkingDirectory();
 };
