@@ -7,6 +7,7 @@ Rectangle {
     id: bar
 
     property bool previewVisible: true
+    property bool previewFits: true
     property string viewMode: "grid"
     // Ctrl+L: the path as text to edit. Enter goes there, Escape cancels,
     // Tab completes a folder name.
@@ -189,6 +190,8 @@ Rectangle {
         SortMenu { id: sortMenu }
         IconButton {
             glyph: "preview"
+            // Only where the window has room to show them.
+            visible: bar.previewFits
             text: qsTr("Details")
             active: bar.previewVisible
             onClicked: bar.togglePreview()

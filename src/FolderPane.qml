@@ -358,6 +358,7 @@ FocusScope {
         width: pane.barLeft + pane.width + pane.barExtension
         onEditDone: pane.focusView()
         previewVisible: pane.host ? pane.host.previewVisible : true
+        previewFits: pane.host ? pane.host.detailsFit : true
         viewMode: pane.viewMode
         closable: pane.closable
         onTogglePreview: if (pane.host) pane.host.previewVisible = !pane.host.previewVisible

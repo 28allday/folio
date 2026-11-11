@@ -39,6 +39,8 @@ ApplicationWindow {
     readonly property bool typing: !!activePane && activePane.typing
     // The rightmost pane's path bar reaches over the details column.
     readonly property int detailsWidth: details.visible ? details.width : 0
+    // Whether the window is wide enough for the details column at all.
+    readonly property bool detailsFit: width >= (split ? 1400 : 960)
 
     // Remembers the view between launches (~/.config/folio/folio.conf).
     Settings {
@@ -145,7 +147,7 @@ ApplicationWindow {
 
             PreviewPane {
                 id: details
-                visible: win.previewVisible && win.width >= (win.split ? 1400 : 960)
+                visible: win.previewVisible && win.detailsFit
                 Layout.topMargin: parent.parent.barHeight
                 Layout.preferredWidth: 300
                 Layout.fillHeight: true
