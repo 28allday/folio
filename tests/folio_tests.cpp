@@ -681,10 +681,19 @@ private slots:
         const QStringList chosen{from.filePath("link"), from.filePath("link/inner/a.txt"),
                                  from.filePath("box"), from.filePath("box/through/inner/a.txt")};
         QCOMPARE(FileOps::transfer(chosen, to.path(), FileOps::Copy, &error),
-                 QStringList({"link", "a.txt", "box", "a (copy).txt"}));
+                 QStringList({"a.txt", "a (copy).txt", "link", "box"}));
         QVERIFY2(error.isEmpty(), qPrintable(error));
         QVERIFY(QFileInfo(to.filePath("link")).isSymLink());
         QVERIFY(QFileInfo(to.filePath("box/through")).isSymLink());
+
+        // Moved, what's beyond the link goes before the link does, while
+        // it can still be reached through it.
+        QTemporaryDir moves;
+        QCOMPARE(FileOps::transfer({from.filePath("link"), from.filePath("link/inner/a.txt")}, moves.path(), FileOps::Move, &error),
+                 QStringList({"a.txt", "link"}));
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QVERIFY(QFile::exists(moves.filePath("a.txt")));
+        QVERIFY(QFileInfo(moves.filePath("link")).isSymLink());
     }
 
     void fileOpsRestoreAcrossDrivesLeavesWhatArrivesMeanwhile()

@@ -165,30 +165,32 @@ bool FileOps::copyRecursively(const QString &from, const QString &to, QString *e
 // be deleted twice. Each path looks for the folders above it among the
 // chosen, rather than at every other path, which for a Select All of
 // thousands took minutes. A link on the way up is copied as a link, not
-// gone into, so what was chosen beyond it stays chosen.
+// gone into, so what was chosen beyond it stays chosen, and goes first:
+// once the link had moved or gone to the trash, it would be out of reach.
 static QStringList outermost(const QStringList &paths) {
     QSet<QString> chosen;
     for (const QString &path : paths)
         chosen.insert(QDir::cleanPath(path));
-    const auto within = [&](const QString &path) {
+    QStringList beyondLinks, outer;
+    for (const QString &path : paths) {
         const QString clean = QDir::cleanPath(path);
-        for (qsizetype slash = clean.lastIndexOf('/'); slash > 0; slash = clean.lastIndexOf('/', slash - 1)) {
+        bool inside = false, beyondLink = false;
+        for (qsizetype slash = clean.lastIndexOf('/'); slash > 0 && !inside && !beyondLink;
+             slash = clean.lastIndexOf('/', slash - 1)) {
             if (!chosen.contains(clean.left(slash)))
                 continue;
             // Only now, for the few that have a chosen folder above them,
             // is each step between looked at on disk.
-            for (qsizetype step = clean.lastIndexOf('/'); step >= slash; step = clean.lastIndexOf('/', step - 1))
-                if (QFileInfo(clean.left(step)).isSymLink())
-                    return false;
-            return true;
+            for (qsizetype step = clean.lastIndexOf('/'); step >= slash && !beyondLink; step = clean.lastIndexOf('/', step - 1))
+                beyondLink = QFileInfo(clean.left(step)).isSymLink();
+            inside = !beyondLink;
         }
-        return false;
-    };
-    QStringList outer;
-    for (const QString &path : paths)
-        if (!within(path))
+        if (beyondLink)
+            beyondLinks << path;
+        else if (!inside)
             outer << path;
-    return outer;
+    }
+    return beyondLinks + outer;
 }
 
 // Whether `folder` is the folder at `path` or inside it, wherever links lead,
