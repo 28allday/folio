@@ -307,6 +307,12 @@ bool FileOps::copyRecursively(const QString &from, const QString &to, QString *e
         if (job && known && step.inode != 0)
             job->renumbered << Job::Renumbered{was.st_dev, was.st_ino, step.device, step.inode};
     };
+    // An original that couldn't go leaves its copy as a copy, which undo
+    // sends to the trash, so the folder made for it can go too.
+    const auto left = [&] {
+        if (moved)
+            *moved << identified({true, to, {}});
+    };
     if (info.isSymLink()) {
         // Links are copied as links, not followed, and as written: one
         // relative to its folder points into the copy, not at the original.
@@ -316,8 +322,8 @@ bool FileOps::copyRecursively(const QString &from, const QString &to, QString *e
         }
         if (made)
             *made = true;
-        if (move && QFile::remove(from))
-            went();
+        if (move)
+            QFile::remove(from) ? went() : left();
         return true;
     }
     if (!info.isDir()) {
@@ -329,8 +335,8 @@ bool FileOps::copyRecursively(const QString &from, const QString &to, QString *e
         }
         if (made)
             *made = true;
-        if (move && QFile::remove(from))
-            went();
+        if (move)
+            QFile::remove(from) ? went() : left();
         return true;
     }
     // A folder that can't be read would list as empty and be copied empty.
@@ -1161,17 +1167,21 @@ void FileOps::extract(const QStringList &archives) {
             if (!result.failures.isEmpty())
                 emit failed(result.failures.join(' '));
             // What each archive gave goes in beside it, a name that's taken
-            // asked about first, as a paste's is.
+            // asked about first, as a paste's is: taken already, or by what
+            // an archive before it gives.
             QList<std::pair<QString, QString>> items, clashing;
             QStringList from;
+            QSet<QString> placed;
             for (qsizetype i = 0; i < result.made.size(); ++i) {
                 if (result.made[i].isEmpty())
                     continue;
                 const QFileInfo archive(archives[i]);
                 items << std::pair{result.made[i], archive.absolutePath()};
                 from << archive.fileName();
-                if (taken(archive.absoluteDir().filePath(QFileInfo(result.made[i]).fileName())))
+                const QString there = archive.absoluteDir().filePath(QFileInfo(result.made[i]).fileName());
+                if (taken(there) || placed.contains(there))
                     clashing << items.last();
+                placed.insert(there);
             }
             // Placed off the UI thread too, since merging into a folder
             // that's there goes through all of it, and it can be stopped.
@@ -1841,6 +1851,17 @@ static bool flip(FileOps::Step &step, QString *error, FileOps::Job *job, QList<F
         return true;
     }
     if (step.other.isEmpty()) {
+        // A copy in a folder copied read-only, as its original was, can go
+        // only while its folder lets it, which then gets its permissions
+        // back.
+        const QByteArray folder = QFile::encodeName(QFileInfo(step.path).absolutePath());
+        struct stat holder;
+        const bool opened = ::access(folder.constData(), W_OK) != 0 && ::stat(folder.constData(), &holder) == 0
+                            && ::chmod(folder.constData(), (holder.st_mode & 07777) | S_IWUSR) == 0;
+        const auto close = qScopeGuard([&] {
+            if (opened)
+                ::chmod(folder.constData(), holder.st_mode & 07777);
+        });
         QString why;
         step.other = FileOps::trashOne(step.path, &why);
         if (step.other.isEmpty())

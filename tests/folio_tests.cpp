@@ -2419,6 +2419,29 @@ private slots:
         QCOMPARE(everything(dir.path()), QStringList({"notes", "notes (copy)", "notes.zip"}));
     }
 
+    void extractAsksAboutNamesTwoArchivesShare()
+    {
+        // Two archives each giving readme.txt, a name that's free: the
+        // second is asked about, not quietly kept beside.
+        if (QStandardPaths::findExecutable("bsdtar").isEmpty())
+            QSKIP("Extracting needs bsdtar.");
+        QTemporaryDir data, dir, one, two;
+        const auto restore = dataHomeAt(data.path());
+        write(one.filePath("readme.txt"), "one");
+        write(two.filePath("readme.txt"), "two");
+        pack(dir.filePath("one.zip"), one.path(), {"readme.txt"});
+        pack(dir.filePath("two.zip"), two.path(), {"readme.txt"});
+        FileOps ops;
+        QSignalSpy clash(&ops, &FileOps::clashChanged);
+        ops.extract({dir.filePath("one.zip"), dir.filePath("two.zip")});
+        QVERIFY(clash.wait(5000));
+        QCOMPARE(ops.clash().value("name").toString(), QString("readme.txt"));
+        ops.answerClash("skip", true);
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(everything(dir.path()), QStringList({"one.zip", "readme.txt", "two.zip"}));
+        QCOMPARE(contents(dir.filePath("readme.txt")), QByteArray("one"));
+    }
+
     void extractPlacesInTheBackgroundAndCanStop()
     {
         // Merging what's extracted into a folder that's there goes through
@@ -2706,6 +2729,44 @@ private slots:
         QCOMPARE(failed.count(), 0);
         QCOMPARE(contents(other->filePath("box/a.txt")), QByteArray("a"));
         QVERIFY(!QFileInfo::exists(from.filePath("box/a.txt")));
+    }
+
+    void undoAMoveAcrossDrivesWhoseOriginalsStayed()
+    {
+        // A folder that can be read but not changed is copied, its files
+        // staying where they are. Undo sends those copies to the trash, so
+        // the folders made for them can go too.
+        if (geteuid() == 0)
+            QSKIP("Root can change every folder.");
+        const auto other = elsewhere();
+        if (!other)
+            QSKIP("Needs a second drive.");
+        // The trash is on the drive the copies are on, as a USB stick's is.
+        QTemporaryDir from;
+        const auto restore = dataHomeAt(other->filePath(".data"));
+        FileOps::forgetHistory();
+        QDir(from.path()).mkpath("box/locked");
+        write(from.filePath("box/a.txt"), "a");
+        write(from.filePath("box/locked/f.txt"), "f");
+        QVERIFY(QFile::setPermissions(from.filePath("box/locked"), QFile::ReadOwner | QFile::ExeOwner));
+        const auto unlock = qScopeGuard([&] {
+            QFile::setPermissions(from.filePath("box/locked"), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+        });
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.cut({from.filePath("box")});
+        ops.paste(other->path());
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(contents(other->filePath("box/locked/f.txt")), QByteArray("f"));
+        QCOMPARE(contents(from.filePath("box/locked/f.txt")), QByteArray("f"));
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(contents(from.filePath("box/a.txt")), QByteArray("a"));
+        QCOMPARE(contents(from.filePath("box/locked/f.txt")), QByteArray("f"));
+        QVERIFY(!QFileInfo::exists(other->filePath("box")));
+        QCOMPARE(contents(other->filePath(".data/Trash/files/f.txt")), QByteArray("f"));
     }
 
     void undoStoppedAcrossDrivesCanBeDoneAgain()
