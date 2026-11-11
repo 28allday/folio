@@ -2173,6 +2173,226 @@ private slots:
         QCOMPARE(notice.last().first().toString(), QString("Redid extracting notes.zip."));
     }
 
+    void extractKeepsAnArchiveOfDotsToItsFolder()
+    {
+        // "...tar" without its extension is "..": its items go in a folder
+        // of its own, never into the folder above the archive's.
+        if (QStandardPaths::findExecutable("bsdtar").isEmpty())
+            QSKIP("Extracting needs bsdtar.");
+        QTemporaryDir dir, source;
+        write(source.filePath("a.txt"), "a");
+        write(source.filePath("b.txt"), "b");
+        QDir(dir.path()).mkdir("sub");
+        pack(dir.filePath("sub/...tar"), source.path(), {"a.txt", "b.txt"});
+        FileOps ops;
+        QSignalSpy done(&ops, &FileOps::done);
+        ops.extract({dir.filePath("sub/...tar")});
+        QVERIFY(done.wait(5000));
+        QCOMPARE(everything(dir.path()), QStringList({"sub"}));
+        QCOMPARE(everything(dir.filePath("sub")), QStringList({"...tar", "...tar contents"}));
+        QCOMPARE(contents(dir.filePath("sub/...tar contents/b.txt")), QByteArray("b"));
+    }
+
+    void undoAndRedoAMergingExtract()
+    {
+        // Merged into a folder that's there, an extraction is undone like
+        // any other: what it brought goes, and what it replaced is back.
+        if (QStandardPaths::findExecutable("bsdtar").isEmpty())
+            QSKIP("Extracting needs bsdtar.");
+        QTemporaryDir data, dir, source;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::forgetHistory();
+        write(source.filePath("a.txt"), "new");
+        write(source.filePath("b.txt"), "new");
+        pack(dir.filePath("notes.zip"), source.path(), {"a.txt", "b.txt"});
+        QDir(dir.path()).mkdir("notes");
+        write(dir.filePath("notes/a.txt"), "old");
+        FileOps ops;
+        QSignalSpy clash(&ops, &FileOps::clashChanged), failed(&ops, &FileOps::failed);
+        ops.extract({dir.filePath("notes.zip")});
+        QVERIFY(clash.wait(5000));
+        ops.answerClash("replace", false);
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(dir.filePath("notes/b.txt")), QByteArray("new"));
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(everything(dir.filePath("notes")), QStringList({"a.txt"}));
+        QCOMPARE(contents(dir.filePath("notes/a.txt")), QByteArray("old"));
+        ops.redo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(contents(dir.filePath("notes/a.txt")), QByteArray("new"));
+        QCOMPARE(contents(dir.filePath("notes/b.txt")), QByteArray("new"));
+    }
+
+    void fileOpsCopyIsNeverOpenToOthersWhileCopying()
+    {
+        // A private file's copy is private from the start, not only once
+        // it's all there. Copying a pipe keeps the copy partway.
+        const mode_t mask = umask(022);
+        const auto unmask = qScopeGuard([mask] { umask(mask); });
+        QTemporaryDir from, to;
+        const QByteArray pipe = QFile::encodeName(from.filePath("secret"));
+        QVERIFY(mkfifo(pipe.constData(), 0600) == 0);
+        FileOps::Job job;
+        QString error;
+        QFuture<bool> copied = QtConcurrent::run(
+            [&] { return FileOps::copyRecursively(from.filePath("secret"), to.filePath("secret"), &error, false, &job); });
+        int writer = -1;
+        const auto finish = qScopeGuard([&] {
+            if (writer >= 0)
+                close(writer);
+            copied.waitForFinished();
+        });
+        QVERIFY(QTest::qWaitFor([&] { return (writer = open(pipe.constData(), O_WRONLY | O_NONBLOCK)) >= 0; }));
+        QCOMPARE(::write(writer, "partial", 7), 7);
+        QTRY_VERIFY(job.bytes >= 7);
+        QCOMPARE(QFileInfo(to.filePath("secret")).permissions() & (QFile::ReadGroup | QFile::ReadOther),
+                 QFile::Permissions());
+        close(std::exchange(writer, -1));
+        QVERIFY(copied.result());
+    }
+
+    void undoACancelledMoveAcrossDrives()
+    {
+        // Stopped partway across drives, what moved is only where it went:
+        // undo brings it back, and takes away the folder made for it.
+        const auto other = elsewhere();
+        if (!other)
+            QSKIP("Needs a second drive.");
+        QTemporaryDir data, from;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::forgetHistory();
+        QDir(from.path()).mkpath("box/sub");
+        write(from.filePath("box/a.txt"), "a");
+        write(from.filePath("box/sub/b.txt"), "b");
+        write(from.filePath("box/z.txt"), "z");
+        const QByteArray pipe = QFile::encodeName(from.filePath("box/pipe"));
+        QVERIFY(mkfifo(pipe.constData(), 0600) == 0);
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.cut({from.filePath("box")});
+        ops.paste(other->path());
+        int writer = -1;
+        const auto finish = qScopeGuard([&] {
+            if (writer >= 0)
+                close(writer);
+        });
+        QVERIFY(QTest::qWaitFor([&] { return (writer = open(pipe.constData(), O_WRONLY | O_NONBLOCK)) >= 0; }));
+        ops.cancel();
+        QCOMPARE(::write(writer, "x", 1), 1);
+        close(std::exchange(writer, -1));
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(other->filePath("box/a.txt")), QByteArray("a"));
+        QVERIFY(!QFileInfo::exists(from.filePath("box/a.txt")));
+        QCOMPARE(ops.undoName(), QString("Undo Move"));
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(contents(from.filePath("box/a.txt")), QByteArray("a"));
+        QCOMPARE(contents(from.filePath("box/sub/b.txt")), QByteArray("b"));
+        QCOMPARE(contents(from.filePath("box/z.txt")), QByteArray("z"));
+        QVERIFY(!QFileInfo::exists(other->filePath("box")));
+        ops.redo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(contents(other->filePath("box/a.txt")), QByteArray("a"));
+        QVERIFY(!QFileInfo::exists(from.filePath("box/a.txt")));
+    }
+
+    void undoFollowsAFolderMadeAgain()
+    {
+        // Undoing a merge makes the folder it removed again, under another
+        // inode; the rename before it is still undone.
+        QTemporaryDir data, from, to;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::forgetHistory();
+        QDir(from.path()).mkdir("photos");
+        QDir(to.path()).mkdir("album");
+        write(from.filePath("photos/a.jpg"), "a");
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        QCOMPARE(ops.rename(from.filePath("photos"), "album"), QString());
+        ops.cut({from.filePath("album")});
+        ops.paste(to.path());
+        ops.answerClash("replace", false);
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QVERIFY(!QFileInfo::exists(from.filePath("album")));
+        for (int i = 0; i < 2; ++i) {
+            ops.undo();
+            QTRY_VERIFY(ops.busy().isEmpty());
+        }
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(contents(from.filePath("photos/a.jpg")), QByteArray("a"));
+        for (int i = 0; i < 2; ++i) {
+            ops.redo();
+            QTRY_VERIFY(ops.busy().isEmpty());
+        }
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(contents(to.filePath("album/a.jpg")), QByteArray("a"));
+    }
+
+    void undoFollowsAMoveAcrossDrives()
+    {
+        // Moved across drives and back, a file is made again each time,
+        // under another inode; what was done to it before is still undone.
+        const auto other = elsewhere();
+        if (!other)
+            QSKIP("Needs a second drive.");
+        QTemporaryDir data, dir;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::forgetHistory();
+        QDir(dir.path()).mkdir("box");
+        write(dir.filePath("box/a.txt"), "a");
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        QCOMPARE(ops.rename(dir.filePath("box/a.txt"), "b.txt"), QString());
+        ops.cut({dir.filePath("box")});
+        ops.paste(other->path());
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(other->filePath("box/b.txt")), QByteArray("a"));
+        for (int i = 0; i < 2; ++i) {
+            ops.undo();
+            QTRY_VERIFY(ops.busy().isEmpty());
+        }
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(contents(dir.filePath("box/a.txt")), QByteArray("a"));
+        for (int i = 0; i < 2; ++i) {
+            ops.redo();
+            QTRY_VERIFY(ops.busy().isEmpty());
+        }
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(contents(other->filePath("box/b.txt")), QByteArray("a"));
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(contents(dir.filePath("box/a.txt")), QByteArray("a"));
+    }
+
+    void trashFindsWhatItJustTrashed()
+    {
+        // Trashed twice in one second from one place, the two tie on their
+        // time: the one just trashed is the one that wasn't there before.
+        QTemporaryDir data;
+        const auto restore = dataHomeAt(data.path());
+        const QString trash = data.filePath("Trash");
+        QDir().mkpath(trash + "/files");
+        QDir().mkpath(trash + "/info");
+        const QString original = data.filePath("docs/a.txt");
+        const QByteArray note = "[Trash Info]\nPath=" + QUrl::toPercentEncoding(original, "/")
+                                + "\nDeletionDate=2026-11-10T12:00:00\n";
+        write(trash + "/files/a.txt.2", "first");
+        write(trash + "/info/a.txt.2.trashinfo", note);
+        const QStringList before = FileOps::trashedFrom(original);
+        QCOMPARE(before, QStringList({trash + "/files/a.txt.2"}));
+        write(trash + "/files/a.txt.3", "second");
+        write(trash + "/info/a.txt.3.trashinfo", note);
+        QCOMPARE(FileOps::trashedSince(original, before), trash + "/files/a.txt.3");
+    }
+
     void kindsFromMimeTypes()
     {
         QCOMPARE(FolderModel::kindForMime("application/pdf"), QString("pdf"));

@@ -44,6 +44,12 @@ public:
         // A single folder counts what's in it as its items, set by the
         // worker once it has listed it.
         QString countIn;
+        // Items moved across drives, made again there under another inode:
+        // the drive and inode each had, and has, for undo to follow them.
+        struct Renumbered {
+            quint64 device, inode, nowDevice, nowInode;
+        };
+        QList<Renumbered> renumbered;
     };
     // One change work made, which undo makes backwards and redo forwards
     // again. A move: the item is at `path` and came from `other`. Into or
@@ -59,7 +65,9 @@ public:
         uint type = 0;
         // A folder a merge emptied and removed (`folder`): undo makes it
         // again at `path` with the permissions and modified time it had,
-        // and redo removes it. It's `gone` while removed.
+        // and redo removes it. It's `gone` while removed, and keeps the
+        // drive and inode it had. One a move stopped partway made, which
+        // undo removes once what arrived in it is back, starts there.
         bool folder = false, gone = false;
         uint mode = 0;
         timespec modified{};
@@ -205,9 +213,10 @@ public:
     // can't be removed is left where it is.
     // With a job, it counts the bytes it copies and stops when asked; a file
     // stopped partway is removed. `made` says whether it made anything at
-    // `to`, even when it failed after.
+    // `to`, even when it failed after. Moving, `moved` gets the steps that
+    // undo what did move when not all of it did.
     static bool copyRecursively(const QString &from, const QString &to, QString *error, bool move = false,
-                                Job *job = nullptr, bool *made = nullptr);
+                                Job *job = nullptr, bool *made = nullptr, QList<Step> *moved = nullptr);
     // The archive name for compressing these into `folder`: "name.zip" for
     // one item, "Archive.zip" for several; never one that exists.
     static QString archiveName(const QStringList &paths, const QString &folder);
@@ -230,6 +239,10 @@ public:
     // Moves one item to the trash; returns where it is there, or empty with
     // `error` saying why, or with no error when it went but can't be found.
     static QString trashOne(const QString &path, QString *error);
+    // The items in the trash that came from `original`, and of them, which
+    // newest isn't among `before`: where GIO just put it.
+    static QStringList trashedFrom(const QString &original);
+    static QString trashedSince(const QString &original, const QStringList &before);
     static bool deleteTrashed(const QString &trashedPath);
     static int emptyTrashDir(const QString &trashDir, Job *job = nullptr);
     // How transfer() takes the paths: copied, moved, or as a drop takes
@@ -293,6 +306,9 @@ private:
                        const QHash<QString, Choice> &choices = {}, bool duplicating = false);
     // Remembers a change for undo, forgetting what was undone before it.
     static void remember(const Change &change);
+    // Has every change remembered follow the items `job` made again under
+    // another inode.
+    static void renumber(const Job &job);
     // Undoes or redoes the latest change, once it's checked that
     // everything is still where the change left it.
     void step(bool undoing);

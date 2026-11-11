@@ -219,10 +219,12 @@ static bool writeAll(int fd, const char *data, qint64 size) {
 // is then removed), counting what's copied. copy_file_range lets the kernel
 // do the copying, which on btrfs shares the blocks rather than copying them;
 // what it can't take (a pipe, some drives) is read and written instead. Like
-// QFile::copy, it never overwrites, and the copy gets the file's permissions.
+// QFile::copy, it never overwrites, and the copy gets the file's permissions:
+// it's made with them, so a private file is never open to others while it's
+// copied.
 static bool copyFile(const QString &from, const QString &to, FileOps::Job *job) {
     QFile in(from), out(to);
-    if (!in.open(QIODevice::ReadOnly) || !out.open(QIODevice::WriteOnly | QIODevice::NewOnly))
+    if (!in.open(QIODevice::ReadOnly) || !out.open(QIODevice::WriteOnly | QIODevice::NewOnly, in.permissions()))
         return false;
     bool kernel = true, ok = true;
     QByteArray buffer;
@@ -266,11 +268,24 @@ static bool copyFile(const QString &from, const QString &to, FileOps::Job *job) 
     return ok;
 }
 
+static FileOps::Step identified(FileOps::Step step);
+
 bool FileOps::copyRecursively(const QString &from, const QString &to, QString *error, bool move, Job *job,
-                              bool *made) {
+                              bool *made, QList<Step> *moved) {
     const QFileInfo info(from);
     if (made)
         *made = false;
+    // Moving, the original once it's gone is the item at `to`, made again
+    // under another inode, which undo follows.
+    struct stat was;
+    const bool known = move && ::lstat(QFile::encodeName(from).constData(), &was) == 0;
+    const auto went = [&] {
+        const Step step = identified({false, to, from});
+        if (moved)
+            *moved << step;
+        if (job && known && step.inode != 0)
+            job->renumbered << Job::Renumbered{was.st_dev, was.st_ino, step.device, step.inode};
+    };
     if (info.isSymLink()) {
         // Links are copied as links, not followed, and as written: one
         // relative to its folder points into the copy, not at the original.
@@ -280,8 +295,8 @@ bool FileOps::copyRecursively(const QString &from, const QString &to, QString *e
         }
         if (made)
             *made = true;
-        if (move)
-            QFile::remove(from);
+        if (move && QFile::remove(from))
+            went();
         return true;
     }
     if (!info.isDir()) {
@@ -293,8 +308,8 @@ bool FileOps::copyRecursively(const QString &from, const QString &to, QString *e
         }
         if (made)
             *made = true;
-        if (move)
-            QFile::remove(from);
+        if (move && QFile::remove(from))
+            went();
         return true;
     }
     // A folder that can't be read would list as empty and be copied empty.
@@ -312,6 +327,21 @@ bool FileOps::copyRecursively(const QString &from, const QString &to, QString *e
     }
     if (made)
         *made = true;
+    // Moving, what's moved in it is undone item by item when it doesn't all
+    // move, and the folder made for them goes once they're back.
+    QList<Step> inside;
+    const auto partly = [&] {
+        if (!moved)
+            return;
+        Step folder{false, to, {}};
+        folder.folder = true;
+        struct stat now;
+        if (::lstat(QFile::encodeName(to).constData(), &now) == 0) {
+            folder.mode = now.st_mode;
+            folder.modified = now.st_mtim;
+        }
+        *moved << identified(folder) << inside;
+    };
     const QDir source(from);
     const auto entries = source.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System);
     // The job that counts this folder's items, if this is the folder it
@@ -320,18 +350,24 @@ bool FileOps::copyRecursively(const QString &from, const QString &to, QString *e
     if (counter)
         counter->total = entries.size();
     for (const QFileInfo &entry : entries) {
-        if (job && job->cancelled)
+        if ((job && job->cancelled)
+            || !copyRecursively(entry.filePath(), QDir(to).filePath(entry.fileName()), error, move, job, nullptr,
+                                moved ? &inside : nullptr)) {
+            partly();
             return false;
-        if (!copyRecursively(entry.filePath(), QDir(to).filePath(entry.fileName()), error, move, job))
-            return false;
+        }
         if (counter)
             counter->done.fetch_add(1);
     }
     QFile::setPermissions(to, info.permissions());
     // Only once it's empty: what turned up in it while the rest moved was
     // never copied, so it stays where it is, and the folder with it.
-    if (move)
-        QDir().rmdir(from);
+    if (move) {
+        if (QDir().rmdir(from))
+            went();
+        else
+            partly();
+    }
     return true;
 }
 
@@ -399,16 +435,16 @@ static bool renameNoReplace(const QString &from, const QString &to) {
 // drives a move is a copy that removes each original once it's copied. A
 // link is made again rather than renamed, which across drives would copy
 // what it leads to. `made` says whether anything arrived at `to`, even when
-// it didn't all.
+// it didn't all, and `moved` the steps that undo what did.
 static bool put(const QString &from, const QString &to, bool move, QString *error, FileOps::Job *job,
-                bool *made = nullptr) {
+                bool *made = nullptr, QList<FileOps::Step> *moved = nullptr) {
     const QFileInfo info(from);
     if (move && !info.isSymLink() && renameNoReplace(from, to)) {
         if (made)
             *made = true;
         return true;
     }
-    if (!FileOps::copyRecursively(from, to, error, move, job, made)) {
+    if (!FileOps::copyRecursively(from, to, error, move, job, made, moved)) {
         // Each original went as it was copied, so what arrived is now the
         // only copy of it: it's said to be only part.
         if (move && taken(to) && !error->isEmpty())
@@ -456,16 +492,19 @@ static bool sameAsLeft(const FileOps::Step &step, const QString &path) {
 }
 
 // Notes what putting `from` at `to` changed, for undo: a move that finished
-// can be moved back, and a copy that made something (even one that stopped
-// partway) can go to the trash. What was at `to` already, and stayed when
-// the copy failed, was never the copy's.
+// can be moved back, as can what moved of one that didn't (`moved`), and a
+// copy that made something (even one that stopped partway) can go to the
+// trash. What was at `to` already, and stayed when the copy failed, was
+// never the copy's.
 static void note(QList<FileOps::Step> *steps, const QString &from, const QString &to, bool move, bool finished,
-                 bool made) {
+                 bool made, const QList<FileOps::Step> &moved) {
     if (!steps)
         return;
     if (move && finished)
         *steps << identified({false, to, from});
-    else if (!move && made)
+    else if (move)
+        *steps << moved;
+    else if (made)
         *steps << identified({true, to, {}});
 }
 
@@ -488,8 +527,9 @@ static bool putReplacing(const QString &from, const QString &to, bool move, bool
             *steps << identified({true, to, trashed});
     }
     bool arrived = false;
-    const bool finished = put(from, to, move, error, job, &arrived);
-    note(steps, from, to, move, finished, arrived);
+    QList<FileOps::Step> moved;
+    const bool finished = put(from, to, move, error, job, &arrived, &moved);
+    note(steps, from, to, move, finished, arrived, moved);
     if (made)
         *made = arrived;
     if (!finished && !trashed.isEmpty() && !taken(to)) {
@@ -531,6 +571,9 @@ static bool merge(const QString &from, const QString &to, bool move, QString *er
         removed.folder = removed.gone = true;
         removed.mode = before.st_mode;
         removed.modified = before.st_mtim;
+        removed.device = before.st_dev;
+        removed.inode = before.st_ino;
+        removed.type = before.st_mode & S_IFMT;
         *steps << removed;
     }
     return true;
@@ -724,6 +767,7 @@ bool FileOps::inBackground(const std::function<QString(const Job &)> &label, Wor
         m_job.reset();
         release();
         setBusy({});
+        renumber(*job);
         done(watcher->result(), *job);
     });
     watcher->setFuture(QtConcurrent::run([job, work = std::move(work)]() mutable { return work(*job); }));
@@ -977,7 +1021,11 @@ static QString unpack(const QString &archive, const QString &into, FileOps::Job 
                       QString *error) {
     const QString name = QFileInfo(archive).fileName();
     const int dot = FileOps::extensionStart(name, false);
-    const QString folder = QDir(into).filePath(dot > 0 ? name.left(dot) : name);
+    // "...tar" would leave "..", the folder beside the archive.
+    QString base = dot > 0 ? name.left(dot) : name;
+    if (base == "." || base == "..")
+        base = FileOps::tr("%1 contents").arg(name);
+    const QString folder = QDir(into).filePath(base);
     QDir().mkdir(folder);
     QProcess bsdtar;
     bsdtar.setProcessChannelMode(QProcess::MergedChannels);
@@ -1117,10 +1165,13 @@ void FileOps::extract(const QStringList &archives) {
                         return result;
                     },
                     [this, from, hidden, name, count](const Outcome &result, const Job &job) {
-                        // Moved out of its hidden folder, what was extracted
-                        // is new where it is now: undo sends it to the
-                        // trash, as it does a copy.
+                        // The folders a merge emptied were the hidden ones'
+                        // own, and went with them: there's nothing to make
+                        // again. Moved out of its hidden folder, what was
+                        // extracted is new where it is now: undo sends it to
+                        // the trash, as it does a copy.
                         QList<Step> steps = result.steps;
+                        steps.removeIf([](const Step &step) { return step.folder; });
                         for (Step &step : steps)
                             if (!step.trash) {
                                 step.trash = true;
@@ -1229,22 +1280,27 @@ void FileOps::trash(const QStringList &paths) {
         });
 }
 
-// Where GIO put `original` in a trash: the newest item whose note says it
-// came from there.
-static QString findTrashed(const QString &original) {
+QStringList FileOps::trashedFrom(const QString &original) {
     const QString name = QFileInfo(original).fileName();
+    QStringList found;
+    for (const QString &dir : trashDirs())
+        for (const QString &note : QDir(dir + "/info").entryList(QDir::Files | QDir::Hidden))
+            if (note.startsWith(name) && note.endsWith(".trashinfo")
+                && originalPath(dir + "/files/" + note.chopped(10)) == original)
+                found << dir + "/files/" + note.chopped(10);
+    return found;
+}
+
+// Deletion times count only seconds, so two trashed in one can tie: what
+// was there before isn't it, whatever its time.
+QString FileOps::trashedSince(const QString &original, const QStringList &before) {
     QString found;
     QDateTime newest;
-    for (const QString &dir : FileOps::trashDirs()) {
-        for (const QString &note : QDir(dir + "/info").entryList(QDir::Files | QDir::Hidden)) {
-            if (!note.startsWith(name) || !note.endsWith(".trashinfo"))
-                continue;
-            const QString item = dir + "/files/" + note.chopped(10);
-            const QDateTime when = FileOps::deletedAt(item);
-            if (FileOps::originalPath(item) == original && (found.isEmpty() || when > newest)) {
-                found = item;
-                newest = when;
-            }
+    for (const QString &item : trashedFrom(original)) {
+        const QDateTime when = deletedAt(item);
+        if (!before.contains(item) && (found.isEmpty() || when > newest)) {
+            found = item;
+            newest = when;
         }
     }
     return found;
@@ -1292,6 +1348,7 @@ QString FileOps::trashOne(const QString &path, QString *error) {
             }
         }
     }
+    const QStringList before = trashedFrom(item.absoluteFilePath());
     GFile *file = g_file_new_for_path(QFile::encodeName(path).constData());
     GError *problem = nullptr;
     const bool trashed = g_file_trash(file, nullptr, &problem);
@@ -1302,7 +1359,7 @@ QString FileOps::trashOne(const QString &path, QString *error) {
             g_error_free(problem);
         return {};
     }
-    return findTrashed(item.absoluteFilePath());
+    return trashedSince(item.absoluteFilePath(), before);
 }
 
 QString FileOps::homeTrash() {
@@ -1604,6 +1661,21 @@ void FileOps::remember(const Change &change) {
     tellEveryone();
 }
 
+void FileOps::renumber(const Job &job) {
+    if (job.renumbered.isEmpty())
+        return;
+    QHash<std::pair<quint64, quint64>, std::pair<quint64, quint64>> now;
+    for (const Job::Renumbered &item : job.renumbered)
+        now.insert({item.device, item.inode}, {item.nowDevice, item.nowInode});
+    for (QList<Change> *history : {&s_undo, &s_redo})
+        for (Change &change : *history)
+            for (Step &step : change.steps)
+                if (const auto it = now.constFind({step.device, step.inode}); it != now.cend()) {
+                    step.device = it->first;
+                    step.inode = it->second;
+                }
+}
+
 void FileOps::forgetHistory() {
     s_undo.clear();
     s_redo.clear();
@@ -1722,8 +1794,14 @@ static bool flip(FileOps::Step &step, QString *error, FileOps::Job *job) {
             *error = FileOps::tr("Couldn't remove %1.").arg(name);
             return false;
         }
+        // Removed, it keeps the inode it had; made again, it has another.
         step.gone = !step.gone;
-        step = identified(step);
+        if (!step.gone) {
+            const FileOps::Step was = step;
+            step = identified(step);
+            if (job && was.inode != 0 && step.inode != 0)
+                job->renumbered << FileOps::Job::Renumbered{was.device, was.inode, step.device, step.inode};
+        }
         return true;
     }
     if (!step.trash) {
