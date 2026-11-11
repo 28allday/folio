@@ -216,7 +216,7 @@ QVariantMap Disks::formatOptions(const QString &type, const QString &label) {
     QVariantMap options{{"label", label}};
     // A Linux filesystem keeps owners, and a new one belongs to root, so
     // the person formatting it couldn't put anything on it; udisks hands
-    // it to them. (exFAT, FAT and NTFS have no owners to give.)
+    // it to them. (exFAT and FAT have no owners to give.)
     if (type == "ext4")
         options["take-ownership"] = true;
     return options;

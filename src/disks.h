@@ -72,7 +72,7 @@ public:
     // with `label`; `partition` is the filesystem made.
     virtual QString addPartition(const Disk &disk, const QString &type, const QString &label, QString *partition) = 0;
     // Whether this machine has what it takes to make `type` (mkfs.exfat,
-    // mkfs.ntfs…), as udisks says.
+    // mkfs.fat…), as udisks says.
     virtual bool canFormat(const QString &type) = 0;
     virtual QString mount(const QString &filesystem) = 0;
     // A file descriptor writing to the whole disk, which only udisks may
