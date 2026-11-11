@@ -262,15 +262,26 @@ signals:
 
 private:
     void setBusy(const QString &busy);
+    // What a piece of work takes part in beside other panes' (see
+    // canStart()): file work, an undo or redo, or changing a drive.
+    enum class Lane { Files, History, Drive };
+    // Whether work in `lane` may start beside what every pane has under
+    // way: undos and redos one at a time, and a drive's change alone.
+    static bool canStart(Lane lane);
+    // Counts this pane's work as under way, and stops counting it.
+    void claim(Lane lane);
+    void release();
     // One piece of work runs at a time: whether nothing else is running
-    // (or waiting on a clash), saying why when something is, so what's
+    // (or waiting on a clash) here, nor anything work in `lane` must wait
+    // for in another pane, saying why when something is, so what's
     // refused doesn't just do nothing.
-    bool idle();
+    bool idle(Lane lane = Lane::Files);
     // Runs `work` off the UI thread with a job it counts in and checks,
     // showing what `label` makes of the job meanwhile, then hands what it
-    // returns to `done`, back on this one.
+    // returns to `done`, back on this one. Refused (saying so) when other
+    // panes' work came first.
     template <typename Work, typename Done>
-    void inBackground(const std::function<QString(const Job &)> &label, Work work, Done done);
+    bool inBackground(const std::function<QString(const Job &)> &label, Work work, Done done, Lane lane = Lane::Files);
     // Copies or moves, first asking about each name that's taken, then off
     // the UI thread, showing how far it's got meanwhile.
     void transferInBackground(const QStringList &paths, const QString &folder, Mode mode, bool releaseClipboard);
@@ -293,6 +304,8 @@ private:
 
     QString m_busy;
     std::shared_ptr<Job> m_job;
+    // The lane this pane's work under way is counted in.
+    std::optional<Lane> m_lane;
     QProcess *m_process = nullptr;
     bool m_killed = false;
     // Work waiting on answers about the names it would take: each item

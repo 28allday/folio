@@ -1715,6 +1715,75 @@ private slots:
         QCOMPARE(failed.count(), 0);
     }
 
+    void undoAndRedoTakeTurnsAcrossPanes()
+    {
+        // The history is every pane's: while one pane undoes, another can't
+        // undo too.
+        QTemporaryDir dir;
+        FileOps::forgetHistory();
+        write(dir.filePath("a.txt"), "a");
+        write(dir.filePath("c.txt"), "c");
+        FileOps left, right;
+        QSignalSpy failed(&right, &FileOps::failed);
+        QCOMPARE(left.rename(dir.filePath("a.txt"), "b.txt"), QString());
+        QCOMPARE(left.rename(dir.filePath("c.txt"), "d.txt"), QString());
+        left.undo();
+        right.undo();
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(failed.last().first().toString(), QString("Try again once the work under way is done."));
+        QTRY_VERIFY(left.busy().isEmpty());
+        QVERIFY(QFile::exists(dir.filePath("c.txt")));
+        QVERIFY(QFile::exists(dir.filePath("b.txt")));
+
+        // A change made while an undo runs forgets the redos, the one the
+        // undo makes as well; what wasn't undone stays below that change.
+        QSignalSpy notice(&left, &FileOps::notice);
+        left.undo();
+        QCOMPARE(right.rename(dir.filePath("c.txt"), "e.txt"), QString());
+        QTRY_VERIFY(left.busy().isEmpty());
+        QVERIFY(QFile::exists(dir.filePath("a.txt")));
+        left.redo();
+        QCOMPARE(notice.last().first().toString(), QString("There's nothing to redo."));
+        left.undo();
+        QTRY_VERIFY(left.busy().isEmpty());
+        QVERIFY(QFile::exists(dir.filePath("c.txt")));
+        QCOMPARE(left.undoName(), QString());
+    }
+
+    void drivesChangeOnlyWhileNoFilesDo()
+    {
+        // A drive's change waits for every pane's file work, which may be
+        // on it, and file work waits for a drive's change.
+        QTemporaryDir dir;
+        write(dir.filePath("a.txt"), "a");
+        auto fake = fakeDisks();
+        FileOps copying, formatting;
+        QSignalSpy refused(&formatting, &FileOps::failed), duplicated(&copying, &FileOps::done);
+        copying.duplicate(dir.filePath("a.txt"));
+        formatting.format(sanDisk().identity, "Photos");
+        QCOMPARE(refused.count(), 1);
+        QVERIFY(fake->calls.isEmpty());
+        QVERIFY(duplicated.wait(3000));
+
+        std::atomic<bool> unmounting = false, release = false;
+        fake->during = [&](const QString &method) {
+            if (method != "unmount")
+                return;
+            unmounting = true;
+            while (!release)
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        };
+        QSignalSpy formatted(&formatting, &FileOps::notice), stopped(&copying, &FileOps::failed);
+        formatting.format(sanDisk().identity, "Photos");
+        QTRY_VERIFY(unmounting);
+        copying.duplicate(dir.filePath("a.txt"));
+        QCOMPARE(stopped.count(), 1);
+        QVERIFY(copying.busy().isEmpty());
+        release = true;
+        QTRY_COMPARE(formatted.count(), 1);
+        QCOMPARE(QDir(dir.path()).entryList(QDir::Files), QStringList({"a (copy).txt", "a.txt"}));
+    }
+
     void undoRefusesWhatsChangedSince()
     {
         // Undo checks everything is still where the change left it, and

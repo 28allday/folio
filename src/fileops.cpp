@@ -37,6 +37,19 @@
 static QList<FileOps::Change> s_undo, s_redo;
 static QList<FileOps *> s_everyone;
 static constexpr int historyLength = 50;
+// Counted whenever the redos are forgotten, so an undo that finishes after
+// a new change knows what it undid has no redo to go to any more.
+static quint64 s_generation = 0;
+// How many changes the undos have let go of, oldest first, so an undo
+// that's left some of a change puts it back where it was.
+static qint64 s_dropped = 0;
+
+// Work under way in this Folio, whichever pane started it. Panes work side
+// by side, but undo and redo take turns, each finding the history as the
+// last left it, and a drive is changed only while nothing else is under
+// way: not another drive's change, nor file work that may be on it.
+static int s_working = 0;
+static bool s_inHistory = false, s_onDrive = false;
 
 static void tellEveryone() {
     for (FileOps *ops : s_everyone)
@@ -51,6 +64,33 @@ FileOps::FileOps(QObject *parent) : QObject(parent) {
 
 FileOps::~FileOps() {
     s_everyone.removeOne(this);
+    release();
+}
+
+bool FileOps::canStart(Lane lane) {
+    if (s_onDrive)
+        return false;
+    if (lane == Lane::Drive)
+        return s_working == 0;
+    return lane != Lane::History || !s_inHistory;
+}
+
+void FileOps::claim(Lane lane) {
+    ++s_working;
+    s_inHistory |= lane == Lane::History;
+    s_onDrive |= lane == Lane::Drive;
+    m_lane = lane;
+}
+
+void FileOps::release() {
+    if (!m_lane)
+        return;
+    --s_working;
+    if (*m_lane == Lane::History)
+        s_inHistory = false;
+    if (*m_lane == Lane::Drive)
+        s_onDrive = false;
+    m_lane.reset();
 }
 
 QMimeData *FileOps::mimeDataFor(const QStringList &paths, bool cut) {
@@ -646,7 +686,13 @@ QStringList FileOps::localPaths(const QList<QUrl> &urls) const {
 }
 
 template <typename Work, typename Done>
-void FileOps::inBackground(const std::function<QString(const Job &)> &label, Work work, Done done) {
+bool FileOps::inBackground(const std::function<QString(const Job &)> &label, Work work, Done done, Lane lane) {
+    // Asked about first, work can find another pane's under way by now.
+    if (!canStart(lane)) {
+        emit failed(tr("Try again once the work under way is done."));
+        return false;
+    }
+    claim(lane);
     auto job = std::make_shared<Job>();
     m_job = job;
     setBusy(label(*job));
@@ -659,10 +705,12 @@ void FileOps::inBackground(const std::function<QString(const Job &)> &label, Wor
         timer->stop();
         watcher->deleteLater();
         m_job.reset();
+        release();
         setBusy({});
         done(watcher->result(), *job);
     });
     watcher->setFuture(QtConcurrent::run([job, work = std::move(work)]() mutable { return work(*job); }));
+    return true;
 }
 
 void FileOps::cancel() {
@@ -1407,6 +1455,7 @@ void FileOps::restore(const QStringList &paths) {
 // so when they're tried.
 static void forgetRedos() {
     s_redo.clear();
+    ++s_generation;
     tellEveryone();
 }
 
@@ -1503,17 +1552,28 @@ void FileOps::newFolder(const QString &folder) {
 
 // Undo and redo.
 
+// Adds a change to the undos or redos, letting go of the oldest past the
+// latest few.
+static void keep(QList<FileOps::Change> &list, const FileOps::Change &change) {
+    list << change;
+    if (list.size() <= historyLength)
+        return;
+    list.removeFirst();
+    if (&list == &s_undo)
+        ++s_dropped;
+}
+
 void FileOps::remember(const Change &change) {
-    s_undo << change;
-    if (s_undo.size() > historyLength)
-        s_undo.removeFirst();
+    keep(s_undo, change);
     s_redo.clear();
+    ++s_generation;
     tellEveryone();
 }
 
 void FileOps::forgetHistory() {
     s_undo.clear();
     s_redo.clear();
+    ++s_generation;
     tellEveryone();
 }
 
@@ -1672,14 +1732,17 @@ void FileOps::step(bool undoing) {
         emit notice(undoing ? tr("There's nothing to undo.") : tr("There's nothing to redo."));
         return;
     }
-    if (!idle())
+    if (!idle(Lane::History))
         return;
     if (const QString problem = unchanged(from.last().steps, undoing); !problem.isEmpty()) {
         emit failed(problem);
         return;
     }
-    // Taken off while it runs, so another window can't run it too.
+    // Taken off while it runs; where it was is kept for what's left of it,
+    // and which history it's from, for what it did.
     const Change change = from.takeLast();
+    const qint64 at = s_dropped + s_undo.size();
+    const quint64 generation = s_generation;
     tellEveryone();
     inBackground(
         [undoing](const Job &job) {
@@ -1701,18 +1764,24 @@ void FileOps::step(bool undoing) {
             result.steps = steps;
             return result;
         },
-        [this, change, undoing](const Outcome &result, const Job &job) {
+        [this, change, undoing, at, generation](const Outcome &result, const Job &job) {
             // What was flipped goes over to the other list, turned around so
-            // it flips back the last first too; what wasn't stays.
-            QList<Change> &back = undoing ? s_undo : s_redo, &forth = undoing ? s_redo : s_undo;
-            if (result.left > 0)
-                back << Change{change.kind, change.name, change.count, result.steps.mid(0, result.left)};
-            if (result.left < result.steps.size()) {
+            // it flips back the last first too; what wasn't stays, an undo's
+            // below what other panes changed meanwhile. A change made
+            // meanwhile forgot the redos, and with them what an undo did and
+            // what a redo left.
+            const bool redosKept = s_generation == generation;
+            if (result.left > 0) {
+                const Change rest{change.kind, change.name, change.count, result.steps.mid(0, result.left)};
+                if (undoing && at >= s_dropped)
+                    s_undo.insert(qMin(at - s_dropped, s_undo.size()), rest);
+                else if (!undoing && redosKept)
+                    s_redo << rest;
+            }
+            if (result.left < result.steps.size() && (redosKept || !undoing)) {
                 QList<Step> flipped = result.steps.mid(result.left);
                 std::reverse(flipped.begin(), flipped.end());
-                forth << Change{change.kind, change.name, change.count, flipped};
-                if (forth.size() > historyLength)
-                    forth.removeFirst();
+                keep(undoing ? s_redo : s_undo, Change{change.kind, change.name, change.count, flipped});
             }
             tellEveryone();
             if (!result.error.isEmpty())
@@ -1728,7 +1797,8 @@ void FileOps::step(bool undoing) {
                     emit done(item.absolutePath(), item.fileName());
                     break;
                 }
-        });
+        },
+        Lane::History);
 }
 
 // The type apps are registered for: a folder's, or the file's by its name
@@ -1851,10 +1921,12 @@ QProcess *FileOps::runTool(const QString &program, const QStringList &args, cons
     auto *process = new QProcess(this);
     m_process = process;
     m_killed = false;
+    claim(Lane::Files);
     setBusy(busy);
     connect(process, &QProcess::finished, this, [this, process, finished, stopped](int code, QProcess::ExitStatus status) {
         process->deleteLater();
         m_process = nullptr;
+        release();
         setBusy({});
         if (m_killed)
             emit notice(stopped);
@@ -1868,6 +1940,7 @@ QProcess *FileOps::runTool(const QString &program, const QStringList &args, cons
             return;
         process->deleteLater();
         m_process = nullptr;
+        release();
         setBusy({});
         emit failed(missing);
     });
@@ -1890,22 +1963,6 @@ static std::optional<Disk> diskWithId(Disks &disks, const QString &identity) {
 static QString unchanged(Disks &disks, const Disk &disk) {
     return diskWithId(disks, disk.identity) ? QString() : FileOps::tr("The drive was changed or removed.");
 }
-
-// Whether a drive is being formatted or burned, by any pane. Each pane has
-// its own file work, but drives are the computer's, and two changes to one
-// mustn't overlap. Taken on the UI thread as the work starts, and given
-// back by the worker as it ends, so it's freed even when the pane that
-// started it closes first.
-static std::atomic<bool> s_changingDrive = false;
-
-static bool claimDrive() {
-    bool free = false;
-    return s_changingDrive.compare_exchange_strong(free, true);
-}
-
-struct DriveClaim {
-    ~DriveClaim() { s_changingDrive = false; }
-};
 
 // Whether the file at `path` is on the disk, which burning it would erase
 // half way through reading it.
@@ -1930,16 +1987,12 @@ void FileOps::format(const QString &id, const QString &label) {
         emit failed(tr("A drive's name can have at most %1 characters.").arg(Disks::labelLimit));
         return;
     }
-    if (!idle())
+    if (!idle(Lane::Drive))
         return;
     const auto disks = Disks::instance();
     const std::optional<Disk> disk = diskWithId(*disks, id);
     if (!disk || Disks::fit(*disk, 0) != Disks::Fits) {
         emit failed(tr("That drive is gone."));
-        return;
-    }
-    if (!claimDrive()) {
-        emit failed(tr("Try again once the work under way is done."));
         return;
     }
     for (const QString &root : disk->mounts)
@@ -1948,7 +2001,6 @@ void FileOps::format(const QString &id, const QString &label) {
     inBackground(
         [drive](const Job &) { return tr("Formatting %1…").arg(drive); },
         [disks, disk = *disk, name](Job &job) {
-            const DriveClaim claim;
             Outcome result;
             for (const QString &filesystem : disk.filesystems)
                 if (result.error = disks->unmount(filesystem); !result.error.isEmpty())
@@ -1980,7 +2032,8 @@ void FileOps::format(const QString &id, const QString &label) {
                 emit failed(tr("Formatted %1, but couldn't mount it. %2").arg(drive, result.failures.first()));
             else
                 emit notice(tr("Formatted %1.").arg(drive));
-        });
+        },
+        Lane::Drive);
 }
 
 bool FileOps::canBurn(const QString &path) const {
@@ -2010,17 +2063,13 @@ QVariantList FileOps::burnTargets(const QString &image) const {
 }
 
 void FileOps::burn(const QString &image, const QString &id) {
-    if (!idle())
+    if (!idle(Lane::Drive))
         return;
     const QFileInfo info(image);
     const auto disks = Disks::instance();
     const std::optional<Disk> disk = diskWithId(*disks, id);
     if (!disk || Disks::fit(*disk, info.size()) != Disks::Fits || holds(*disk, image)) {
         emit failed(tr("%1 can't be burned onto that drive.").arg(info.fileName()));
-        return;
-    }
-    if (!claimDrive()) {
-        emit failed(tr("Try again once the work under way is done."));
         return;
     }
     for (const QString &root : disk->mounts)
@@ -2034,7 +2083,6 @@ void FileOps::burn(const QString &image, const QString &id) {
                                  : tr("Burning %1 to %2…").arg(file, drive);
         },
         [disks, disk = *disk, image](Job &job) {
-            const DriveClaim claim;
             Outcome result;
             for (const QString &filesystem : disk.filesystems)
                 if (result.error = disks->unmount(filesystem); !result.error.isEmpty())
@@ -2069,7 +2117,8 @@ void FileOps::burn(const QString &image, const QString &id) {
                 emit failed(tr("Burned %1 to %2, but couldn't eject it. %3").arg(file, drive, result.failures.first()));
             else
                 emit notice(tr("Burned %1 to %2. It's safe to remove now.").arg(file, drive));
-        });
+        },
+        Lane::Drive);
 }
 
 QString FileOps::writeImage(const QString &image, int fd, Job *job) {
@@ -2101,8 +2150,8 @@ QString FileOps::writeImage(const QString &image, int fd, Job *job) {
     return {};
 }
 
-bool FileOps::idle() {
-    if (m_busy.isEmpty() && !m_pending)
+bool FileOps::idle(Lane lane) {
+    if (m_busy.isEmpty() && !m_pending && canStart(lane))
         return true;
     emit failed(tr("Try again once the work under way is done."));
     return false;
