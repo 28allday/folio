@@ -114,8 +114,11 @@ Plugins::Plugins(const QString &language, const QStringList &folders, const QStr
       m_settingsFile(settingsFile.isEmpty() ? QSettings().fileName() : settingsFile) {
     // Actions wait for their command for as long as it takes (sending a
     // big file), in a pool of their own, so polls and reading the plugins
-    // never wait behind them.
+    // never wait behind them. Both pools' threads mostly wait on a command,
+    // so they get room for more than the machine has cores: on one or two
+    // cores, a hanging poll would otherwise hold up every other plugin.
     m_actions.setMaxThreadCount(32);
+    m_pool.setMaxThreadCount(32);
     migrate();
     reload(true);
 }
@@ -728,17 +731,19 @@ void Plugins::act(const Manifest &plugin, const QString &key, const QString &lab
     // A second click on the same entry waits until the first is done.
     QList<std::function<void()>> &queue = m_queue[key];
     queue << [this, plugin, key, label, command, environment, done] {
-        auto *watcher = new QFutureWatcher<Run>(this);
-        connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, plugin, key, label, done] {
+        auto *watcher = new QFutureWatcher<Result>(this);
+        connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, plugin, key, done] {
             watcher->deleteLater();
-            done(interpret(plugin, label, watcher->result()));
+            done(watcher->result());
             // Whatever it changed shows at once.
             poll(plugin.id);
             next(key);
         });
         // Work that was asked for takes as long as it takes.
-        watcher->setFuture(QtConcurrent::run(&m_actions, [plugin, command, environment, stop = m_stop] {
-            return execute(plugin, command, environment, -1, stop.get());
+        // Its result is read in the worker too: up to a megabyte of JSON
+        // would otherwise pause the window.
+        watcher->setFuture(QtConcurrent::run(&m_actions, [plugin, label, command, environment, stop = m_stop] {
+            return interpret(plugin, label, execute(plugin, command, environment, -1, stop.get()));
         }));
     };
     if (queue.size() == 1)
