@@ -1,4 +1,4 @@
-QT += core gui quick quickcontrols2 testlib dbus concurrent
+QT += core gui quick testlib concurrent
 CONFIG += c++17 testcase
 TARGET = folio_tests
 TEMPLATE = app

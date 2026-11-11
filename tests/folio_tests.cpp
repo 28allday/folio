@@ -5,7 +5,6 @@
 #include <QFile>
 #include <QGuiApplication>
 #include <QImage>
-#include <QImageReader>
 #include <QProcess>
 #include <QSignalSpy>
 #include <QStandardPaths>
