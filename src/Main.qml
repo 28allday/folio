@@ -38,6 +38,21 @@ ApplicationWindow {
     LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
     LayoutMirroring.childrenInherit: true
 
+    // Hyprland sizes a new window only once it's on screen: the first frames
+    // are drawn at the size asked for above (or the compositor's first
+    // guess), then the real size arrives and everything moves. The contents
+    // stay hidden until that size is in, or until it's clear none is coming,
+    // so they first appear where they'll stay. Until then they take no
+    // clicks or keys either, so nothing acts on files no one can see yet.
+    property bool settled: false
+    // A save starts in the name; anything else, in the files.
+    onSettledChanged: bar && bar.saving ? bar.focusKeyboard() : activePane.focusView()
+    property bool drawn: false
+    onFrameSwapped: if (!drawn) { drawn = true; settleTimer.start() }
+    onWidthChanged: if (drawn) settled = true
+    onHeightChanged: if (drawn) settled = true
+    Timer { id: settleTimer; interval: 150; onTriggered: win.settled = true }
+
     property bool helpVisible: false
     // The shortcuts take the keyboard while they're shown, and give it back
     // to the files.
@@ -64,9 +79,6 @@ ApplicationWindow {
         function onFinished() { win.close() }
     }
     onClosing: if (chooser) chooser.cancel()
-    // A save starts in the name, once the files have taken the keyboard as
-    // they do in every window; anything else starts in the files.
-    Component.onCompleted: if (bar && bar.saving) Qt.callLater(bar.focusKeyboard)
     // Ctrl+Return answers and Escape calls off, but not while a dialog over
     // the files (Rename, Replace), the path or the shortcuts are up: those
     // have their own Return and Escape.
@@ -146,6 +158,9 @@ ApplicationWindow {
 
     Item {
         anchors.fill: parent
+        enabled: win.settled
+        opacity: win.settled ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 100 } }
         // Escape that nothing else took (a search, a selection, a dialog)
         // calls the Open or Save dialog off.
         Keys.onEscapePressed: (event) => { if (win.barKeys) chooser.cancel(); else event.accepted = false }
