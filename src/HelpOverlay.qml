@@ -39,6 +39,7 @@ Rectangle {
         ["Ctrl+Shift+N", qsTr("New folder")],
         ["Ctrl+Alt+N / Ctrl+W", qsTr("Split into two panes / close the right one")],
         ["Delete", qsTr("Move to the trash")],
+        ["Shift+Delete", qsTr("Delete permanently (asks first)")],
         ["Ctrl+Z / Ctrl+Shift+Z", qsTr("Undo / redo the last change to files (or Ctrl+Y)")],
         ["Escape", qsTr("Stop the file work under way")],
         [qsTr("Right-click / Alt+⏎"), qsTr("Everything else, for files and for drives in the sidebar")],

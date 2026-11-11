@@ -292,7 +292,7 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
     const QString path = item.value("path").toString();
     const QString kind = item.value("kind").toString();
     const QString mime = item.value("mime").toString();
-    const quint64 generation = ++m_describing;
+    const quint64 generation = ++*m_describing;
     // The same item again (its folder re-read) keeps what it shows until
     // the new reading is in, rather than flickering.
     QVariantMap details;
@@ -309,14 +309,19 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
     auto *watcher = new QFutureWatcher<QVariantMap>(this);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, details]() mutable {
         watcher->deleteLater();
-        if (generation != m_describing)
+        if (generation != *m_describing)
             return; // The selection moved on while this was read.
         details.insert(watcher->result());
         m_details = details;
         emit detailsChanged();
     });
-    watcher->setFuture(QtConcurrent::run([path, kind, inTrash] {
+    // Stepping through files faster than they're read queues readings; the
+    // ones overtaken before they start are skipped rather than left to tie
+    // up the threads the next folder is listed on.
+    watcher->setFuture(QtConcurrent::run([path, kind, inTrash, latest = m_describing, generation] {
         QVariantMap read;
+        if (*latest != generation)
+            return read;
         // A trashed item's note: finding it looks over every mounted drive,
         // and one that's hung would hold up the window.
         if (inTrash) {

@@ -230,7 +230,15 @@ Rectangle {
             focusPolicy: Qt.NoFocus
             hoverEnabled: true
             enabled: !pane.noting
-            text: pane.trashed || pane.noting ? qsTr("Restore") : pane.hasItem && pane.item.isDir ? qsTr("Open folder") : qsTr("Open")
+            // Names the app the file opens in: "Open with Plain", read again
+            // when Opens with picks another.
+            readonly property string app: {
+                opensWith.picked
+                return pane.hasItem && !pane.item.isDir && pane.folderPane ? pane.folderPane.paneFileOps.defaultAppName(pane.item.mime || "") : ""
+            }
+            text: pane.trashed || pane.noting ? qsTr("Restore") : pane.hasItem && pane.item.isDir ? qsTr("Open folder")
+                //: %1 is the name of the app the file opens in, like "Plain".
+                : app ? qsTr("Open with %1").arg(app) : qsTr("Open")
             Accessible.name: text
             onClicked: pane.trashed ? pane.folderPane.paneFileOps.restore([pane.item.path]) : pane.folderPane.paneBackend.open(pane.item.path)
             background: Rectangle {
@@ -238,7 +246,8 @@ Rectangle {
                 color: openButton.hovered ? Qt.lighter(theme.accent, 1.08) : theme.accent
             }
             contentItem: RowLayout {
-                Text { Layout.leftMargin: 14; Layout.fillWidth: true; text: openButton.text; color: theme.accentForeground; font.weight: Font.DemiBold }
+                // A long app name ends in … rather than running past the button.
+                Text { Layout.leftMargin: 14; Layout.fillWidth: true; text: openButton.text; elide: Text.ElideRight; color: theme.accentForeground; font.weight: Font.DemiBold }
                 Text { Layout.rightMargin: 14; text: "⏎"; color: theme.accentForeground }
             }
         }

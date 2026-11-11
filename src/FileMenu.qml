@@ -1,12 +1,11 @@
 import QtQuick
 
 // The right-click menu. On an item: Open, Open With (each app that can),
-// Preview,
-// Rename, Duplicate, Copy, Cut, Paste Into, Copy Path, Compress, Extract
-// (for archives), Burn (for disk images), Share (Dropbox link,
-// Taildrop, LocalSend: whichever are available), Pin, Terminal, Delete.
-// On empty space: Undo, Paste, New Folder, Copy Path, Terminal, hidden
-// files. In the trash: Restore, Empty Trash and Delete Permanently,
+// Preview, Rename, Duplicate, Copy, Cut, Paste Into, Copy Path, Compress,
+// Extract (for archives), Burn (for disk images), Share (Dropbox link,
+// Taildrop, LocalSend: whichever are available), Pin, Terminal, Trash. On
+// empty space: Undo, Paste, New Folder, Copy Path, Terminal, hidden files.
+// In the trash: Restore, Empty Trash and Delete…,
 // without the entries that change files. On a tailnet machine: Open, and
 // nothing for files. Entries show their keys, so the menu also teaches the
 // shortcuts.
@@ -55,6 +54,7 @@ FolioMenu {
     function show(clicked, where, near, at) {
         target = clicked
         folder = where
+        shifted = fileOps.shiftHeld()
         // Empty space among machines has nothing to offer.
         if (!forItem && !forFiles)
             return
@@ -102,7 +102,10 @@ FolioMenu {
     }
     FolioMenuItem {
         shown: fileMenu.forItem
-        text: fileMenu.forFolder ? qsTr("Open Folder") : qsTr("Open")
+        // Names the app it opens in: "Open with Plain".
+        readonly property string app: fileMenu.forItem && !fileMenu.forFolder ? fileOps.defaultAppName(fileMenu.target.mime || "") : ""
+        //: %1 is the name of the app the file opens in, like "Plain".
+        text: fileMenu.forFolder ? qsTr("Open Folder") : app ? qsTr("Open With %1").arg(app) : qsTr("Open")
         keys: "⏎"
         onTriggered: backend.open(fileMenu.target.path)
     }
@@ -273,12 +276,24 @@ FolioMenu {
         onTriggered: backend.folder.showHidden = !backend.folder.showHidden
     }
     MenuLine { shown: fileMenu.forItem && fileMenu.forFiles }
-    // Delete moves to the trash; Restore in any file manager brings it back.
+    // Moving to the trash and deleting for good are two things: Trash
+    // (Delete) moves it there, where Restore in any file manager brings it
+    // back, and with Shift held it becomes Delete… (Shift+Delete), which
+    // deletes for good after asking. In the trash there's only the second.
+    property bool shifted: false
+    // Shift can go down or up anywhere while the menu's open, so it's
+    // checked a few times a second rather than through key events.
+    Timer {
+        interval: 50
+        repeat: true
+        running: fileMenu.visible
+        onTriggered: fileMenu.shifted = fileOps.shiftHeld()
+    }
     FolioMenuItem {
+        readonly property bool forGood: fileMenu.shifted || fileMenu.trashView
         shown: fileMenu.forItem && fileMenu.forFiles
-        text: fileMenu.trashView ? qsTr("Delete Permanently…")
-            : fileMenu.forSelection ? qsTr("Delete %Ln Items", "", fileMenu.paths.length) : qsTr("Delete")
-        keys: "Delete"
-        onTriggered: fileMenu.trashView ? fileMenu.deleteRequested(fileMenu.paths) : fileOps.trash(fileMenu.paths)
+        text: forGood ? qsTr("Delete…") : qsTr("Trash")
+        keys: fileMenu.trashView ? "Delete" : forGood ? "Shift+Delete" : "Delete"
+        onTriggered: forGood ? fileMenu.deleteRequested(fileMenu.paths) : fileOps.trash(fileMenu.paths)
     }
 }

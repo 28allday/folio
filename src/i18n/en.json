@@ -123,17 +123,14 @@
   "Couldn't unmount %1: %2": "Couldn't unmount %1: %2",
   "Cut": "Cut",
   "Delete": "Delete",
-  "Delete %Ln Items": {
-    "one": "Delete %Ln Item",
-    "other": "Delete %Ln Items"
-  },
-  "Delete Permanently…": "Delete Permanently…",
   "Delete for good?": "Delete for good?",
+  "Delete permanently (asks first)": "Delete permanently (asks first)",
   "Deleted": "Deleted",
   "Deleting %L1 of %Ln items…": {
     "one": "Deleting %L1 of %Ln item…",
     "other": "Deleting %L1 of %Ln items…"
   },
+  "Delete…": "Delete…",
   "Deleting %Ln items…": {
     "one": "Deleting %Ln item…",
     "other": "Deleting %Ln items…"
@@ -268,9 +265,11 @@
   "Open Folder": "Open Folder",
   "Open Terminal Here": "Open Terminal Here",
   "Open With": "Open With",
+  "Open With %1": "Open With %1",
   "Open folder": "Open folder",
   "Open in its app": "Open in its app",
   "Opens with": "Opens with",
+  "Open with %1": "Open with %1",
   "Original location": "Original location",
   "Page %1 of %2": "Page %1 of %2",
   "Password": "Password",

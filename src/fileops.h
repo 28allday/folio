@@ -87,6 +87,8 @@ public:
     // The clipboard holds files the way GNOME and KDE apps expect
     // (x-special/gnome-copied-files plus text/uri-list), and their paths as
     // plain text, so pasting into a terminal or editor gives the path.
+    // Whether Shift is held right now, for menus that change with it.
+    Q_INVOKABLE static bool shiftHeld();
     Q_INVOKABLE void copy(const QStringList &paths);
     Q_INVOKABLE void cut(const QStringList &paths);
     Q_INVOKABLE void yank(const QStringList &paths);
@@ -227,6 +229,10 @@ public:
     // The app a file opens with by default; GIO also looks at the type's
     // parents, so a Ruby file finds the plain-text app. Empty for none.
     static QString defaultAppFor(const QString &path);
+    // The name of the app a type opens with by default ("Plain"), for
+    // "Open with Plain"; empty when none is set up. By the type the listing
+    // already knows, so a slow drive is never read for it.
+    Q_INVOKABLE static QString defaultAppName(const QString &mime);
     // Opens the file in that app; a sentence saying why not when it can't.
     static QString openInDefaultApp(const QString &path);
     // Whether the item at `path` is on the drive `folder` is on.
