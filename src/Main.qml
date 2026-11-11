@@ -33,6 +33,9 @@ ApplicationWindow {
     // The right pane while the window is split.
     property var rightPane: null
     readonly property bool split: rightPane !== null
+    // Whether keys are going into a text field. The right pane can go before
+    // the window does when it closes, leaving activePane null.
+    readonly property bool typing: !!activePane && activePane.typing
     // The rightmost pane's path bar reaches over the details column.
     readonly property int detailsWidth: details.visible ? details.width : 0
 
@@ -66,16 +69,16 @@ ApplicationWindow {
         leftPane.focusView()
     }
 
-    Shortcut { sequence: "?"; enabled: !win.activePane.typing || win.helpVisible; onActivated: win.helpVisible = !win.helpVisible }
+    Shortcut { sequence: "?"; enabled: !win.typing || win.helpVisible; onActivated: win.helpVisible = !win.helpVisible }
     Shortcut { sequence: "Escape"; enabled: win.helpVisible; onActivated: win.helpVisible = false }
-    Shortcut { sequence: "Q"; enabled: !win.activePane.typing; onActivated: win.close() }
-    Shortcut { sequence: "Ctrl+Alt+N"; enabled: !win.activePane.typing; onActivated: win.openSplit() }
+    Shortcut { sequence: "Q"; enabled: !win.typing; onActivated: win.close() }
+    Shortcut { sequence: "Ctrl+Alt+N"; enabled: !win.typing; onActivated: win.openSplit() }
     Shortcut { sequence: "Ctrl+W"; enabled: win.split; onActivated: win.closeSplit() }
     Shortcut { sequence: "Ctrl+I"; onActivated: win.previewVisible = !win.previewVisible }
     // Tab moves the keyboard: sidebar, left pane, right pane, and around.
     Shortcut {
         sequences: ["Tab", "Backtab"]
-        enabled: !win.activePane.typing
+        enabled: !win.typing
         onActivated: {
             if (sidebar.activeFocus)
                 leftPane.focusView()
