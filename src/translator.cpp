@@ -36,6 +36,20 @@ QString readLanguage(const QString &path) {
     return valid.match(code).hasMatch() ? code : "en";
 }
 
+// The locale Omarchy formats this language with, from its registry, so the
+// app's numbers and dates match the desktop's (Arabic there uses Western
+// digits); without Omarchy, Qt's own locale for the code.
+QLocale formatLocale(const QString &language) {
+    QFile registry(qEnvironmentVariable("OMARCHY_PATH") + "/default/i18n/locales.json");
+    if (registry.open(QIODevice::ReadOnly)) {
+        const QString name = QJsonDocument::fromJson(registry.readAll()).object()
+                                 .value(language).toObject().value("formatLocale").toString();
+        if (!name.isEmpty())
+            return QLocale(name);
+    }
+    return QLocale(language);
+}
+
 } // namespace
 
 // CLDR cardinal plural categories for whole counts, for Omarchy's languages
@@ -70,24 +84,6 @@ QString Translator::pluralCategory(const QString &code, long long count) {
     if (code == "ga") return n == 1 ? "one" : n == 2 ? "two" : n >= 3 && n <= 6 ? "few" : n >= 7 && n <= 10 ? "many" : "other";
     return n == 1 ? "one" : "other";
 }
-
-namespace {
-
-// The locale Omarchy formats this language with, from its registry, so the
-// app's numbers and dates match the desktop's (Arabic there uses Western
-// digits); without Omarchy, Qt's own locale for the code.
-QLocale formatLocale(const QString &language) {
-    QFile registry(qEnvironmentVariable("OMARCHY_PATH") + "/default/i18n/locales.json");
-    if (registry.open(QIODevice::ReadOnly)) {
-        const QString name = QJsonDocument::fromJson(registry.readAll()).object()
-                                 .value(language).toObject().value("formatLocale").toString();
-        if (!name.isEmpty())
-            return QLocale(name);
-    }
-    return QLocale(language);
-}
-
-} // namespace
 
 Translator::Translator(const QString &languageFile, const QString &catalogDirectory, QObject *parent)
     : QTranslator(parent),
