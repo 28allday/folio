@@ -79,6 +79,9 @@ public:
     Q_INVOKABLE void reload();
     Q_INVOKABLE QVariantMap get(int row) const;
     Q_INVOKABLE int indexOf(const QString &name) const;
+    // By path, for Recents, where two files from different folders can
+    // share a name.
+    Q_INVOKABLE int indexOfPath(const QString &path) const;
 
     // The selection, kept by path so it survives a re-read or a re-sort.
     // The views keep the cursor (the current item) themselves.

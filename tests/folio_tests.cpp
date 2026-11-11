@@ -787,6 +787,9 @@ private slots:
         QCOMPARE(model.selectedCount(), 1);
         QVERIFY(!model.isSelected(1));
         QCOMPARE(model.selectedPaths(), QStringList({data.filePath("b/README.md")}));
+        // The cursor comes back by path, which tells them apart too.
+        QCOMPARE(model.indexOfPath(data.filePath("a/README.md")), 1);
+        QCOMPARE(model.indexOfPath(data.filePath("b/README.md")), 0);
     }
 
     void trashRestoresAndEmpties()

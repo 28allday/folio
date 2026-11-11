@@ -61,11 +61,10 @@ QtObject {
         view.positionViewAtIndex(index, ListView.Contain)
     }
 
-    // Puts the cursor on `name` (or the first item). `keep` leaves a
+    // Puts the cursor on `row` (or, for -1, the first item). `keep` leaves a
     // selection of several alone, for a folder that was only re-read.
-    function select(name, keep) {
-        const found = name ? backend.folder.indexOf(name) : -1
-        const index = found >= 0 ? found : (view.count > 0 ? 0 : -1)
+    function select(row, keep) {
+        const index = row >= 0 ? row : (view.count > 0 ? 0 : -1)
         moveTo(index)
         if (!(keep && backend.folder.selectedCount > 0)) {
             backend.folder.selectOnly(index)

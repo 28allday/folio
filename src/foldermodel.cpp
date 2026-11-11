@@ -580,6 +580,13 @@ int FolderModel::indexOf(const QString &name) const {
     return -1;
 }
 
+int FolderModel::indexOfPath(const QString &path) const {
+    for (int row = 0; row < m_entries.size(); ++row)
+        if (m_entries[row].path == path)
+            return row;
+    return -1;
+}
+
 void FolderModel::setLoading(bool loading) {
     if (loading == m_loading)
         return;

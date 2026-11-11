@@ -31,8 +31,9 @@ FocusScope {
         viewMode = viewMode === "grid" ? "list" : viewMode === "list" ? "columns" : "grid"
     }
 
-    // The selected name, carried across a switch of view.
-    property string lastName: ""
+    // The cursor's item, carried across a switch of view and a re-read of
+    // the folder. By path: Recents can list two files of the same name.
+    property string lastPath: ""
     property string loadedPath: ""
     // While a text field has the keyboard (renaming, a password), single-key
     // and clipboard shortcuts stand aside so typing works.
@@ -49,13 +50,8 @@ FocusScope {
         const index = view.item ? view.item.currentIndex : -1
         return index >= 0 ? backend.folder.get(index) : ({})
     }
-    onCurrentChanged: {
-        if (current.name)
-            lastName = current.name
-        // An open preview stays on the selected item.
-        if (backend.previewing && current.path)
-            backend.followSelection(current.path)
-    }
+    // An open preview stays on the selected item.
+    onCurrentChanged: if (backend.previewing && current.path) backend.followSelection(current.path)
 
     // In the trash, Delete means for good (after asking), and there's
     // Restore and Empty Trash. Nothing is renamed or made there: an item
@@ -156,13 +152,21 @@ FocusScope {
 
     Connections {
         target: backend
-        function onSelectRequested(name) { if (view.item) view.item.select(name, false) }
+        function onSelectRequested(name) { if (view.item) view.item.select(backend.folder.indexOf(name), false) }
         function onActivateRequested() { if (pane.host) { pane.host.raise(); pane.host.requestActivate() } }
     }
 
     Connections {
         target: view.item
         function onContextMenu(item, folder) { fileMenu.show(item, folder) }
+        // Only the cursor moving is remembered. A re-read leaves the cursor
+        // on its row while a new file can push its item down a row; the
+        // folder's loaded then puts it back on the item.
+        function onCurrentIndexChanged() {
+            const path = backend.folder.get(view.item.currentIndex).path
+            if (path)
+                pane.lastPath = path
+        }
     }
 
     // Finished file work selects what it made (the pasted file, the new
@@ -185,7 +189,10 @@ FocusScope {
             const pending = backend.takeSelection()
             const same = backend.folder.path === pane.loadedPath
             pane.loadedPath = backend.folder.path
-            view.item.select(pending || (same ? pane.lastName : ""), same && !pending)
+            if (pending)
+                view.item.select(backend.folder.indexOf(pending), false)
+            else
+                view.item.select(same ? backend.folder.indexOfPath(pane.lastPath) : -1, same)
         }
     }
 
@@ -257,7 +264,7 @@ FocusScope {
                            : pane.viewMode === "columns" ? columnsView
                            : gridView
             // A new view picks up the selection the old one had.
-            onLoaded: { item.select(pane.lastName, true); item.focusView() }
+            onLoaded: { item.select(backend.folder.indexOfPath(pane.lastPath), true); item.focusView() }
 
             // Files dropped on empty space land in this folder; folders
             // inside take drops on themselves first.

@@ -12,7 +12,7 @@ Item {
     property alias currentIndex: here.currentIndex
     readonly property int columnWidth: 260
 
-    function select(name, keep) { selecting.select(name, keep) }
+    function select(row, keep) { selecting.select(row, keep) }
 
     Selecting { id: selecting; view: here }
     function focusView() { here.forceActiveFocus() }
@@ -125,6 +125,10 @@ Item {
                 clip: true
                 focus: true
                 keyNavigationEnabled: true
+                // No cursor of its own to start with: the pane puts it back
+                // where the last view had it, and one on the first item would
+                // select that instead.
+                currentIndex: -1
                 acceptedButtons: Qt.NoButton
                 boundsBehavior: Flickable.StopAtBounds
                 highlightFollowsCurrentItem: false

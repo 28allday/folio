@@ -6,7 +6,7 @@ import QtQuick.Controls
 ListView {
     id: list
 
-    function select(name, keep) { selecting.select(name, keep) }
+    function select(row, keep) { selecting.select(row, keep) }
     function focusView() { forceActiveFocus() }
     // Where the keyboard's menu (Alt+Return) opens: beside the cursor's item.
     function menuAnchor() { return currentItem }
@@ -38,6 +38,9 @@ ListView {
     clip: true
     focus: true
     keyNavigationEnabled: true
+    // No cursor of its own to start with: the pane puts it back where the
+    // last view had it, and one on the first item would select that instead.
+    currentIndex: -1
     acceptedButtons: Qt.NoButton
     boundsBehavior: Flickable.StopAtBounds
     highlightFollowsCurrentItem: false

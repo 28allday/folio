@@ -5,7 +5,7 @@ import QtQuick.Controls
 GridView {
     id: grid
 
-    function select(name, keep) { selecting.select(name, keep) }
+    function select(row, keep) { selecting.select(row, keep) }
     function focusView() { forceActiveFocus() }
     // Where the keyboard's menu (Alt+Return) opens: beside the cursor's item.
     function menuAnchor() { return currentItem }
@@ -40,6 +40,9 @@ GridView {
     clip: true
     focus: true
     keyNavigationEnabled: true
+    // No cursor of its own to start with: the pane puts it back where the
+    // last view had it, and one on the first item would select that instead.
+    currentIndex: -1
     // Pressing and dragging picks up a file (to pin it, or drop it in another
     // app) or draws a band, rather than flicking; the wheel and touchpad
     // still scroll, which turning the view's interactive off would stop too.
