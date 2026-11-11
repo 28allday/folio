@@ -3,7 +3,7 @@
 A plugin adds something Folio doesn't know about on its own: a section in the
 sidebar, a status on one of its rows, entries in the right-click menu, rows
 in the details pane, marks on a folder's files and a chip in its path bar, or
-a view in the main pane. Tailscale, Dropbox and LocalSend come with
+a view in the main pane. Git, Tailscale, Dropbox and LocalSend come with
 Folio as plugins, and they use nothing that isn't described here, so a plugin
 you write sits on equal footing with them.
 
@@ -24,7 +24,7 @@ in, or Folio won't run it.
 
 | Folder | What's there |
 | --- | --- |
-| `/usr/share/folio/plugins/<id>/` | Plugins installed by packages, including the three that come with Folio. |
+| `/usr/share/folio/plugins/<id>/` | Plugins installed by packages, including the four that come with Folio. |
 | `~/.local/share/folio/plugins/<id>/` (`$XDG_DATA_HOME`) | Your own. One with the same id replaces the packaged one entirely. |
 
 The folder's name is the plugin's id: lowercase letters, digits and dashes,
@@ -140,7 +140,9 @@ FOLIO_PLUGIN_DIR=$PWD FOLIO_LANGUAGE=en ./servers | jq .
 This plugin adds Copy Git Link to the right-click menu of files in your
 repositories on GitHub, and shows in the details pane the branch a
 repository is on and the last commit that changed the file. It has no poll:
-what it offers is worked out for the file at hand.
+what it offers is worked out for the file at hand. (The Git plugin that
+comes with Folio does all this and more, with the hooks described further
+on; see [The plugins that come with Folio](#the-plugins-that-come-with-folio).)
 
 ```
 ~/.local/share/folio/plugins/git-link/
@@ -602,7 +604,8 @@ else marks nothing and offers no actions, and Folio writes why to its
 standard error, once each time the plugin goes from working to failing.
 
 The command is run for every folder shown, so it should be quick to say
-nothing where it has nothing to say. For a folder of many files,
+nothing where it has nothing to say: the Git plugin looks for a `.git`
+folder above before running git at all. For a folder of many files,
 marking the first few thousand is plenty, and keeps the output under the
 1 MB a command may print.
 
@@ -645,6 +648,55 @@ failed or timed out, or output that wasn't JSON.
 
 They're in the `plugins/` folder of Folio's repository and install to
 `/usr/share/folio/plugins/`.
+
+**git** shows how the files of a Git repository stand, and for one on
+GitHub, offers its pages.
+
+```json
+{
+  "folio": 1,
+  "requires": ["git", "jq"],
+  "marks": { "command": ["./marks"] },
+  "details": { "command": ["./details"] },
+  "actions": [
+    { "id": "open", "label": "Open on GitHub", "submenu": "GitHub", "single": true,
+      "command": ["./github", "open"] },
+    { "id": "copy", "label": "Copy GitHub Link", "submenu": "GitHub", "single": true,
+      "command": ["./github", "copy"] },
+    { "id": "pin", "label": "Copy Link to This Version", "submenu": "GitHub", "single": true, "files": true,
+      "command": ["./github", "pin"] },
+    { "id": "history", "label": "History on GitHub", "submenu": "GitHub", "single": true,
+      "command": ["./github", "history"] },
+    { "id": "blame", "label": "Blame on GitHub", "submenu": "GitHub", "single": true, "files": true,
+      "command": ["./github", "blame"] },
+    { "id": "repo", "label": "Open Repository on GitHub", "menu": "none",
+      "command": ["./github", "repo"] }
+  ]
+}
+```
+
+`marks` finds the top of the repository by looking for `.git` in the folder
+and those above it, and outside one prints `{"actions": []}` without running
+git. Inside, it runs one `git status --porcelain=v2 -z --branch
+--untracked-files=normal` for the whole repository and reads it with `jq`
+(the shared parts in `git.jq`): M (modified), A (new: added, renamed or
+copied), ? (not tracked, a folder nothing in which is tracked included) and
+C (in conflict) on the folder's files, a dot on its folders with a change
+anywhere inside, nothing on what's deleted or ignored, at most 5000 of them.
+The chip is the branch (a detached HEAD's short hash), how far it's ahead
+of (↑) and behind (↓) its upstream, and how many paths have changed; it
+opens the repository on GitHub, and the GitHub actions are offered, when
+`origin` is on GitHub (`git@github.com:o/r.git`, `ssh://git@github.com/o/r`
+or `https://github.com/o/r`, each with or without `.git`). `details` prints
+a Git section: Status (Modified with the lines added and removed since the
+last commit, New, Not tracked, in Conflict or Unchanged; Changes inside for
+a folder; nothing for an ignored file), Branch, Last commit (its subject,
+and its author, date and short hash under it), Remote (`owner/repo` on
+GitHub, the host and path elsewhere) and an Open on GitHub button. `github`
+prints the page of a file (`blob/`) or folder (`tree/`) at the branch
+checked out, at the commit (Copy Link to This Version), its history
+(`commits/`) or blame (`blame/`), each part of the path and branch
+percent-encoded, as `{"url": ...}` to open or `{"copy": ...}` with a notice.
 
 **tailscale** lists the online machines that can hold files, opens them over
 SFTP, keeps the ones you've opened in the sidebar, and sends files with

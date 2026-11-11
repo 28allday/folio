@@ -484,6 +484,97 @@ static Plugins::Run runBundled(const Plugins::Manifest &plugin, const QStringLis
     return Plugins::execute(plugin, command, env, 5000);
 }
 
+// Git as the tests run it: never with the user's or the system's settings.
+static QHash<QString, QString> gitSettings()
+{
+    return {{"GIT_CONFIG_NOSYSTEM", "1"}, {"GIT_CONFIG_GLOBAL", "/dev/null"}};
+}
+
+// The same for commands Folio runs, for as long as the returned guard is
+// kept.
+[[nodiscard]] static auto gitSettingsHere()
+{
+    const QHash<QString, QString> settings = gitSettings();
+    QHash<QString, QByteArray> old;
+    for (auto it = settings.begin(); it != settings.end(); ++it) {
+        old.insert(it.key(), qgetenv(qPrintable(it.key())));
+        qputenv(qPrintable(it.key()), it.value().toUtf8());
+    }
+    return qScopeGuard([old] {
+        for (auto it = old.begin(); it != old.end(); ++it)
+            it.value().isNull() ? qunsetenv(qPrintable(it.key())) : qputenv(qPrintable(it.key()), it.value());
+    });
+}
+
+// Runs git in `dir` as a committer of its own, giving its output.
+static QString gitOut(const QString &dir, const QStringList &args, int *code = nullptr)
+{
+    QProcess git;
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    const QHash<QString, QString> settings = gitSettings();
+    for (auto it = settings.begin(); it != settings.end(); ++it)
+        env.insert(it.key(), it.value());
+    git.setProcessEnvironment(env);
+    git.setWorkingDirectory(dir);
+    git.start("git", QStringList{"-c", "user.name=Ana Ortiz", "-c", "user.email=ana@example.com", "-c",
+                                 "init.defaultBranch=main", "-c", "commit.gpgSign=false"} + args);
+    git.waitForFinished();
+    if (code)
+        *code = git.exitStatus() == QProcess::NormalExit ? git.exitCode() : -1;
+    return QString::fromUtf8(git.readAllStandardOutput()).trimmed();
+}
+
+// How it exited.
+static int gitIn(const QString &dir, const QStringList &args)
+{
+    int code = -1;
+    gitOut(dir, args, &code);
+    return code;
+}
+
+// A throwaway repository at `path` on GitHub (by its origin; nothing is
+// ever fetched) in every state a file can be in: modified, new, not
+// tracked, deleted, ignored and in conflict, a folder nothing in which is
+// tracked and one with a change deep inside, two commits ahead of its
+// upstream and one behind.
+static QString makeGarden(const QString &path)
+{
+    QDir().mkpath(path + "/sub/deep");
+    auto put = [&](const QString &name, const QByteArray &text) {
+        QFile file(path + "/" + name);
+        QDir().mkpath(QFileInfo(file).path());
+        if (file.open(QIODevice::WriteOnly))
+            file.write(text);
+    };
+    for (const char *name : {"a.txt", "b.txt", "conflict.txt", "with space #1.md", "sub/deep/c.txt", "ignored.log"})
+        put(name, "one\n");
+    put(".gitignore", "*.log\n");
+    auto git = [&](const QStringList &args) { return gitIn(path, args); };
+    git({"init", "-q"});
+    git({"remote", "add", "origin", "git@github.com:acme/garden.git"});
+    git({"add", "-A"});
+    git({"commit", "-qm", "First"});
+    git({"checkout", "-qb", "other"});
+    put("conflict.txt", "other\n");
+    git({"commit", "-qam", "Other"});
+    git({"checkout", "-q", "main"});
+    put("conflict.txt", "main\n");
+    git({"commit", "-qam", "Main"});
+    git({"commit", "-q", "--allow-empty", "-m", "Second"});
+    git({"update-ref", "refs/remotes/origin/main", "other"});
+    git({"branch", "-q", "--set-upstream-to=origin/main"});
+    git({"merge", "-q", "other"});
+    put("a.txt", "two\n");
+    put("with space #1.md", "two\n");
+    put("sub/deep/c.txt", "two\n");
+    git({"rm", "-q", "b.txt"});
+    put("n.txt", "new\n");
+    git({"add", "n.txt"});
+    put("u.txt", "loose\n");
+    put("newdir/z.txt", "loose\n");
+    return path;
+}
+
 class FolioTests : public QObject {
     Q_OBJECT
 
@@ -5038,6 +5129,177 @@ private slots:
         QVERIFY(call("hasKeyboard").toBool());
         QTest::keyClick(window, Qt::Key_Return);
         QTRY_VERIFY(QFileInfo::exists(folder.filePath("vcs/webbed")));
+    }
+
+    void gitPluginMarksAFolder()
+    {
+        QTemporaryDir dir;
+        const auto plugin = bundledPlugin("git");
+        QCOMPARE(plugin.marks, QStringList({"./marks"}));
+        auto marks = [&](const QString &folder) {
+            const Plugins::Run run = runBundled(plugin, plugin.marks + QStringList{folder}, qEnvironmentVariable("PATH"),
+                                                dir.path(), gitSettings());
+            return run.ok() ? Plugins::parseMarks(run.out).value_or(QJsonObject{{"nonsense", QString(run.out)}})
+                            : QJsonObject{{"failed", run.lastError}};
+        };
+        // Outside a repository, nothing, and none of the GitHub actions.
+        QCOMPARE(marks(dir.path()), QJsonObject({{"actions", QJsonArray()}}));
+
+        const QString repo = makeGarden(dir.filePath("garden"));
+        const QJsonObject said = marks(repo);
+        const QJsonObject items = said.value("items").toObject();
+        // A letter for each file that changed, a dot for a folder with
+        // something inside; nothing for what's gone or ignored.
+        QCOMPARE(items.keys(), QStringList({"a.txt", "conflict.txt", "n.txt", "newdir", "sub", "u.txt", "with space #1.md"}));
+        QCOMPARE(items.value("a.txt").toObject(), QJsonObject({{"tone", "modified"}, {"badge", "M"}, {"label", "Modified"}}));
+        QCOMPARE(items.value("with space #1.md").toObject().value("badge").toString(), QString("M"));
+        QCOMPARE(items.value("n.txt").toObject(), QJsonObject({{"tone", "added"}, {"badge", "A"}, {"label", "New"}}));
+        QCOMPARE(items.value("u.txt").toObject(), QJsonObject({{"tone", "untracked"}, {"badge", "?"}, {"label", "Not tracked"}}));
+        QCOMPARE(items.value("newdir").toObject().value("tone").toString(), QString("untracked"));
+        QCOMPARE(items.value("conflict.txt").toObject(), QJsonObject({{"tone", "conflict"}, {"badge", "C"}, {"label", "Conflict"}}));
+        QCOMPARE(items.value("sub").toObject(), QJsonObject({{"tone", "changed"}, {"label", "Changes inside"}}));
+        // The chip: the branch, how far it's ahead of and behind its
+        // upstream, and how much has changed; on GitHub, it opens there.
+        const QJsonObject chip = said.value("chip").toObject();
+        QCOMPARE(chip.value("text").toString(), QString("main"));
+        QCOMPARE(chip.value("detail").toString(), QString("↑2 ↓1"));
+        QCOMPARE(Plugins::text(plugin, chip.value("note")), QString("8 changed"));
+        QCOMPARE(chip.value("tone").toString(), QString("modified"));
+        QCOMPARE(chip.value("icon").toString(), QString("branch"));
+        QCOMPARE(chip.value("action").toString(), QString("repo"));
+        QVERIFY(said.value("actions").toArray().contains("blame"));
+        // Deeper down, only what's below it; inside .git, nothing.
+        QCOMPARE(marks(repo + "/sub").value("items").toObject(),
+                 QJsonObject({{"deep", QJsonObject{{"tone", "changed"}, {"label", "Changes inside"}}}}));
+        QCOMPARE(marks(repo + "/.git"), QJsonObject({{"actions", QJsonArray()}}));
+
+        // A detached HEAD goes by its commit; elsewhere than GitHub, the
+        // chip does nothing and there are no GitHub actions.
+        const QString plain = dir.filePath("plain");
+        QDir().mkpath(plain);
+        write(plain + "/x.txt", "x\n");
+        for (const QStringList &args : {QStringList{"init", "-q"}, {"add", "-A"}, {"commit", "-qm", "One"},
+                                        {"checkout", "-q", "--detach"},
+                                        {"remote", "add", "origin", "https://gitlab.com/acme/plain.git"}})
+            QCOMPARE(gitIn(plain, args), 0);
+        const QJsonObject detached = marks(plain);
+        QCOMPARE(detached.value("chip").toObject(),
+                 QJsonObject({{"text", gitOut(plain, {"rev-parse", "--short=7", "HEAD"})}, {"detail", ""}, {"icon", "branch"}}));
+        QCOMPARE(detached.value("items").toObject(), QJsonObject());
+        QCOMPARE(detached.value("actions").toArray(), QJsonArray());
+    }
+
+    void gitPluginDescribesFilesAndFolders()
+    {
+        // Through Folio's plugins, as the details pane asks.
+        QTemporaryDir dir, copy;
+        const QString repo = makeGarden(dir.filePath("garden"));
+        QCOMPARE(QProcess::execute("cp", {"-r", bundled() + "/git", copy.path()}), 0);
+        const auto settings = gitSettingsHere();
+        Plugins plugins("en", {copy.path()}, dir.filePath("folio.conf"));
+        QSignalSpy read(&plugins, &Plugins::detailsChanged);
+        QVERIFY(read.wait(5000));
+        int answered = 0;
+        for (const QString &folder : {repo, dir.path()})
+            plugins.markFolder(folder, [] { return true; }, [&] { ++answered; });
+        QTRY_COMPARE(answered, 2);
+        auto details = [&](const QString &path) {
+            const QDateTime modified = QFileInfo(path).lastModified();
+            const QString mime = QFileInfo(path).isDir() ? "inode/directory" : "text/plain";
+            bool done = false;
+            if (plugins.describe(path, mime, modified, [] { return true; }, [&] { done = true; }))
+                [&] { QTRY_VERIFY_WITH_TIMEOUT(done, 5000); }();
+            return plugins.details(path, mime, modified).value(0).toMap();
+        };
+        // Each row as label: value (detail), in the tone's name.
+        auto rows = [&](const QString &name) {
+            QStringList list;
+            for (const QVariant &v : details(repo + "/" + name).value("rows").toList()) {
+                const QVariantMap row = v.toMap();
+                list << row.value("label").toString() + ": " + row.value("value").toString()
+                            + (row.value("tone").toString().isEmpty() ? "" : " [" + row.value("tone").toString() + "]")
+                            + (row.value("detail").toString().isEmpty() ? "" : " (" + row.value("detail").toString() + ")");
+            }
+            return list;
+        };
+        const QString first = "Ana Ortiz · just now · " + gitOut(repo, {"log", "-1", "--format=%h", "--", "a.txt"});
+        QCOMPARE(rows("a.txt"), QStringList({"Status: Modified · +1 −1 [modified]", "Branch: main ↑2 ↓1",
+                                             "Last commit: First (" + first + ")", "Remote: acme/garden"}));
+        const QVariantMap a = details(repo + "/a.txt");
+        QCOMPARE(a.value("title").toString(), QString("Git"));
+        QCOMPARE(a.value("actions").toList().size(), 1);
+        QCOMPARE(a.value("actions").toList().at(0).toMap().value("label").toString(), QString("Open on GitHub"));
+        QCOMPARE(rows("n.txt").value(0), QString("Status: New [added]"));
+        QCOMPARE(rows("u.txt").value(0), QString("Status: Not tracked [untracked]"));
+        QCOMPARE(rows("conflict.txt").value(0), QString("Status: Conflict [conflict]"));
+        QCOMPARE(rows(".gitignore").value(0), QString("Status: Unchanged"));
+        QCOMPARE(rows("sub").value(0), QString("Status: Changes inside [changed]"));
+        QCOMPARE(rows("newdir").value(0), QString("Status: Not tracked [untracked]"));
+        // An ignored file says nothing of how it stands.
+        QCOMPARE(rows("ignored.log").value(0), QString("Branch: main ↑2 ↓1"));
+        // Outside a repository, nothing.
+        write(dir.filePath("loose.txt"), "x");
+        QVERIFY(details(dir.filePath("loose.txt")).isEmpty());
+    }
+
+    void gitPluginLinksToGitHub()
+    {
+        QTemporaryDir dir;
+        const auto plugin = bundledPlugin("git");
+        const QString repo = dir.filePath("garden");
+        QDir().mkpath(repo + "/sub dir");
+        write(repo + "/sub dir/notes #1?.md", "x\n");
+        for (const QStringList &args : {QStringList{"init", "-q"}, {"checkout", "-qb", "feat/ü#1"}, {"add", "-A"},
+                                        {"commit", "-qm", "One"}, {"remote", "add", "origin", "git@github.com:acme/garden.git"}})
+            QCOMPARE(gitIn(repo, args), 0);
+        auto act = [&](const QString &action, const QString &path) {
+            const Plugins::Run run = runBundled(plugin, QStringList{"./github", action, path}, qEnvironmentVariable("PATH"),
+                                                dir.path(), gitSettings());
+            const QJsonObject said = QJsonDocument::fromJson(run.out).object();
+            return run.ok() ? said : QJsonObject{{"failed", Plugins::text(plugin, said.value("error"))}};
+        };
+        const QString file = repo + "/sub dir/notes #1?.md";
+        // Each part of the path and the branch is encoded, so nothing in a
+        // name ends the address early.
+        const QString blob = "https://github.com/acme/garden/blob/feat/%C3%BC%231/sub%20dir/notes%20%231%3F.md";
+        QCOMPARE(act("open", file), QJsonObject({{"url", blob}}));
+        QCOMPARE(act("copy", file).value("copy").toString(), blob);
+        QCOMPARE(Plugins::text(plugin, act("copy", file).value("notice")), QString("GitHub link copied."));
+        QCOMPARE(act("pin", file).value("copy").toString(),
+                 "https://github.com/acme/garden/blob/" + gitOut(repo, {"rev-parse", "HEAD"}) + "/sub%20dir/notes%20%231%3F.md");
+        QCOMPARE(act("history", file).value("url").toString(),
+                 QString("https://github.com/acme/garden/commits/feat/%C3%BC%231/sub%20dir/notes%20%231%3F.md"));
+        QCOMPARE(act("blame", file).value("url").toString(),
+                 QString("https://github.com/acme/garden/blame/feat/%C3%BC%231/sub%20dir/notes%20%231%3F.md"));
+        // A folder's page is its tree; the top's is the branch's.
+        QCOMPARE(act("open", repo + "/sub dir").value("url").toString(),
+                 QString("https://github.com/acme/garden/tree/feat/%C3%BC%231/sub%20dir"));
+        QCOMPARE(act("open", repo).value("url").toString(), QString("https://github.com/acme/garden/tree/feat/%C3%BC%231"));
+
+        // However the remote is written, it's the same page.
+        for (const char *remote : {"git@github.com:acme/garden.git", "git@github.com:acme/garden", "ssh://git@github.com/acme/garden.git",
+                                   "https://github.com/acme/garden.git", "https://github.com/acme/garden/",
+                                   "https://ana@github.com/acme/garden"}) {
+            QCOMPARE(gitIn(repo, {"remote", "set-url", "origin", remote}), 0);
+            QCOMPARE(act("repo", file), QJsonObject({{"url", "https://github.com/acme/garden"}}));
+        }
+        // Anywhere else, it says so; and the details name where it is.
+        auto remoteRow = [&] {
+            const Plugins::Run run = runBundled(plugin, plugin.details + QStringList{file}, qEnvironmentVariable("PATH"),
+                                                dir.path(), gitSettings());
+            for (const QJsonValue &row : QJsonDocument::fromJson(run.out).object().value("rows").toArray())
+                if (row.toObject().value("label") == "Remote")
+                    return row.toObject().value("value").toString();
+            return QString();
+        };
+        QCOMPARE(remoteRow(), QString("acme/garden"));
+        for (const auto &[remote, shown] : {std::pair{"git@gitlab.com:acme/garden.git", "gitlab.com/acme/garden"},
+                                            {"ssh://git@git.example.com:2222/acme/garden.git", "git.example.com/acme/garden"},
+                                            {"https://github.com.example/acme/garden", "github.com.example/acme/garden"}}) {
+            QCOMPARE(gitIn(repo, {"remote", "set-url", "origin", remote}), 0);
+            QCOMPARE(act("open", file), QJsonObject({{"failed", "Not a GitHub repository."}}));
+            QCOMPARE(remoteRow(), QString(shown));
+        }
     }
 
     void placesListOnlyPhysicalDrives()
