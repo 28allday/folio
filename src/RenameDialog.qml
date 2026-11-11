@@ -32,11 +32,14 @@ FolioDialog {
             close()
     }
 
+    // On the dialog, not the field, so Escape still cancels after Tab has
+    // moved the keyboard to a button.
+    Keys.onEscapePressed: dialog.close()
+
     PlainField {
         id: field
         Layout.fillWidth: true
         onAccepted: dialog.submit()
-        Keys.onEscapePressed: dialog.close()
     }
     Text {
         Layout.fillWidth: true
