@@ -168,7 +168,6 @@ FocusScope {
     }
     Shortcut { sequence: "Ctrl+Shift+D"; enabled: pane.fileKeys && !pane.inTrash; onActivated: if (pane.current.path) fileOps.duplicate(pane.current.path) }
     Shortcut { sequences: [StandardKey.New]; enabled: pane.keys; onActivated: backend.newWindow() }
-    Shortcut { sequence: "Ctrl+Alt+T"; enabled: pane.keys && pane.inFolder; onActivated: fileOps.openTerminal(backend.path) }
     Shortcut { sequence: "Ctrl+Shift+N"; enabled: pane.fileKeys && !pane.inTrash; onActivated: fileOps.newFolder(backend.path) }
     Shortcut { sequences: ["Ctrl+L", "Alt+D"]; enabled: pane.keys; onActivated: pathBar.editPath() }
     // Pins the selected folder, or the folder being shown when a file is

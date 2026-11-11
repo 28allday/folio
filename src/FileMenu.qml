@@ -269,7 +269,6 @@ FolioMenu {
         shown: fileMenu.forItem ? fileMenu.forFolder && fileMenu.forFiles
                                 : fileMenu.folder.startsWith("/") && !fileMenu.trashView
         text: qsTr("Open Terminal Here")
-        keys: fileMenu.forItem ? "" : "Ctrl+Alt+T"
         onTriggered: fileOps.openTerminal(fileMenu.forItem ? fileMenu.target.path : fileMenu.folder)
     }
     FolioMenuItem {
