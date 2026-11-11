@@ -308,34 +308,45 @@ QStringList FileOps::localPaths(const QList<QUrl> &urls) const {
     return paths;
 }
 
+template <typename Work, typename Done>
+void FileOps::inBackground(const QString &busy, Work work, Done done) {
+    setBusy(busy);
+    auto *watcher = new QFutureWatcher<std::invoke_result_t<Work>>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, done = std::move(done)] {
+        watcher->deleteLater();
+        setBusy({});
+        done(watcher->result());
+    });
+    watcher->setFuture(QtConcurrent::run(std::move(work)));
+}
+
 void FileOps::transferInBackground(const QStringList &paths, const QString &folder, Mode mode, bool releaseClipboard,
                                    const QString &busy) {
     // A drop says what its first item does; each is moved or copied by its
     // own drive.
     const bool moving = mode == Move || (mode == Drop && sameDrive(paths.first(), folder));
-    setBusy(!busy.isEmpty() ? busy
-            : moving        ? tr("Moving %n items…", "", paths.size())
-                            : tr("Copying %n items…", "", paths.size()));
-    auto *watcher = new QFutureWatcher<QPair<QStringList, QString>>(this);
-    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, paths, folder, releaseClipboard] {
-        watcher->deleteLater();
-        const auto [made, error] = watcher->result();
-        setBusy({});
-        // Only the cut that was pasted is let go of; something copied while
-        // it moved stays on the clipboard.
-        bool cut = false;
-        if (releaseClipboard && error.isEmpty() && pathsFrom(QGuiApplication::clipboard()->mimeData(), &cut) == paths && cut)
-            QGuiApplication::clipboard()->clear();
-        if (!error.isEmpty())
-            emit failed(error);
-        if (!made.isEmpty())
-            emit done(folder, made.first());
-    });
-    watcher->setFuture(QtConcurrent::run([paths, folder, mode] {
-        QString error;
-        const QStringList made = transfer(paths, folder, mode, &error);
-        return qMakePair(made, error);
-    }));
+    const QString showing = !busy.isEmpty() ? busy
+                            : moving        ? tr("Moving %n items…", "", paths.size())
+                                            : tr("Copying %n items…", "", paths.size());
+    inBackground(
+        showing,
+        [paths, folder, mode] {
+            QString error;
+            const QStringList made = transfer(paths, folder, mode, &error);
+            return qMakePair(made, error);
+        },
+        [this, paths, folder, releaseClipboard](const QPair<QStringList, QString> &result) {
+            const auto &[made, error] = result;
+            // Only the cut that was pasted is let go of; something copied
+            // while it moved stays on the clipboard.
+            bool cut = false;
+            if (releaseClipboard && error.isEmpty() && pathsFrom(QGuiApplication::clipboard()->mimeData(), &cut) == paths && cut)
+                QGuiApplication::clipboard()->clear();
+            if (!error.isEmpty())
+                emit failed(error);
+            if (!made.isEmpty())
+                emit done(folder, made.first());
+        });
 }
 
 void FileOps::duplicate(const QString &path) {
@@ -446,31 +457,29 @@ void FileOps::shareTaildrop(const QStringList &paths, const QString &host) {
 void FileOps::trash(const QStringList &paths) {
     if (paths.isEmpty() || !idle())
         return;
-    setBusy(tr("Moving %n items to the trash…", "", paths.size()));
-    auto *watcher = new QFutureWatcher<QStringList>(this);
-    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher] {
-        watcher->deleteLater();
-        setBusy({});
-        if (const QStringList failedNames = watcher->result(); !failedNames.isEmpty())
-            emit failed(tr("Couldn't move to the trash: %1").arg(failedNames.join(", ")));
-    });
     // GIO follows the freedesktop Trash spec, including each drive's own
     // .Trash folder, so Restore in any file manager puts things back. It
     // takes one item at a time, which on a slow drive adds up.
-    watcher->setFuture(QtConcurrent::run([paths] {
-        QStringList failedNames;
-        for (const QString &path : outermost(paths)) {
-            GFile *file = g_file_new_for_path(path.toUtf8().constData());
-            GError *error = nullptr;
-            if (!g_file_trash(file, nullptr, &error)) {
-                failedNames << QFileInfo(path).fileName() + (error ? QStringLiteral(" (") + QString::fromUtf8(error->message) + ")" : QString());
-                if (error)
-                    g_error_free(error);
+    inBackground(
+        tr("Moving %n items to the trash…", "", paths.size()),
+        [paths] {
+            QStringList failedNames;
+            for (const QString &path : outermost(paths)) {
+                GFile *file = g_file_new_for_path(path.toUtf8().constData());
+                GError *error = nullptr;
+                if (!g_file_trash(file, nullptr, &error)) {
+                    failedNames << QFileInfo(path).fileName() + (error ? QStringLiteral(" (") + QString::fromUtf8(error->message) + ")" : QString());
+                    if (error)
+                        g_error_free(error);
+                }
+                g_object_unref(file);
             }
-            g_object_unref(file);
-        }
-        return failedNames;
-    }));
+            return failedNames;
+        },
+        [this](const QStringList &failedNames) {
+            if (!failedNames.isEmpty())
+                emit failed(tr("Couldn't move to the trash: %1").arg(failedNames.join(", ")));
+        });
 }
 
 QString FileOps::homeTrash() {
@@ -605,69 +614,61 @@ void FileOps::restore(const QStringList &paths) {
     if (paths.isEmpty() || !idle())
         return;
     // Restoring across drives copies, which for a folder can take a while.
-    setBusy(tr("Restoring %n items…", "", paths.size()));
-    auto *watcher = new QFutureWatcher<QPair<QStringList, QString>>(this);
-    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, count = paths.size()] {
-        watcher->deleteLater();
-        setBusy({});
-        const auto [failures, last] = watcher->result();
-        if (!failures.isEmpty())
-            emit failed(failures.join(' '));
-        else if (!last.isEmpty())
-            emit notice(count == 1 ? tr("Restored %1 to %2.").arg(QFileInfo(last).fileName(), QFileInfo(last).absolutePath())
-                                   : tr("Restored %n items.", "", count));
-    });
-    watcher->setFuture(QtConcurrent::run([paths] {
-        QStringList failures;
-        QString last;
-        for (const QString &path : outermost(paths)) {
-            QString error;
-            const QString to = restoreOne(path, &error);
-            if (to.isEmpty())
-                failures << error;
-            else
-                last = to;
-        }
-        return qMakePair(failures, last);
-    }));
+    inBackground(
+        tr("Restoring %n items…", "", paths.size()),
+        [paths] {
+            QStringList failures;
+            QString last;
+            for (const QString &path : outermost(paths)) {
+                QString error;
+                const QString to = restoreOne(path, &error);
+                if (to.isEmpty())
+                    failures << error;
+                else
+                    last = to;
+            }
+            return qMakePair(failures, last);
+        },
+        [this, count = paths.size()](const QPair<QStringList, QString> &result) {
+            const auto &[failures, last] = result;
+            if (!failures.isEmpty())
+                emit failed(failures.join(' '));
+            else if (!last.isEmpty())
+                emit notice(count == 1 ? tr("Restored %1 to %2.").arg(QFileInfo(last).fileName(), QFileInfo(last).absolutePath())
+                                       : tr("Restored %n items.", "", count));
+        });
 }
 
 void FileOps::deleteForever(const QStringList &paths) {
     if (paths.isEmpty() || !idle())
         return;
-    setBusy(tr("Deleting %n items…", "", paths.size()));
-    auto *watcher = new QFutureWatcher<int>(this);
-    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher] {
-        watcher->deleteLater();
-        setBusy({});
-        if (const int failures = watcher->result(); failures > 0)
-            emit failed(tr("Couldn't delete %n items.", "", failures));
-    });
-    watcher->setFuture(QtConcurrent::run([paths] {
-        int failures = 0;
-        for (const QString &path : outermost(paths))
-            if (!deleteTrashed(path))
-                ++failures;
-        return failures;
-    }));
+    inBackground(
+        tr("Deleting %n items…", "", paths.size()),
+        [paths] {
+            int failures = 0;
+            for (const QString &path : outermost(paths))
+                if (!deleteTrashed(path))
+                    ++failures;
+            return failures;
+        },
+        [this](int failures) {
+            if (failures > 0)
+                emit failed(tr("Couldn't delete %n items.", "", failures));
+        });
 }
 
 void FileOps::emptyTrash() {
     if (!idle())
         return;
-    setBusy(tr("Emptying the trash…"));
-    auto *watcher = new QFutureWatcher<int>(this);
-    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher] {
-        watcher->deleteLater();
-        setBusy({});
-        emit notice(tr("Emptied the trash: %n items deleted.", "", watcher->result()));
-    });
-    watcher->setFuture(QtConcurrent::run([] {
-        int count = 0;
-        for (const QString &dir : trashDirs())
-            count += emptyTrashDir(dir);
-        return count;
-    }));
+    inBackground(
+        tr("Emptying the trash…"),
+        [] {
+            int count = 0;
+            for (const QString &dir : trashDirs())
+                count += emptyTrashDir(dir);
+            return count;
+        },
+        [this](int count) { emit notice(tr("Emptied the trash: %n items deleted.", "", count)); });
 }
 
 QString FileOps::rename(const QString &path, const QString &name) {

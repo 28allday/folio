@@ -137,6 +137,10 @@ private:
     // saying why when something is, so what's refused doesn't just do
     // nothing.
     bool idle();
+    // Runs `work` off the UI thread while showing `busy`, then hands what
+    // it returns to `done`, back on this one.
+    template <typename Work, typename Done>
+    void inBackground(const QString &busy, Work work, Done done);
     // Copies or moves off the UI thread, showing `busy` (or how many are
     // moving or copying) meanwhile.
     void transferInBackground(const QStringList &paths, const QString &folder, Mode mode, bool releaseClipboard,
