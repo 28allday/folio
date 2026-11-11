@@ -562,12 +562,13 @@ static bool merge(const QString &from, const QString &to, bool move, QString *er
         if (job && job->cancelled)
             return false;
         const QString there = QDir(to).filePath(entry.fileName());
-        if (taken(there) && isFolder(entry.filePath()) && isFolder(there)) {
+        const bool occupied = taken(there);
+        if (occupied && isFolder(entry.filePath()) && isFolder(there)) {
             if (!merge(entry.filePath(), there, move, error, job, steps))
                 return false;
             continue;
         }
-        if (!putReplacing(entry.filePath(), there, move, taken(there), error, job, steps))
+        if (!putReplacing(entry.filePath(), there, move, occupied, error, job, steps))
             return false;
     }
     if (move && QDir().rmdir(from) && steps && known) {
@@ -944,25 +945,27 @@ void FileOps::compress(const QStringList &selected) {
         return;
     }
     const QString archive = archiveName(paths, folder);
-    // -v names each item as bsdtar starts on it, which counts them.
     QStringList args{"-a", "-v", "-cf", temporary->filePath(archive), "-C", folder, "--"};
-    QStringList items;
-    for (const QString &path : paths)
-        items << QDir(folder).relativeFilePath(path);
+    // -v names each item as bsdtar starts on it, which counts them.
+    QHash<QString, qsizetype> order;
+    for (const QString &path : paths) {
+        args << QDir(folder).relativeFilePath(path);
+        order.insert(args.last(), order.size());
+    }
     // What bsdtar says that isn't an item is a problem, kept for saying why
     // it failed.
     auto errors = std::make_shared<QString>();
-    const auto read = [this, items, archive, errors](QProcess *process) {
+    const auto read = [this, order, archive, errors](QProcess *process) {
         while (process->canReadLine()) {
             const QString line = QString::fromUtf8(process->readLine()).chopped(1);
             if (!line.startsWith("a "))
                 *errors += line + '\n';
-            else if (const qsizetype at = items.indexOf(line.mid(2)); at >= 0 && items.size() > 1)
-                setBusy(tr("Compressing %1 of %n items into %2…", "", items.size()).arg(at + 1).arg(archive));
+            else if (const auto at = order.constFind(line.mid(2)); at != order.cend() && order.size() > 1)
+                setBusy(tr("Compressing %1 of %n items into %2…", "", order.size()).arg(*at + 1).arg(archive));
         }
     };
     QProcess *process = runTool(
-        "bsdtar", args + items, tr("Compressing into %1…").arg(archive),
+        "bsdtar", args, tr("Compressing into %1…").arg(archive),
         tr("Compressing needs bsdtar, from the libarchive package."), tr("Stopped compressing; no archive was made."),
         [this, paths, folder, temporary, archive, errors, read](QProcess *process, int code) {
             if (code != 0) {
@@ -996,10 +999,11 @@ bool FileOps::canExtract(const QStringList &paths) const {
     // disk image is for burning, not unpacking.
     static const QStringList single{"application/gzip", "application/x-xz", "application/zstd",
                                     "application/x-iso9660-image", "application/x-cd-image"};
+    // A folder is inode/directory, never an archive, whatever its name.
+    const QMimeDatabase mimes;
     for (const QString &path : paths) {
-        const QFileInfo info(path);
-        const QString mime = QMimeDatabase().mimeTypeForFile(info).name();
-        if (info.isDir() || FolderModel::kindForMime(mime) != "archive" || single.contains(mime))
+        const QString mime = mimes.mimeTypeForFile(QFileInfo(path)).name();
+        if (FolderModel::kindForMime(mime) != "archive" || single.contains(mime))
             return false;
     }
     return !paths.isEmpty();
@@ -2067,9 +2071,10 @@ static QString unchanged(Disks &disks, const Disk &disk) {
 // half way through reading it.
 static bool holds(const Disk &disk, const QString &path) {
     const QFileInfo info(path);
+    const QString absolute = info.absoluteFilePath(), canonical = info.canonicalFilePath();
     return std::any_of(disk.mounts.begin(), disk.mounts.end(), [&](const QString &root) {
         const QString under = root.endsWith('/') ? root : root + '/';
-        return info.absoluteFilePath().startsWith(under) || info.canonicalFilePath().startsWith(under);
+        return absolute.startsWith(under) || canonical.startsWith(under);
     });
 }
 

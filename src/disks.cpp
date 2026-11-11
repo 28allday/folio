@@ -44,10 +44,10 @@ QVariant plain(const QVariant &value) {
     return value;
 }
 
-// udisks on the system bus. Each call waits for its answer, which can take
-// as long as someone takes to answer polkit's password prompt, so it's
-// called from a worker, never the UI thread (listing aside, which asks
-// nothing).
+// udisks on the system bus. A change waits for its answer, which can take
+// as long as someone takes to answer polkit's password prompt, so it's made
+// from a worker, never the UI thread. Listing disks and asking what can be
+// made ask polkit nothing, and the UI thread gives them a few seconds.
 class UDisks : public Disks {
 public:
     QList<Disk> list() override {
@@ -110,7 +110,7 @@ public:
     }
 
     bool canFormat(const QString &type) override {
-        const QDBusMessage reply = call("/org/freedesktop/UDisks2/Manager", prefix + "Manager", "CanFormat", {type});
+        const QDBusMessage reply = call("/org/freedesktop/UDisks2/Manager", prefix + "Manager", "CanFormat", {type}, 5000);
         if (reply.type() == QDBusMessage::ErrorMessage || reply.arguments().isEmpty())
             return false;
         // (available, the program missing when it isn't).
