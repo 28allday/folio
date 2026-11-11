@@ -5857,6 +5857,17 @@ private slots:
         for (const QString &folder : gone)
             QVERIFY(!QFileInfo::exists(dir.filePath("cache/" + folder)));
         QVERIFY(QFile::exists(dir.filePath("photos/beach.jpg")));
+
+        // Nor is a fail folder that is itself a link: what it leads to isn't
+        // the cache's.
+        QTemporaryDir linked;
+        QVERIFY(QDir().mkpath(linked.filePath("elsewhere/folio-1")));
+        write(linked.filePath("elsewhere/folio-1/keep.txt"), "mine");
+        QVERIFY(QDir().mkpath(linked.filePath("cache")));
+        QVERIFY(QFile::link(linked.filePath("elsewhere"), linked.filePath("cache/fail")));
+        const Thumbnails throughLink(linked.filePath("cache"), {linked.filePath("none")});
+        QThreadPool::globalInstance()->waitForDone();
+        QVERIFY(QFile::exists(linked.filePath("elsewhere/folio-1/keep.txt")));
     }
 
     void thumbnailsLetAThumbnailerInstalledLaterDraw()
