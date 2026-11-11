@@ -23,6 +23,7 @@
 #include <unistd.h>
 
 #include "backend.h"
+#include "disks.h"
 #include "fileops.h"
 #include "foldermodel.h"
 #include "places.h"
@@ -68,10 +69,78 @@ static QByteArray tailnet()
         "e":{"HostName":"build","DNSName":"build.example.ts.net.","OS":"windows","Online":true}}})";
 }
 
+// udisks stood in for: the disks it lists, and each call made to it, in
+// order. Opening a disk opens `device`, a file standing in for it; `refuse`
+// makes a call fail with that sentence, as udisks would when polkit says no.
+class FakeDisks : public Disks {
+public:
+    QList<Disk> disks;
+    QStringList calls;
+    QHash<QString, QString> refuse;
+    QString device;
+    // A descriptor to hand out instead of opening `device`.
+    int fd = -1;
+
+    QList<Disk> list() override { return disks; }
+    QString unmount(const QString &filesystem) override { return made("unmount " + filesystem, "unmount"); }
+    QString makeTable(const Disk &disk) override { return made("makeTable " + disk.block, "makeTable"); }
+    QString addExfat(const Disk &disk, const QString &label, QString *partition) override {
+        *partition = disk.block + "1";
+        return made("addExfat " + disk.block + " " + label, "addExfat");
+    }
+    QString mount(const QString &filesystem) override { return made("mount " + filesystem, "mount"); }
+    QString open(const Disk &disk, int *descriptor) override {
+        if (const QString error = made("open " + disk.block, "open"); !error.isEmpty())
+            return error;
+        *descriptor = fd >= 0 ? fd : ::open(QFile::encodeName(device).constData(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+        return {};
+    }
+    QString eject(const Disk &disk) override { return made("eject " + disk.block, "eject"); }
+
+private:
+    QString made(const QString &call, const QString &method) {
+        calls << call;
+        return refuse.value(method);
+    }
+};
+
+// A 32 GB SanDisk stick with one filesystem mounted, as udisks lists one.
+static Disk sanDisk()
+{
+    Disk disk;
+    disk.block = "/org/freedesktop/UDisks2/block_devices/sdb";
+    disk.drive = "/org/freedesktop/UDisks2/drives/SanDisk_Ultra";
+    disk.device = "/dev/sdb";
+    disk.vendor = "SanDisk";
+    disk.model = "Ultra";
+    disk.label = "STICK";
+    disk.size = 31'914'983'424;
+    disk.bus = "usb";
+    disk.removable = disk.canPowerOff = disk.ejectable = true;
+    disk.mounts = {"/run/media/me/STICK"};
+    disk.filesystems = {"/org/freedesktop/UDisks2/block_devices/sdb1"};
+    return disk;
+}
+
+// Puts a fake in udisks' place for the test, and for the tests after it.
+static std::shared_ptr<FakeDisks> fakeDisks(const QList<Disk> &disks = {sanDisk()})
+{
+    auto fake = std::make_shared<FakeDisks>();
+    fake->disks = disks;
+    Disks::replace(fake);
+    return fake;
+}
+
 class FolioTests : public QObject {
     Q_OBJECT
 
 private slots:
+    void initTestCase()
+    {
+        // No test ever reaches the real udisks, which would change real disks.
+        fakeDisks({});
+    }
+
     void folderListsDirectoriesFirstWithoutHidden()
     {
         QTemporaryDir dir;
@@ -2304,6 +2373,128 @@ private slots:
         QCOMPARE(drives.at(2).toMap().value("release").toString(), QString());
         QCOMPARE(drives.at(0).toMap().value("free").toLongLong(), 120'000'000'000);
         QCOMPARE(drives.at(2).toMap().value("free").toLongLong(), -1);
+    }
+
+    void disksParseWholeDisksFromUdisks()
+    {
+        // As this machine's udisks lists them: the system disk, encrypted,
+        // with the system unlocked on its second partition, and an
+        // installer stick; loop devices and zram aren't disks.
+        const QString at = "/org/freedesktop/UDisks2/block_devices/";
+        const QString nvme = "/org/freedesktop/UDisks2/drives/SAMSUNG_MZALC4T0HBL1";
+        const QString usb = "/org/freedesktop/UDisks2/drives/USB_SanDisk_3_2e2_Gen";
+        Disks::Objects objects;
+        objects[at + "nvme0n1"] = {{"Block", {{"Device", "/dev/nvme0n1"}, {"Drive", nvme}, {"Size", 4'096'805'658'624LL}, {"HintSystem", true}, {"CryptoBackingDevice", "/"}}},
+                                   {"PartitionTable", {{"Type", "gpt"}}}};
+        objects[at + "nvme0n1p1"] = {{"Block", {{"Device", "/dev/nvme0n1p1"}, {"Drive", nvme}, {"Size", 2'147'483'648LL}, {"IdUsage", "filesystem"}, {"CryptoBackingDevice", "/"}}},
+                                     {"Partition", {{"Table", at + "nvme0n1"}}},
+                                     {"Filesystem", {{"MountPoints", QStringList{"/boot"}}}}};
+        objects[at + "nvme0n1p2"] = {{"Block", {{"Device", "/dev/nvme0n1p2"}, {"Drive", nvme}, {"Size", 4'094'655'725'568LL}, {"IdUsage", "crypto"}, {"CryptoBackingDevice", "/"}}},
+                                     {"Partition", {{"Table", at + "nvme0n1"}}},
+                                     {"Encrypted", {}}};
+        objects[at + "dm_2d0"] = {{"Block", {{"Device", "/dev/dm-0"}, {"Drive", "/"}, {"Size", 4'094'638'948'352LL}, {"IdUsage", "filesystem"}, {"IdLabel", "omarchy-root"}, {"CryptoBackingDevice", at + "nvme0n1p2"}}},
+                                  {"Filesystem", {{"MountPoints", QStringList{"/", "/home", "/var/log"}}}}};
+        objects[at + "loop0"] = {{"Block", {{"Device", "/dev/loop0"}, {"Drive", "/"}, {"Size", 0}}}, {"Loop", {}}};
+        objects[at + "zram0"] = {{"Block", {{"Device", "/dev/zram0"}, {"Drive", "/"}, {"Size", 130'916'810'752LL}}}, {"Swapspace", {}}};
+        objects[at + "sda"] = {{"Block", {{"Device", "/dev/sda"}, {"Drive", usb}, {"Size", 250'148'290'560LL}, {"IdUsage", "filesystem"}, {"IdLabel", "OMARCHY_202611"}, {"CryptoBackingDevice", "/"}}},
+                               {"PartitionTable", {{"Type", "gpt"}}}};
+        objects[at + "sda1"] = {{"Block", {{"Device", "/dev/sda1"}, {"Drive", usb}, {"Size", 6'701'465'600LL}, {"IdUsage", "filesystem"}, {"IdLabel", "OMARCHY_202611"}, {"CryptoBackingDevice", "/"}}},
+                                {"Partition", {{"Table", at + "sda"}}},
+                                {"Filesystem", {{"MountPoints", QStringList{"/run/media/me/OMARCHY_202611"}}}}};
+        objects[at + "sda2"] = {{"Block", {{"Device", "/dev/sda2"}, {"Drive", usb}, {"Size", 16'777'216LL}, {"IdUsage", "filesystem"}, {"IdLabel", "ARCHISO_EFI"}, {"CryptoBackingDevice", "/"}}},
+                                {"Partition", {{"Table", at + "sda"}}},
+                                {"Filesystem", {{"MountPoints", QStringList()}}}};
+        objects[nvme] = {{"Drive", {{"Model", "SAMSUNG MZALC4T0HBL1-00B07"}, {"Removable", false}, {"ConnectionBus", ""}}}};
+        objects[usb] = {{"Drive", {{"Vendor", "USB"}, {"Model", "SanDisk 3.2 Gen"}, {"Removable", true}, {"ConnectionBus", "usb"}, {"CanPowerOff", true}, {"Ejectable", true}, {"MediaCompatibility", QStringList()}}}};
+
+        const QList<Disk> disks = Disks::parse(objects);
+        QCOMPARE(disks.size(), 2);
+        const Disk &system = disks.at(0);
+        QCOMPARE(system.device, QString("/dev/nvme0n1"));
+        QCOMPARE(system.block, at + "nvme0n1");
+        QCOMPARE(system.drive, nvme);
+        QVERIFY(system.hintSystem);
+        QVERIFY(system.mounts.contains("/"));
+        QVERIFY(system.mounts.contains("/boot"));
+        QVERIFY(Disks::holdsSystem(system));
+        const Disk &stick = disks.at(1);
+        QCOMPARE(stick.device, QString("/dev/sda"));
+        QCOMPARE(stick.label, QString("OMARCHY_202611"));
+        QCOMPARE(stick.mounts, QStringList{"/run/media/me/OMARCHY_202611"});
+        QCOMPARE(stick.filesystems, QStringList{at + "sda1"});
+        QCOMPARE(stick.size, 250'148'290'560LL);
+        QCOMPARE(stick.bus, QString("usb"));
+        QVERIFY(stick.removable && stick.canPowerOff && stick.ejectable && !stick.optical && !stick.readOnly);
+        QVERIFY(!Disks::holdsSystem(stick));
+    }
+
+    void disksDecideWhereAnImageCanBurn()
+    {
+        const qint64 image = 4'000'000'000;
+        const Disk stick = sanDisk();
+        QCOMPARE(Disks::fit(stick, image), Disks::Fits);
+
+        // An SD card in a laptop's own reader isn't removable to udisks,
+        // but its bus is.
+        Disk card = sanDisk();
+        card.vendor = card.model = "";
+        card.bus = "sdio";
+        card.removable = card.canPowerOff = card.ejectable = false;
+        QCOMPARE(Disks::fit(card, image), Disks::Fits);
+
+        Disk small = sanDisk();
+        small.size = 2'000'000'000;
+        QCOMPARE(Disks::fit(small, image), Disks::TooSmall);
+
+        Disk system = sanDisk();
+        system.mounts = {"/run/media/me/STICK", "/boot"};
+        QCOMPARE(Disks::fit(system, image), Disks::Unfit);
+
+        Disk hinted = sanDisk();
+        hinted.hintSystem = true;
+        QCOMPARE(Disks::fit(hinted, image), Disks::Unfit);
+
+        Disk internal = sanDisk();
+        internal.bus = "";
+        internal.removable = internal.canPowerOff = internal.ejectable = false;
+        QCOMPARE(Disks::fit(internal, image), Disks::Unfit);
+
+        Disk locked = sanDisk();
+        locked.readOnly = true;
+        QCOMPARE(Disks::fit(locked, image), Disks::Unfit);
+
+        Disk optical = sanDisk();
+        optical.optical = true;
+        QCOMPARE(Disks::fit(optical, image), Disks::Unfit);
+
+        // A reader with no card in it has no size.
+        Disk empty = sanDisk();
+        empty.size = 0;
+        QCOMPARE(Disks::fit(empty, image), Disks::Unfit);
+    }
+
+    void disksAreNamedTheWayPeopleKnowThem()
+    {
+        Disk disk = sanDisk();
+        QCOMPARE(Disks::name(disk), QString("SanDisk Ultra"));
+        QCOMPARE(Disks::title(disk), QString("SanDisk Ultra · 32 GB"));
+        // A placeholder maker is left out, and one the model already names
+        // isn't said twice.
+        disk.vendor = "USB";
+        disk.model = "SanDisk 3.2 Gen";
+        QCOMPARE(Disks::name(disk), QString("SanDisk 3.2 Gen"));
+        disk.vendor = "Kingston";
+        disk.model = "Kingston DataTraveler";
+        QCOMPARE(Disks::name(disk), QString("Kingston DataTraveler"));
+        // Without a maker or model, its label, then its device.
+        disk.vendor = disk.model = "";
+        QCOMPARE(Disks::name(disk), QString("STICK"));
+        disk.label = "";
+        disk.device = "/dev/mmcblk0";
+        QCOMPARE(Disks::name(disk), QString("mmcblk0"));
+        QCOMPARE(Disks::size(1'500'000'000'000), QString("1.5 TB"));
+        QCOMPARE(Disks::size(3'904'897'024), QString("3.9 GB"));
+        QCOMPARE(Disks::size(250'148'290'560), QString("250 GB"));
     }
 
     void drivesSayWhatsFreeInTheLanguagesDigits()

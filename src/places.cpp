@@ -1,4 +1,5 @@
 #include "places.h"
+#include "disks.h"
 #include "fileops.h"
 #include "foldermodel.h"
 
@@ -355,19 +356,14 @@ void Places::refreshMachines() {
 }
 
 QVariantList Places::physicalDrives(const QList<Mount> &mounts, const QString &systemDevice) {
-    // Where the system itself lives; a drive mounted here is the computer,
-    // not a device to browse to.
-    static const QStringList systemRoots{"/", "/boot", "/efi", "/home", "/var", "/usr", "/opt", "/srv",
-                                         "/root", "/tmp", "/nix", "/snap", "/swap"};
     static const QStringList pseudo{"tmpfs", "devtmpfs", "squashfs", "overlay", "ramfs", "fuse.portal",
                                     "fuse.gvfsd-fuse", "efivarfs", "autofs"};
     QVariantList drives;
     QStringList seen;
     for (const Mount &m : mounts) {
-        const bool system = systemRoots.contains(m.root)
-            || std::any_of(systemRoots.begin() + 1, systemRoots.end(),
-                           [&](const QString &r) { return m.root.startsWith(r + "/"); })
-            || m.root.startsWith("/.");
+        // A drive mounted where the system lives is the computer, not a
+        // device to browse to.
+        const bool system = Disks::isSystemMount(m.root);
         // Only block devices; loop images (snaps, AppImages) and zram aren't
         // drives. Btrfs subvolumes of the system disk share its device.
         const bool block = m.device.startsWith("/dev/") && !m.device.startsWith("/dev/loop")
