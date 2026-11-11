@@ -70,9 +70,11 @@ QVariantList parseBookmarks(const QStringList &lines, const QString &home) {
 
 // GIO's mount at `path`, with a reference for the caller, or null when GIO
 // doesn't list one there (a drive only fstab knows of, which a user can't
-// unmount anyway).
+// unmount anyway). The monitor is kept: let go of, it's made again on the
+// next call, asking each of GVfs's volume monitors for its mounts over
+// D-Bus, once for every drive on every refresh.
 GMount *mountAt(const QString &path) {
-    GVolumeMonitor *monitor = g_volume_monitor_get();
+    static GVolumeMonitor *const monitor = g_volume_monitor_get();
     GList *mounts = g_volume_monitor_get_mounts(monitor);
     GMount *found = nullptr;
     for (GList *l = mounts; l && !found; l = l->next) {
@@ -84,7 +86,6 @@ GMount *mountAt(const QString &path) {
         g_object_unref(root);
     }
     g_list_free_full(mounts, g_object_unref);
-    g_object_unref(monitor);
     return found;
 }
 
