@@ -746,10 +746,45 @@ private slots:
         trashed("a.txt", home.filePath("a.txt"));
         QDir().mkpath(trash + "/files/folder/inner");
         write(trash + "/info/folder.trashinfo", "[Trash Info]\nPath=" + home.filePath("folder").toUtf8() + "\n");
-        write(trash + "/info/orphan.trashinfo", "[Trash Info]\nPath=/nowhere\n");
+        // Something being trashed gets its note first, then its file, so a
+        // note without a file may be for something arriving.
+        write(trash + "/info/arriving.txt.trashinfo", "[Trash Info]\nPath=" + home.filePath("arriving.txt").toUtf8() + "\n");
         QCOMPARE(FileOps::emptyTrashDir(trash), 2);
         QVERIFY(QDir(trash + "/files").isEmpty());
-        QVERIFY(QDir(trash + "/info").isEmpty());
+        QCOMPARE(QDir(trash + "/info").entryList(QDir::Files), QStringList({"arriving.txt.trashinfo"}));
+    }
+
+    void trashKeepsTheNoteOfWhatStays()
+    {
+        // A note goes only once its item is gone, so what couldn't be
+        // deleted, or removed from the trash once restored to another drive,
+        // can still be restored.
+        QTemporaryDir data;
+        const auto restore = dataHomeAt(data.path());
+        const QString trash = data.filePath("Trash");
+        QDir().mkpath(trash + "/files/box");
+        QDir().mkpath(trash + "/info");
+        write(trash + "/files/box/x.txt", "x");
+        const auto other = elsewhere();
+        const QString original = other ? other->filePath("box") : data.filePath("box");
+        write(trash + "/info/box.trashinfo", "[Trash Info]\nPath=" + QUrl::toPercentEncoding(original, "/") + "\n");
+        // Nothing can be taken out of a folder that can't be written to.
+        const auto locked = QFile::ReadOwner | QFile::ExeOwner;
+        QVERIFY(QFile::setPermissions(trash + "/files/box", locked));
+        const auto unlock = qScopeGuard([&] {
+            for (const QString &box : {trash + "/files/box", original})
+                QFile::setPermissions(box, locked | QFile::WriteOwner);
+        });
+        QVERIFY(!FileOps::deleteTrashed(trash + "/files/box"));
+        QVERIFY(QFile::exists(trash + "/info/box.trashinfo"));
+
+        if (!other)
+            QSKIP("Needs a second drive.");
+        QString error;
+        QCOMPARE(FileOps::restoreOne(trash + "/files/box", &error), QString());
+        QCOMPARE(error, QString("Restored box, but couldn't remove it from the trash."));
+        QVERIFY(QFile::exists(original + "/x.txt"));
+        QVERIFY(QFile::exists(trash + "/info/box.trashinfo"));
     }
 
     void trashFindsNotesOnlyForWhatWasTrashed()

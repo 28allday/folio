@@ -490,13 +490,19 @@ QString FileOps::restoreOne(const QString &trashedPath, QString *error) {
         return {};
     }
     const QString destination = QDir(folder).filePath(freeName(folder, QFileInfo(original).fileName()));
-    if (!QFile::rename(trashedPath, destination)) {
-        // Across drives (rare: trash lives on the item's own drive), copy.
-        if (!copyRecursively(trashedPath, destination, error))
-            return {};
-        deleteTrashed(trashedPath);
+    if (QFile::rename(trashedPath, destination)) {
+        QFile::remove(infoFileFor(trashedPath));
+        return destination;
     }
-    QFile::remove(infoFileFor(trashedPath));
+    // Across drives (rare: trash lives on the item's own drive), it's copied,
+    // then deleted from the trash along with its note, which stays with
+    // whatever couldn't be deleted.
+    if (!copyRecursively(trashedPath, destination, error))
+        return {};
+    if (!deleteTrashed(trashedPath)) {
+        *error = tr("Restored %1, but couldn't remove it from the trash.").arg(QFileInfo(trashedPath).fileName());
+        return {};
+    }
     return destination;
 }
 
@@ -504,7 +510,8 @@ bool FileOps::deleteTrashed(const QString &trashedPath) {
     const QFileInfo item(trashedPath);
     const bool removed = item.isDir() && !item.isSymLink() ? QDir(trashedPath).removeRecursively()
                                                            : QFile::remove(trashedPath);
-    if (const QString note = infoFileFor(trashedPath); !note.isEmpty())
+    // The note goes once its item is gone, so what's left can be restored.
+    if (const QString note = infoFileFor(trashedPath); removed && !note.isEmpty())
         QFile::remove(note);
     return removed;
 }
@@ -515,10 +522,8 @@ int FileOps::emptyTrashDir(const QString &trashDir) {
     for (const QFileInfo &item : files.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System))
         if (deleteTrashed(item.absoluteFilePath()))
             ++count;
-    // Notes left without a file, and the size cache, go too.
-    QDir info(trashDir + "/info");
-    for (const QString &name : info.entryList(QDir::Files | QDir::Hidden))
-        info.remove(name);
+    // The size cache goes too. A note without its item stays: something
+    // being trashed gets its note first, so it may be on its way.
     QFile::remove(trashDir + "/directorysizes");
     return count;
 }
