@@ -103,7 +103,12 @@ void Previewer::show(const QString &path) {
 QVariantMap Previewer::item() const {
     if (m_index < 0 || m_index >= m_entries.size())
         return {};
-    return FolderModel::toMap(m_entries.at(m_index));
+    // Only the preview fills in a folder's first pictures (in setIndex), so
+    // only its items carry them; the folder model's would always be empty.
+    const FolderModel::Entry &e = m_entries.at(m_index);
+    QVariantMap map = FolderModel::toMap(e);
+    map.insert("peek", e.peek);
+    return map;
 }
 
 QString Previewer::url() const {

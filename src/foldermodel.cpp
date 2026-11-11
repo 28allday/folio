@@ -491,7 +491,7 @@ QVariantMap FolderModel::toMap(const Entry &entry) {
     return {
         {"name", entry.name}, {"path", entry.path}, {"isDir", entry.isDir}, {"size", entry.size},
         {"modified", entry.modified}, {"kind", entry.kind}, {"mime", entry.mime},
-        {"extension", entry.extension}, {"itemCount", entry.itemCount}, {"peek", entry.peek},
+        {"extension", entry.extension}, {"itemCount", entry.itemCount},
     };
 }
 

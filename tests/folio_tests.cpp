@@ -979,6 +979,19 @@ private slots:
         QCOMPARE(previewer.item().value("itemCount").toInt(), 1);
     }
 
+    void previewerPeeksIntoFolders()
+    {
+        // A folder's first pictures are for the preview window, so its item
+        // has them and the folder model's (which never fills them) doesn't.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkdir("album");
+        write(dir.filePath("album/a.jpg"), "x");
+        Previewer previewer;
+        previewer.start(dir.filePath("album"), false, "name");
+        QCOMPARE(previewer.item().value("peek").toStringList(), QStringList({dir.filePath("album/a.jpg")}));
+        QVERIFY(!FolderModel::toMap(FolderModel::Entry()).contains("peek"));
+    }
+
     void themeFallsBack()
     {
         QTemporaryDir dir;
