@@ -55,6 +55,18 @@ static std::unique_ptr<QTemporaryDir> elsewhere()
     return dir;
 }
 
+// `tailscale status --json`, trimmed to what Folio reads, for a made-up
+// tailnet: three desktops online, one offline, and a phone.
+static QByteArray tailnet()
+{
+    return R"({"Peer":{
+        "a":{"HostName":"studio","DNSName":"studio.example.ts.net.","OS":"linux","Online":true},
+        "b":{"HostName":"nas","DNSName":"nas.example.ts.net.","OS":"linux","Online":false},
+        "c":{"HostName":"Conference-Room","DNSName":"conference-room.example.ts.net.","OS":"macOS","Online":true},
+        "d":{"HostName":"phone","DNSName":"phone.example.ts.net.","OS":"android","Online":true},
+        "e":{"HostName":"build","DNSName":"build.example.ts.net.","OS":"windows","Online":true}}})";
+}
+
 class FolioTests : public QObject {
     Q_OBJECT
 
@@ -1404,6 +1416,59 @@ private slots:
         QCOMPARE(peers.size(), 1);
         QCOMPARE(peers.at(0).toMap().value("name").toString(), QString("studio"));
         QCOMPARE(peers.at(0).toMap().value("host").toString(), QString("studio.example.ts.net"));
+        QCOMPARE(peers.at(0).toMap().value("os").toString(), QString("Linux"));
+    }
+
+    void tailnetViewListsOnlineDesktopsByName()
+    {
+        const auto entries = FolderModel::listPeers(Places::parseTailscale(tailnet()));
+        QStringList names;
+        for (const auto &e : entries) names << e.name;
+        // Offline machines and phones are left out; the rest go by name,
+        // whatever their case.
+        QCOMPARE(names, QStringList({"build", "Conference-Room", "studio"}));
+        const auto &build = entries.at(0);
+        QCOMPARE(build.kind, QString("peer"));
+        QCOMPARE(build.path, FolderModel::tailnetPath() + "build.example.ts.net");
+        QCOMPARE(build.extension, QString("Windows"));
+        QVERIFY(!build.isDir);
+    }
+
+    void tailnetViewIsAPlaceOfItsOwn()
+    {
+        QTemporaryDir home;
+        Backend backend(home.path());
+        backend.navigate(FolderModel::tailnetPath());
+        QCOMPARE(backend.path(), FolderModel::tailnetPath());
+        QCOMPARE(backend.title(), QString("Tailnet"));
+        QCOMPARE(backend.crumbs().size(), 1);
+        QCOMPARE(backend.crumbs().at(0).toMap().value("name").toString(), QString("Tailnet"));
+        backend.goUp();
+        QCOMPARE(backend.path(), FolderModel::tailnetPath());
+    }
+
+    void tailnetViewSearchesMachineNames()
+    {
+        const QVariantList peers = Places::parseTailscale(tailnet());
+        QCOMPARE(FolderModel::listPeers(peers, "STU").size(), 1);
+
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPeers(peers);
+        model.setPath(FolderModel::tailnetPath());
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 3);
+        model.setQuery("o");
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 2);
+        QCOMPARE(model.get(0).value("name").toString(), QString("Conference-Room"));
+        QCOMPARE(model.get(1).value("name").toString(), QString("studio"));
+        // A machine going away leaves the view at the next poll.
+        QVariantList without = peers;
+        without.removeIf([](const QVariant &p) { return p.toMap().value("name") == "studio"; });
+        model.setPeers(without);
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 1);
     }
 
     void placesListOnlyPhysicalDrives()

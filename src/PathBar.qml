@@ -92,13 +92,15 @@ Rectangle {
             font.pixelSize: 14
             rightPadding: scope.implicitWidth + 24
             // Where it searches, at the end of the field. Unlike a
-            // placeholder, it stays while typing.
+            // placeholder, it stays while typing. The tailnet has nothing
+            // below it.
             Text {
                 id: scope
+                readonly property string here: backend.crumbs.length > 0 ? backend.crumbs[backend.crumbs.length - 1].name : ""
                 anchors.right: parent.right
                 anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
-                text: qsTr("Search %1 and below").arg(backend.crumbs.length > 0 ? backend.crumbs[backend.crumbs.length - 1].name : "")
+                text: backend.path === "tailnet:" ? qsTr("Search %1").arg(here) : qsTr("Search %1 and below").arg(here)
                 color: theme.secondaryForeground
                 font.pixelSize: 12
             }

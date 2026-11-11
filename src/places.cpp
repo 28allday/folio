@@ -288,11 +288,12 @@ QVariantList Places::parseTailscale(const QByteArray &json) {
         // Only machines that can hold files and can be reached right now:
         // phones can't be browsed over SFTP, and offline machines would only
         // be dead ends. The 15-second poll brings them back when they wake.
-        const QString os = peer.value("OS").toString();
-        if (name.isEmpty() || host.isEmpty() || (os != "linux" && os != "macOS" && os != "windows")
-            || !peer.value("Online").toBool())
+        // Each keeps its system's name, as its maker writes it.
+        static const QHash<QString, QString> systems{{"linux", "Linux"}, {"macOS", "macOS"}, {"windows", "Windows"}};
+        const QString os = systems.value(peer.value("OS").toString());
+        if (name.isEmpty() || host.isEmpty() || os.isEmpty() || !peer.value("Online").toBool())
             continue;
-        peers << QVariantMap{{"name", name}, {"host", host}};
+        peers << QVariantMap{{"name", name}, {"host", host}, {"os", os}};
     }
     std::sort(peers.begin(), peers.end(), [](const QVariant &a, const QVariant &b) {
         return QString::localeAwareCompare(a.toMap().value("name").toString(), b.toMap().value("name").toString()) < 0;

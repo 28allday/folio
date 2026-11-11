@@ -73,6 +73,11 @@ FocusScope {
     // Restore and Empty Trash. Nothing is renamed or made there: an item
     // without its note (or under another name) can't be restored.
     readonly property bool inTrash: fileOps.inTrash(backend.path)
+    // The tailnet view lists machines, not files: there's nothing to copy,
+    // move, rename, make, pin or preview there, only machines to open.
+    readonly property bool inTailnet: backend.path === "tailnet:"
+    readonly property bool fileKeys: keys && !inTailnet
+    Binding { target: backend.folder; property: "peers"; value: places.peers }
     function deleteSelected() {
         const paths = pane.selectedPaths()
         if (pane.inTrash)
@@ -114,14 +119,14 @@ FocusScope {
             backend.showMessage(problem)
     }
 
-    Shortcut { sequence: "Space"; enabled: pane.keys; onActivated: backend.togglePreview(pane.current.path || "") }
-    Shortcut { sequences: [StandardKey.Copy]; enabled: pane.keys; onActivated: fileOps.copy(pane.selectedPaths()) }
-    Shortcut { sequences: [StandardKey.Cut]; enabled: pane.keys; onActivated: fileOps.cut(pane.selectedPaths()) }
-    Shortcut { sequences: [StandardKey.Paste]; enabled: pane.keys; onActivated: fileOps.paste(backend.path) }
+    Shortcut { sequence: "Space"; enabled: pane.fileKeys; onActivated: backend.togglePreview(pane.current.path || "") }
+    Shortcut { sequences: [StandardKey.Copy]; enabled: pane.fileKeys; onActivated: fileOps.copy(pane.selectedPaths()) }
+    Shortcut { sequences: [StandardKey.Cut]; enabled: pane.fileKeys; onActivated: fileOps.cut(pane.selectedPaths()) }
+    Shortcut { sequences: [StandardKey.Paste]; enabled: pane.fileKeys; onActivated: fileOps.paste(backend.path) }
     // "Yank": the selected path (or the folder's) as text, for a terminal.
-    Shortcut { sequence: "Ctrl+Shift+C"; enabled: pane.keys; onActivated: { const paths = pane.selectedPaths(); fileOps.yank(paths.length > 0 ? paths : [backend.path]) } }
-    Shortcut { sequence: "Delete"; enabled: pane.keys; onActivated: pane.deleteSelected() }
-    Shortcut { sequence: "F2"; enabled: pane.keys && !pane.inTrash; onActivated: if (pane.current.path) rename.open(pane.current) }
+    Shortcut { sequence: "Ctrl+Shift+C"; enabled: pane.fileKeys; onActivated: { const paths = pane.selectedPaths(); fileOps.yank(paths.length > 0 ? paths : [backend.path]) } }
+    Shortcut { sequence: "Delete"; enabled: pane.fileKeys; onActivated: pane.deleteSelected() }
+    Shortcut { sequence: "F2"; enabled: pane.fileKeys && !pane.inTrash; onActivated: if (pane.current.path) rename.open(pane.current) }
     Shortcut { sequences: [StandardKey.SelectAll]; enabled: pane.keys; onActivated: backend.folder.selectAll() }
     // Escape narrows a selection of several back to the cursor, then ends
     // a search.
@@ -145,13 +150,13 @@ FocusScope {
             fileMenu.show(pane.current.path ? pane.current : null, backend.path, anchor)
         }
     }
-    Shortcut { sequence: "Ctrl+Shift+D"; enabled: pane.keys && !pane.inTrash; onActivated: if (pane.current.path) fileOps.duplicate(pane.current.path) }
+    Shortcut { sequence: "Ctrl+Shift+D"; enabled: pane.fileKeys && !pane.inTrash; onActivated: if (pane.current.path) fileOps.duplicate(pane.current.path) }
     Shortcut { sequences: [StandardKey.New]; enabled: pane.keys; onActivated: backend.newWindow() }
-    Shortcut { sequence: "Ctrl+Shift+N"; enabled: pane.keys && !pane.inTrash; onActivated: fileOps.newFolder(backend.path) }
+    Shortcut { sequence: "Ctrl+Shift+N"; enabled: pane.fileKeys && !pane.inTrash; onActivated: fileOps.newFolder(backend.path) }
     Shortcut { sequences: ["Ctrl+L", "Alt+D"]; enabled: pane.keys; onActivated: pathBar.editPath() }
     // Pins the selected folder, or the folder being shown when a file is
     // selected; pressed again, unpins it.
-    Shortcut { sequence: "Ctrl+D"; enabled: pane.active; onActivated: pane.togglePin(pane.current.isDir ? pane.current.path : backend.path) }
+    Shortcut { sequence: "Ctrl+D"; enabled: pane.active && !pane.inTailnet; onActivated: pane.togglePin(pane.current.isDir ? pane.current.path : backend.path) }
     Shortcut { sequence: "Ctrl+1"; enabled: pane.active; onActivated: pane.viewMode = "grid" }
     Shortcut { sequence: "Ctrl+2"; enabled: pane.active; onActivated: pane.viewMode = "list" }
     Shortcut { sequence: "Ctrl+3"; enabled: pane.active; onActivated: pane.viewMode = "columns" }

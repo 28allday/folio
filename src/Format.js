@@ -15,9 +15,10 @@ function size(bytes) {
     return value.toLocaleString(Qt.locale(), "f", i === 0 ? 0 : 1) + " " + units[i]
 }
 
-// When it changed: the time for today, the date before that.
+// When it changed: the time for today, the date before that. Machines on
+// the tailnet have no date.
 function when(date) {
-    if (!date)
+    if (!date || isNaN(date.getTime()))
         return ""
     const locale = Qt.locale()
     const now = new Date()
@@ -30,10 +31,13 @@ function count(n) {
     return n === 0 ? qsTr("Empty") : n > 0 ? qsTr("%n items", "", n) : ""
 }
 
-// What an item is and how big, under its name in the details and the preview.
+// What an item is and how big, under its name in the details and the
+// preview; for a machine, its system.
 function summary(item, type) {
     if (!item || !item.path)
         return ""
+    if (item.kind === "peer")
+        return item.extension
     if (item.isDir)
         return item.itemCount === 0 ? qsTr("Folder · Empty") : item.itemCount > 0 ? qsTr("Folder · %n items", "", item.itemCount) : qsTr("Folder")
     return (type || item.mime) + " · " + size(item.size)

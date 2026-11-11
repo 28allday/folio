@@ -23,7 +23,10 @@ Rectangle {
     // included), so the pin box shows.
     property int dropHovers: 0
     readonly property bool dragging: drop.containsDrag || dropHovers > 0 || pinDrop.containsDrag
-    readonly property var rows: [].concat(places.places, places.pinned, places.views, places.devices, places.peers)
+    // The tailnet's last row opens the view of every machine on it.
+    readonly property var allMachines: places.peers.length > 0 ? [{ path: "tailnet:" }] : []
+    readonly property var rows: [].concat(places.places, places.pinned, places.views, places.devices, places.peers,
+                                          allMachines)
     readonly property int pinnedAt: places.places.length
     readonly property int viewsAt: pinnedAt + places.pinned.length
     readonly property int devicesAt: viewsAt + places.views.length
@@ -67,7 +70,7 @@ Rectangle {
     readonly property string activePath: {
         let best = ""
         const here = sidebar.target.path
-        for (const list of [places.places, places.pinned, places.views, places.devices]) {
+        for (const list of [places.places, places.pinned, places.views, places.devices, allMachines]) {
             for (const p of list) {
                 if (p.path !== "/" && (here === p.path || here.startsWith(p.path + "/")) && p.path.length > best.length)
                     best = p.path
@@ -310,6 +313,23 @@ Rectangle {
                     active: sidebar.target.path.indexOf("/sftp:host=" + modelData.host) >= 0
                     onClicked: sidebar.target.openPeer(modelData.host)
                 }
+            }
+            PlaceRow {
+                visible: sidebar.allMachines.length > 0
+                keyed: sidebar.activeFocus && sidebar.cursor === sidebar.peersAt + places.peers.length
+                onKeyedChanged: if (keyed) sidebar.reveal(this)
+                // Under Tailnet, "Machines" says all of them, and unlike
+                // "All machines" it fits the narrow sidebar beside the count.
+                text: qsTr("Machines")
+                glyph: "tailnet"
+                active: sidebar.activePath === "tailnet:"
+                // How many are online, quietly, in the language's digits.
+                status: {
+                    translator.language // Re-read when the language (and so its digits) changes.
+                    return places.peers.length.toLocaleString(Qt.locale(), "f", 0)
+                }
+                statusColor: theme.secondaryForeground
+                onClicked: sidebar.target.navigate("tailnet:")
             }
         }
     }

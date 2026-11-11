@@ -62,6 +62,8 @@ QString Backend::title() const {
     const QString p = path();
     if (p == FolderModel::recentPath())
         return tr("Recents");
+    if (p == FolderModel::tailnetPath())
+        return tr("Tailnet");
     if (p == trashPath())
         return tr("Trash");
     if (p == m_home)
@@ -79,6 +81,8 @@ QVariantList Backend::crumbs() const {
     const QString p = path();
     if (p == FolderModel::recentPath())
         return {QVariantMap{{"name", tr("Recents")}, {"path", p}}};
+    if (p == FolderModel::tailnetPath())
+        return {QVariantMap{{"name", tr("Tailnet")}, {"path", p}}};
     // The trash's files folder is an implementation detail; it's "Trash".
     if (p == trashPath())
         return {QVariantMap{{"name", tr("Trash")}, {"path", p}}};
@@ -108,12 +112,12 @@ void Backend::navigate(const QString &path) {
 }
 
 bool Backend::go(const QString &path, bool record) {
-    const QString clean = path == FolderModel::recentPath() ? path : QDir::cleanPath(path);
+    const QString clean = FolderModel::isView(path) ? path : QDir::cleanPath(path);
     // The trash folder only exists once something has been trashed; the
     // spec lets anyone create it, so Trash always opens.
     if (clean == trashPath())
         QDir().mkpath(clean);
-    if (clean != FolderModel::recentPath() && !QFileInfo(clean).isDir()) {
+    if (!FolderModel::isView(clean) && !QFileInfo(clean).isDir()) {
         setMessage(tr("%1 isn't a folder.").arg(clean));
         return false;
     }
@@ -130,6 +134,11 @@ bool Backend::go(const QString &path, bool record) {
 }
 
 void Backend::open(const QString &path) {
+    // A machine in the tailnet view opens as itself, over SFTP.
+    if (path.startsWith(FolderModel::tailnetPath()) && path != FolderModel::tailnetPath()) {
+        openPeer(path.mid(FolderModel::tailnetPath().size()));
+        return;
+    }
     const QFileInfo info(path);
     if (info.isDir()) {
         navigate(path);
@@ -142,8 +151,9 @@ void Backend::open(const QString &path) {
 }
 
 void Backend::goUp() {
-    // Recents and the trash are places of their own: nothing above them.
-    if (path() == FolderModel::recentPath() || path() == trashPath())
+    // Recents, the tailnet and the trash are places of their own: nothing
+    // above them.
+    if (FolderModel::isView(path()) || path() == trashPath())
         return;
     const QString parent = QFileInfo(path()).absolutePath();
     if (parent == path())
@@ -278,7 +288,7 @@ QString Backend::typedPath() const {
         return "~/";
     if (p.startsWith(m_home + "/"))
         return "~" + p.mid(m_home.size()) + "/";
-    return p == FolderModel::recentPath() || p == "/" ? p : p + "/";
+    return FolderModel::isView(p) || p == "/" ? p : p + "/";
 }
 
 QString Backend::expandTyped(const QString &text, const QString &home, const QString &current) {
@@ -339,7 +349,7 @@ QString Backend::completePath(const QString &text) const {
 }
 
 void Backend::newWindow() {
-    emit newWindowRequested(path() == FolderModel::recentPath() ? m_home : path());
+    emit newWindowRequested(FolderModel::isView(path()) ? m_home : path());
 }
 
 void Backend::togglePreview(const QString &path) {

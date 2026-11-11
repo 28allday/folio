@@ -14,6 +14,7 @@ Item {
     required property bool isDir
     required property string kind
     required property string mime
+    required property string extension
     required property var size
     required property var modified
     required property int itemCount
@@ -37,6 +38,7 @@ Item {
     readonly property bool showSize: detailed && width >= 380
 
     readonly property string glyph: row.isDir ? "folder"
+                                  : row.kind === "peer" ? "peer"
                                   : row.kind === "image" ? "pictures"
                                   : row.kind === "video" ? "videos"
                                   : row.kind === "audio" ? "music"
@@ -117,7 +119,7 @@ Item {
             visible: row.showSize
             Layout.preferredWidth: 96
             horizontalAlignment: Text.AlignRight
-            text: row.isDir ? Format.count(row.itemCount) : Format.size(row.size)
+            text: row.kind === "peer" ? row.extension : row.isDir ? Format.count(row.itemCount) : Format.size(row.size)
             color: theme.secondaryForeground
             font.pixelSize: 12
         }
@@ -156,6 +158,7 @@ Item {
     Drag.supportedActions: Qt.CopyAction | Qt.LinkAction
     DragHandler {
         target: null
+        enabled: row.kind !== "peer"
         // Dragging a selected item takes the whole selection along. The list
         // is built as the drag starts, not again on every change of selection.
         onActiveChanged: {

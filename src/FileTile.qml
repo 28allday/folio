@@ -5,7 +5,8 @@ import "Format.js" as Format
 
 // One item in the grid: a preview on top, its name below. Folders are a
 // quiet card; files show a real thumbnail when one
-// can be made, and a drawn stand-in for their kind when not.
+// can be made, and a drawn stand-in for their kind when not; tailnet
+// machines are a computer.
 Item {
     id: tile
 
@@ -59,7 +60,7 @@ Item {
 
             Loader {
                 anchors.fill: parent
-                sourceComponent: tile.isDir ? folderArt : fileArt
+                sourceComponent: tile.isDir ? folderArt : tile.kind === "peer" ? peerArt : fileArt
             }
 
             // A folder takes files dropped on it, lighting up while they hover.
@@ -91,7 +92,8 @@ Item {
     }
 
     // Size and when, quietly, under the name: "28.0 KB · 2:14 PM" today,
-    // "28.0 KB · 11/9/26" before; the item count for a folder.
+    // "28.0 KB · 11/9/26" before; the item count for a folder, the system
+    // for a machine.
     Text {
         anchors.top: label.bottom
         anchors.topMargin: 3
@@ -99,6 +101,8 @@ Item {
         width: parent.width - 28
         text: {
             translator.language // Re-read when the language (and so the default locale) changes.
+            if (tile.kind === "peer")
+                return tile.extension
             const size = tile.isDir ? Format.count(tile.itemCount) : Format.size(tile.size)
             const date = Format.when(tile.modified)
             return [size, date].filter(part => part.length > 0).join(" · ")
@@ -122,8 +126,10 @@ Item {
     Drag.supportedActions: Qt.CopyAction | Qt.LinkAction
     Drag.hotSpot.x: tile.width / 2
     Drag.hotSpot.y: 40
+    // A machine isn't a file to hand anywhere.
     DragHandler {
         target: null
+        enabled: tile.kind !== "peer"
         // Dragging a selected item takes the whole selection along. The list
         // is built as the drag starts, not again on every change of selection.
         onActiveChanged: {
@@ -250,6 +256,30 @@ Item {
                 y: parent.shown.y - 3
                 width: parent.shown.width + 6
                 height: parent.shown.height + 6
+                color: "transparent"
+                border.width: tile.current ? 2 : 1
+                border.color: tile.current ? theme.accent : Qt.alpha(theme.foreground, 0.2)
+                radius: tile.iconRadius > 0 ? tile.iconRadius + 3 : 0
+            }
+        }
+    }
+
+    Component {
+        id: peerArt
+
+        Item {
+            Glyph {
+                id: computer
+                anchors.centerIn: parent
+                name: "peer"
+                size: 76
+                stroke: 1.2
+                color: tile.current ? theme.accent : theme.foreground
+            }
+            Rectangle {
+                visible: tile.current || hover.hovered
+                anchors.fill: computer
+                anchors.margins: -3
                 color: "transparent"
                 border.width: tile.current ? 2 : 1
                 border.color: tile.current ? theme.accent : Qt.alpha(theme.foreground, 0.2)
