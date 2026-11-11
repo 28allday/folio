@@ -135,7 +135,8 @@ public:
 
     // Drives, through udisks (see Disks). The disk a drive mounted at
     // `root` is on, for its menu and the format dialog: {id, title, label},
-    // or empty when udisks doesn't know it or it holds the system.
+    // or empty unless it's a drive plugged in that may be erased (see
+    // Disks::fit).
     Q_INVOKABLE QVariantMap driveAt(const QString &root) const;
     // Erases the disk to one exFAT partition named `label` (at most
     // Disks::labelLimit characters), as Omarchy's format-drive does, and

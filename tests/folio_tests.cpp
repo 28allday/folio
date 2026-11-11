@@ -2629,6 +2629,31 @@ private slots:
         QVERIFY(ops.driveAt("/run/media/me/Elsewhere").isEmpty());
     }
 
+    void onlyPluggedInDrivesCanBeFormatted()
+    {
+        // A second drive inside the computer, holding data or another
+        // system, isn't erased from a menu.
+        Disk internal = sanDisk();
+        internal.identity = "internal";
+        internal.bus = "";
+        internal.removable = internal.canPowerOff = internal.ejectable = false;
+        internal.hintSystem = true;
+        internal.mounts = {"/run/media/me/Data"};
+        Disk locked = sanDisk();
+        locked.identity = "locked";
+        locked.readOnly = true;
+        locked.mounts = {"/run/media/me/Locked"};
+        auto fake = fakeDisks({internal, locked});
+        FileOps ops;
+        QVERIFY(ops.driveAt("/run/media/me/Data").isEmpty());
+        QVERIFY(ops.driveAt("/run/media/me/Locked").isEmpty());
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.format("internal", "Photos");
+        ops.format("locked", "Photos");
+        QCOMPARE(failed.count(), 2);
+        QVERIFY(fake->calls.isEmpty());
+    }
+
     void burningOffersOnlyImages()
     {
         QTemporaryDir dir;

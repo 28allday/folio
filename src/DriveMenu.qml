@@ -1,8 +1,8 @@
 import QtQuick
 
 // The menu of a drive in the sidebar: Open, Eject (or Unmount, as its
-// button does), and Format… for any drive udisks knows that doesn't hold
-// the system.
+// button does), and Format… for a stick, card or other drive plugged in
+// that udisks knows, as long as it doesn't hold the system.
 FolioMenu {
     id: menu
 

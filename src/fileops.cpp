@@ -1801,7 +1801,7 @@ static QString unchanged(Disks &disks, const Disk &disk) {
 
 QVariantMap FileOps::driveAt(const QString &root) const {
     for (const Disk &disk : Disks::instance()->list())
-        if (disk.mounts.contains(root) && !Disks::holdsSystem(disk))
+        if (disk.mounts.contains(root) && Disks::fit(disk, 0) == Disks::Fits)
             return {{"id", disk.identity}, {"title", Disks::title(disk)}, {"label", disk.label}};
     return {};
 }
@@ -1816,7 +1816,7 @@ void FileOps::format(const QString &id, const QString &label) {
         return;
     const auto disks = Disks::instance();
     const std::optional<Disk> disk = diskWithId(*disks, id);
-    if (!disk || Disks::holdsSystem(*disk)) {
+    if (!disk || Disks::fit(*disk, 0) != Disks::Fits) {
         emit failed(tr("That drive is gone."));
         return;
     }

@@ -91,9 +91,10 @@ public:
     static QString title(const Disk &disk);
     static QString size(qint64 bytes);
 
-    // Whether an image of `imageSize` bytes may be burned onto the disk:
-    // only removable disks that can be written, not the system's, and
-    // big enough for it.
+    // Whether the disk may be erased, by formatting it or burning an image
+    // of `imageSize` bytes onto it: only disks plugged into the computer
+    // rather than part of it, that can be written, not the system's, and
+    // big enough for the image.
     enum Fit { Unfit, TooSmall, Fits };
     static Fit fit(const Disk &disk, qint64 imageSize);
 
