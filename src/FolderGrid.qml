@@ -65,11 +65,13 @@ GridView {
         // (120), and nothing for an event that doesn't move up or down.
         property real pending: 0
         onWheel: (event) => {
+            // Every whole notch is a step; the rest waits for the next event.
             pending += event.angleDelta.y
-            if (Math.abs(pending) < 120)
-                return
-            grid.zoomRequested(pending > 0 ? 1 : -1)
-            pending = 0
+            while (Math.abs(pending) >= 120) {
+                const step = pending > 0 ? 1 : -1
+                grid.zoomRequested(step)
+                pending -= step * 120
+            }
         }
     }
     // The rows reflow, so bring the cursor's tile back into view.

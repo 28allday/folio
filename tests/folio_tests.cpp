@@ -1536,6 +1536,21 @@ private slots:
         model.setPeers(without);
         QVERIFY(loaded.wait(3000));
         QCOMPARE(model.count(), 1);
+        // A machine renamed keeps its host, and so its path; the view still
+        // shows the new name.
+        QVariantList renamed = without;
+        QVariantMap peer = renamed[0].toMap();
+        const QString host = peer.value("host").toString();
+        peer["name"] = "Boardroom";
+        renamed[0] = peer;
+        model.setQuery("");
+        QVERIFY(loaded.wait(3000));
+        model.setPeers(renamed);
+        QVERIFY(loaded.wait(3000));
+        bool found = false;
+        for (int i = 0; i < model.count(); ++i)
+            found |= model.get(i).value("name").toString() == "Boardroom";
+        QVERIFY2(found, qPrintable(host));
     }
 
     void placesListOnlyPhysicalDrives()

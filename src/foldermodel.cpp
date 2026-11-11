@@ -66,8 +66,10 @@ bool FolderModel::sameListing(const QVector<Entry> &a, const QVector<Entry> &b) 
     // By path, not name: a folder copied with cp -a or rsync lists the same
     // names, sizes and times as the one it came from.
     for (int i = 0; i < a.size(); ++i)
+        // Name and extension too: a tailnet machine keeps its path (its
+        // host) when its name or OS changes.
         if (a[i].path != b[i].path || a[i].size != b[i].size || a[i].modified != b[i].modified
-            || a[i].isDir != b[i].isDir)
+            || a[i].isDir != b[i].isDir || a[i].name != b[i].name || a[i].extension != b[i].extension)
             return false;
     return true;
 }
