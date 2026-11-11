@@ -5368,6 +5368,61 @@ private slots:
         QCOMPARE(QFileInfo(runs).size(), 4);
     }
 
+    void thumbnailsStopAThumbnailerWithWhatItStarted()
+    {
+        QTemporaryDir dir;
+        // The thumbnailer starts a helper of its own, notes the helper's number beside itself, and never ends.
+        const QString script = dir.filePath("hang.sh"), clip = dir.filePath("clip.mp4");
+        write(script, "sleep 300 &\necho $! > \"$0.helper\"\nwait\n");
+        write(dir.filePath("demo.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=/bin/sh \"" + script.toUtf8() + "\" %i %o\nMimeType=video/mp4;\n");
+        write(clip, "not a video");
+        const Thumbnails thumbnails(dir.filePath("cache"), {dir.path()}, 1000);
+        QVERIFY(thumbnails.load(clip, "video/mp4", 128).isNull());
+
+        // Past its time the helper is stopped as well.
+        QFile noted(script + ".helper");
+        QVERIFY(noted.open(QIODevice::ReadOnly));
+        const QString helper = QString::fromLatin1(noted.readAll()).trimmed();
+        QVERIFY(helper.toInt() > 0);
+        QTRY_VERIFY(!running(helper));
+        // A file its thumbnailer hangs on is held back like any other it fails on.
+        QVERIFY(QFile::exists(dir.filePath("cache/" + Thumbnails::failures + "/" + Thumbnails::cacheKey(clip))));
+    }
+
+    void thumbnailsStopAThumbnailerWhenFolioGoes()
+    {
+        // Started again by itself with a folder to work in, this test only loads the clip, so the first run can end it mid-load.
+        const QString given = qEnvironmentVariable("FOLIO_TEST_LOADS_IN");
+        QTemporaryDir made;
+        const QDir dir(given.isEmpty() ? made.path() : given);
+        const QString script = dir.filePath("hang.sh"), clip = dir.filePath("clip.mp4");
+        if (!given.isEmpty()) {
+            Thumbnails(dir.filePath("cache"), {dir.path()}).load(clip, "video/mp4", 128);
+            return;
+        }
+        // The thumbnailer starts a helper of its own, notes the helper's number and its own beside itself, and never ends.
+        write(script, "sleep 300 &\necho $! > \"$0.helper\"\necho $$ > \"$0.number\"\nwait\n");
+        write(dir.filePath("demo.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=/bin/sh \"" + script.toUtf8() + "\" %i %o\nMimeType=video/mp4;\n");
+        write(clip, "not a video");
+        QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
+        environment.insert("FOLIO_TEST_LOADS_IN", dir.path());
+        QProcess loading;
+        loading.setProcessEnvironment(environment);
+        loading.start(QCoreApplication::applicationFilePath(), {"thumbnailsStopAThumbnailerWhenFolioGoes"});
+        QTRY_VERIFY(QFileInfo(script + ".number").size() > 1);
+        const auto number = [&](const QString &ending) {
+            QFile noted(script + ending);
+            return noted.open(QIODevice::ReadOnly) ? QString::fromLatin1(noted.readAll()).trimmed() : QString();
+        };
+        const QString thumbnailer = number(".number"), helper = number(".helper");
+        QVERIFY(thumbnailer.toInt() > 0 && helper.toInt() > 0);
+        loading.kill();
+        QVERIFY(loading.waitForFinished());
+        QTRY_VERIFY(!running(thumbnailer) && !running(helper));
+    }
+
     void thumbnailsTryAgainWhatAnOlderVersionCouldnt()
     {
         QTemporaryDir dir;
@@ -6283,6 +6338,13 @@ private:
             return {};
         const Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("none")});
         return thumbnails.load(dir.filePath("photo.dng"), "image/x-adobe-dng", 1024).size();
+    }
+
+    // Whether the process of that number still runs; one ended but not collected yet keeps its line in /proc, as a zombie.
+    static bool running(const QString &number)
+    {
+        QFile stat("/proc/" + number + "/stat");
+        return stat.open(QIODevice::ReadOnly) && !stat.readAll().contains(") Z ");
     }
 
     static void write(const QString &path, const QByteArray &contents)

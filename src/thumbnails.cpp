@@ -23,6 +23,12 @@
 #include <QTemporaryDir>
 #include <QUrl>
 #include <atomic>
+#include <cerrno>
+#include <csignal>
+#include <cstdlib>
+#include <sys/prctl.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 namespace {
 
@@ -99,16 +105,58 @@ QStringList expandCommand(const QString &command, const QString &input, const QS
     return args;
 }
 
-// How a started helper ended. One that never started has said nothing about the file it was given.
+// How long a stopped helper has to be collected, in milliseconds.
+constexpr int stoppedPatience = 1000;
+
+// How a helper ended. One that never started has said nothing about the file it was given.
 enum class Ran { NotStarted, Failed, Finished };
 
-Ran finish(QProcess &process) {
-    if (!process.waitForStarted(15000))
+// What a keeper is sent when Folio is gone: it stops its whole session, itself included.
+void stopSession(int) { ::kill(0, SIGKILL); }
+
+// Runs in the child Qt forks, before the helper's program: a lock another thread held may still be held there, so it calls only what a signal handler may.
+void keepInASession(pid_t folio) {
+    // A session of its own, so whatever the helper starts can be stopped with it; a terminal's signals no longer reach it there.
+    ::setsid();
+    const pid_t helper = ::_Fork();
+    // Back to Qt in the helper, and in a child that could fork none and so becomes the helper itself.
+    if (helper <= 0)
+        return;
+    // The child stays as the helper's keeper; one of Folio's files held open would keep Qt waiting for the helper's start.
+    ::close_range(0, ~0U, 0);
+    struct sigaction gone = {};
+    gone.sa_handler = stopSession;
+    ::sigaction(SIGTERM, &gone, nullptr);
+    ::prctl(PR_SET_PDEATHSIG, SIGTERM);
+    // Folio may have gone before the line above asked to be told.
+    if (::getppid() != folio)
+        stopSession(SIGTERM);
+    int status = 0;
+    pid_t ended = 0;
+    do ended = ::waitpid(helper, &status, 0); while (ended < 0 && errno == EINTR);
+    // An ending that could not be read is a failure, never a thumbnail.
+    ::_exit(ended == helper && WIFEXITED(status) ? WEXITSTATUS(status) : EXIT_FAILURE);
+}
+
+// Stops a helper's whole session: the keeper's number is its process group, and one that has gone has no number left to signal.
+void stop(QProcess &process) {
+    if (const qint64 leader = process.processId(); leader > 0)
+        ::kill(-pid_t(leader), SIGKILL);
+    process.kill();
+    process.waitForFinished(stoppedPatience);
+}
+
+Ran run(QProcess &process, const QString &program, const QStringList &args, int patience) {
+    process.setChildProcessModifier([folio = ::getpid()] { keepInASession(folio); });
+    process.start(program, args);
+    if (!process.waitForStarted(patience)) {
+        // One still on its way to its program after that long is stopped too, or its keeper would be killed alone.
+        stop(process);
         return Ran::NotStarted;
+    }
     // A broken file must never hang a tile forever.
-    if (!process.waitForFinished(15000)) {
-        process.kill();
-        process.waitForFinished(1000);
+    if (!process.waitForFinished(patience)) {
+        stop(process);
         return Ran::Failed;
     }
     return process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0 ? Ran::Finished : Ran::Failed;
@@ -181,10 +229,11 @@ const QHash<QString, QString> &packageFor() {
 
 } // namespace
 
-Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbnailerDirectories)
+Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbnailerDirectories, int patience)
     : m_cache(cacheDirectory.isEmpty()
                   ? QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + "/thumbnails"
-                  : cacheDirectory) {
+                  : cacheDirectory),
+      m_patience(patience) {
     QStringList directories = thumbnailerDirectories;
     if (directories.isEmpty()) {
         // Later directories win, so the user's own thumbnailers override the
@@ -349,7 +398,7 @@ QImage Thumbnails::generate(const QString &path, const QString &mime, int pixels
     // CUPS) draws the first page.
     if (mime == "application/pdf" && !QStandardPaths::findExecutable("pdftoppm").isEmpty()) {
         QImage image;
-        attempted = pdfPage(path, pixels, image);
+        attempted = pdfPage(path, pixels, image, m_patience);
         return image;
     }
     return {};
@@ -402,14 +451,13 @@ QImage Thumbnails::textPage(const QString &path, int pixels, const QColor &paper
     return page;
 }
 
-bool Thumbnails::pdfPage(const QString &path, int pixels, QImage &image) {
+bool Thumbnails::pdfPage(const QString &path, int pixels, QImage &image, int patience) {
     QTemporaryDir scratch;
     if (!scratch.isValid())
         return false;
     QProcess process;
-    process.start("pdftoppm", {"-f", "1", "-l", "1", "-singlefile", "-png", "-scale-to", QString::number(pixels),
-                               path, scratch.filePath("page")});
-    const Ran ran = finish(process);
+    const Ran ran = run(process, "pdftoppm", {"-f", "1", "-l", "1", "-singlefile", "-png", "-scale-to", QString::number(pixels),
+                                              path, scratch.filePath("page")}, patience);
     if (ran == Ran::Finished)
         image = QImage(scratch.filePath("page.png"));
     return ran != Ran::NotStarted;
@@ -431,8 +479,7 @@ bool Thumbnails::runThumbnailer(const QString &command, const QString &path, int
 
     QProcess process;
     process.setProcessChannelMode(QProcess::ForwardedErrorChannel);
-    process.start(program, args);
-    const Ran ran = finish(process);
+    const Ran ran = run(process, program, args, m_patience);
     if (ran == Ran::Finished)
         image = QImage(output);
     return ran != Ran::NotStarted;
