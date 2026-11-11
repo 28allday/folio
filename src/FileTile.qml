@@ -63,15 +63,6 @@ Item {
                 sourceComponent: tile.isDir ? folderArt : tile.kind === "peer" ? peerArt : fileArt
             }
 
-            // A folder takes files dropped on it, lighting up while they hover.
-            DropArea {
-                id: folderDrop
-                anchors.fill: parent
-                enabled: tile.isDir
-                keys: ["text/uri-list"]
-                onEntered: (drag) => { drag.accepted = fileOps.canDrop(drag.urls, tile.path) }
-                onDropped: (drop) => { fileOps.dropInto(drop.urls, tile.path); drop.accept(Qt.MoveAction) }
-            }
         }
     }
 
@@ -113,6 +104,18 @@ Item {
         font.pixelSize: 10
         horizontalAlignment: Text.AlignHCenter
         elide: Text.ElideRight
+    }
+
+    // A folder takes files dropped anywhere on its tile, picture or name,
+    // lighting up while they hover: the view's own drop area refuses the
+    // whole cell, so the tile has to take all of it.
+    DropArea {
+        id: folderDrop
+        anchors.fill: parent
+        enabled: tile.isDir
+        keys: ["text/uri-list"]
+        onEntered: (drag) => { drag.accepted = fileOps.canDrop(drag.urls, tile.path) }
+        onDropped: (drop) => { fileOps.dropInto(drop.urls, tile.path); drop.accept(Qt.MoveAction) }
     }
 
     HoverHandler {
