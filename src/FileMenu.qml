@@ -222,12 +222,10 @@ FolioMenu {
         onTriggered: backend.folder.showHidden = !backend.folder.showHidden
     }
     MenuLine { shown: fileMenu.forItem && fileMenu.forFiles }
-    // Moving to the trash and deleting for good are two things: Move to the
-    // Trash (Delete) moves it there, where Restore in any file manager brings
-    // it back, and with Shift held it becomes Delete… (Shift+Delete), which
+    // Moving to the trash and deleting for good are two things: Trash
+    // (Delete) moves it there, where Restore in any file manager brings it
+    // back, and with Shift held it becomes Delete… (Shift+Delete), which
     // deletes for good after asking. In the trash there's only the second.
-    // Not plain "Trash": catalogs are keyed by the English text alone, and
-    // that's the sidebar's noun, which few languages spell like the verb.
     property bool shifted: false
     // Shift can go down or up anywhere while the menu's open, so it's
     // checked a few times a second rather than through key events.
@@ -240,7 +238,7 @@ FolioMenu {
     FolioMenuItem {
         readonly property bool forGood: fileMenu.shifted || fileMenu.trashView
         shown: fileMenu.forItem && fileMenu.forFiles
-        text: forGood ? qsTr("Delete…") : qsTr("Move to the Trash")
+        text: forGood ? qsTr("Delete…") : qsTr("Trash")
         keys: fileMenu.trashView ? "Delete" : forGood ? "Shift+Delete" : "Delete"
         onTriggered: forGood ? fileMenu.deleteRequested(fileMenu.paths) : fileOps.trash(fileMenu.paths)
     }
