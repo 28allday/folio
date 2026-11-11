@@ -5592,7 +5592,7 @@ private slots:
         const auto marked = [&](const QString &path) {
             return QFile::exists(dir.filePath("cache/" + Thumbnails::failures + "/" + Thumbnails::cacheKey(path)));
         };
-        const auto spec = [&](const QString &name, const QString &exec, const QString &type) {
+        const auto thumbnailer = [&](const QString &name, const QString &exec, const QString &type) {
             write(dir.filePath(name + ".thumbnailer"), ("[Thumbnailer Entry]\nExec=" + exec + "\nMimeType=" + type + ";\n").toUtf8());
         };
         const auto script = [&](const QString &name, const QByteArray &body) {
@@ -5610,19 +5610,19 @@ private slots:
         write(unstartable, "#!/no/such/interpreter\n");
         QVERIFY(QFile::setPermissions(unstartable, owner));
 
-        spec("gone", "\"" + dir.filePath("no-such-program") + "\" %i %o", "video/mp4");
-        spec("copier", "\"" + copier + "\" \"" + frame + "\" %o", "video/webm");
-        spec("taker", script("take.sh", "rm \"$1\"\nexit 1\n"), "video/ogg");
-        spec("writer", script("write.sh", "echo more >> \"$1\"\nexit 1\n"), "video/quicktime");
-        spec("failer", script("fail.sh", "echo run >> \"$0.runs\"\nexit 1\n"), "video/mpeg");
-        spec("unstartable", "\"" + unstartable + "\" %i %o", "application/pdf");
+        thumbnailer("gone", "\"" + dir.filePath("no-such-program") + "\" %i %o", "video/mp4");
+        thumbnailer("copier", "\"" + copier + "\" \"" + frame + "\" %o", "video/webm");
+        thumbnailer("taker", script("take.sh", "rm \"$1\"\nexit 1\n"), "video/ogg");
+        thumbnailer("writer", script("write.sh", "echo more >> \"$1\"\nexit 1\n"), "video/quicktime");
+        thumbnailer("failer", script("fail.sh", "echo run >> \"$0.runs\"\nexit 1\n"), "video/mpeg");
+        thumbnailer("unstartable", "\"" + unstartable + "\" %i %o", "application/pdf");
         // A program in a folder with a percent sign in its name is spelled with %% in Exec.
         const QString percent = dir.filePath("100%tools/copier");
         QVERIFY(QDir(dir.path()).mkpath("100%tools") && QFile::copy("/bin/cp", percent) && QFile::setPermissions(percent, owner));
-        spec("percent", "\"" + QString(percent).replace("%", "%%") + "\" \"" + frame + "\" %o", "video/x-matroska");
+        thumbnailer("percent", "\"" + QString(percent).replace("%", "%%") + "\" \"" + frame + "\" %o", "video/x-matroska");
         const Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
 
-        // A spec whose program is not installed is no thumbnailer, and its type's package is still the one to name.
+        // A .thumbnailer file whose program is not installed is no thumbnailer, and its type's package is still the one to name.
         QVERIFY(thumbnails.thumbnailerFor("video/mp4").isEmpty());
         QCOMPARE(thumbnails.missingPackage("video/mp4"), QString("ffmpegthumbnailer"));
         QVERIFY(thumbnails.load(clip("gone.mp4"), "video/mp4", 128).isNull());
@@ -5705,7 +5705,7 @@ private slots:
         QVERIFY(noted.open(QIODevice::ReadOnly));
         const QString helper = QString::fromLatin1(noted.readAll()).trimmed();
         QVERIFY(helper.toInt() > 0);
-        QTRY_VERIFY(!running(helper));
+        QTRY_VERIFY(ended(helper.toInt()));
         // A file its thumbnailer hangs on is held back like any other it fails on.
         QVERIFY(QFile::exists(dir.filePath("cache/" + Thumbnails::failures + "/" + Thumbnails::cacheKey(clip))));
     }
@@ -5740,7 +5740,7 @@ private slots:
         QVERIFY(thumbnailer.toInt() > 0 && helper.toInt() > 0);
         loading.kill();
         QVERIFY(loading.waitForFinished());
-        QTRY_VERIFY(!running(thumbnailer) && !running(helper));
+        QTRY_VERIFY(ended(thumbnailer.toInt()) && ended(helper.toInt()));
     }
 
     void thumbnailsTryAgainWhatAnOlderVersionCouldnt()
@@ -6715,13 +6715,6 @@ private:
             return {};
         const Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("none")});
         return thumbnails.load(dir.filePath("photo.dng"), "image/x-adobe-dng", 1024).size();
-    }
-
-    // Whether the process of that number still runs; one ended but not collected yet keeps its line in /proc, as a zombie.
-    static bool running(const QString &number)
-    {
-        QFile stat("/proc/" + number + "/stat");
-        return stat.open(QIODevice::ReadOnly) && !stat.readAll().contains(") Z ");
     }
 
     static void write(const QString &path, const QByteArray &contents)

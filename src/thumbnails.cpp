@@ -267,7 +267,7 @@ Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbna
             }
             const QString exec = fields.value("Exec");
             const QString tryExec = fields.value("TryExec");
-            // The program Exec names, read as it will run (%% is one percent sign), has to be there: a spec a removed program left behind draws nothing.
+            // The program Exec names, read as it will run (%% is one percent sign), has to be there: a .thumbnailer file a removed program left behind draws nothing.
             const QStringList command = expandCommand(exec, {}, {}, 0);
             const auto missing = [](const QString &program) { return QStandardPaths::findExecutable(program).isEmpty(); };
             if (command.isEmpty() || missing(command.first()) || (!tryExec.isEmpty() && missing(tryExec)))
@@ -366,11 +366,9 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
     QImage image = generate(path, type, pixels, attempted);
     if (image.isNull()) {
         // Only a reader or thumbnailer that ran and failed is remembered, so
-        // one installed later still gets its turn.
-        if (!attempted)
-            return {};
-        // A file moved away or written to meanwhile was never judged as it is now.
-        if (QFileInfo(path).lastModified() == modified)
+        // one installed later still gets its turn. A file moved away or
+        // written to meanwhile was never judged as it is now.
+        if (attempted && QFileInfo(path).lastModified() == modified)
             rememberFailure(path, modified, thumbnailer);
         return {};
     }
