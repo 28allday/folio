@@ -573,8 +573,12 @@ QString FileOps::restoreOne(const QString &trashedPath, QString *error) {
     // Across drives (rare: trash lives on the item's own drive), it moves
     // the way a move across drives does, each original removed once it's
     // copied. The note stays while anything of it is left in the trash.
-    if (!copyRecursively(trashedPath, destination, error, true))
+    if (!copyRecursively(trashedPath, destination, error, true)) {
+        // What arrived is now the only copy of it, so where it went is said.
+        if (QFileInfo::exists(destination))
+            *error = tr("Restored only part of %1, to %2: %3").arg(QFileInfo(trashedPath).fileName(), destination, *error);
         return {};
+    }
     if (QFileInfo::exists(trashedPath) || QFileInfo(trashedPath).isSymLink()) {
         *error = tr("Restored %1, but couldn't remove it from the trash.").arg(QFileInfo(trashedPath).fileName());
         return {};

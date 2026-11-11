@@ -749,6 +749,19 @@ private slots:
             QCOMPARE(FileOps::restoreOne(trash + "/files/locked.txt", &error), QString());
             QCOMPARE(error, QString("Couldn't copy locked.txt."));
             QVERIFY(QFile::exists(trash + "/info/locked.txt.trashinfo"));
+
+            // One that stops partway says where what arrived went, and keeps
+            // its note for the rest.
+            QDir().mkpath(trash + "/files/part/a");
+            write(trash + "/files/part/a/1.txt", "1");
+            write(trash + "/files/part/m.txt", "m");
+            QVERIFY(QFile::setPermissions(trash + "/files/part/m.txt", QFile::WriteOwner));
+            write(trash + "/info/part.trashinfo", "[Trash Info]\nPath=" + other->filePath("part").toUtf8() + "\n");
+            error.clear();
+            QCOMPARE(FileOps::restoreOne(trash + "/files/part", &error), QString());
+            QCOMPARE(error, QString("Restored only part of part, to %1: Couldn't copy m.txt.").arg(other->filePath("part")));
+            QVERIFY(QFile::exists(other->filePath("part/a/1.txt")));
+            QVERIFY(QFile::exists(trash + "/info/part.trashinfo"));
         }
     }
 
