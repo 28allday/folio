@@ -1587,13 +1587,15 @@ private slots:
 
     void themeAsksForRoundingOnlyWhileActive()
     {
-        QTemporaryDir dir;
+        // The fake hyprctl lives outside the theme folder: Theme watches that
+        // folder, and a change there re-reads the rounding whatever the state.
+        QTemporaryDir themeDir, dir;
         const QString response = dir.filePath("response.json"), command = dir.filePath("hyprctl");
         write(command, "#!/bin/sh\ncat '" + response.toUtf8() + "'\n");
         QVERIFY(QFile::setPermissions(command, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
         write(response, "{\"int\":3}");
 
-        Theme theme(dir.path(), nullptr, command);
+        Theme theme(themeDir.path(), nullptr, command);
         QTRY_COMPARE(theme.radius(), 3);
         // Away from Folio, a change goes unnoticed for longer than the poll,
         // and it's picked up once Folio is back.
