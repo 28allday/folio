@@ -212,13 +212,14 @@ QString Backend::takeSelection() {
 void Backend::describe(const QVariantMap &item) {
     const QString path = item.value("path").toString();
     const QString kind = item.value("kind").toString();
+    const QString mime = item.value("mime").toString();
     const quint64 generation = ++m_describing;
     // The system's own name for the type ("JPEG image"), already translated,
     // needs nothing from the file. The same item again (its folder re-read)
     // keeps what it shows until the new reading is in, rather than flickering.
-    QVariantMap details{{"type", QMimeDatabase().mimeTypeForName(item.value("mime").toString()).comment()}};
-    if (path != m_described) {
-        m_described = path;
+    QVariantMap details{{"type", QMimeDatabase().mimeTypeForName(mime).comment()}};
+    if (const QString described = path + '\n' + mime; described != m_described) {
+        m_described = described;
         m_details = details;
         emit detailsChanged();
     }

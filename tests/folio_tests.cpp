@@ -1232,6 +1232,13 @@ private slots:
         QThreadPool::globalInstance()->waitForDone();
         QCoreApplication::processEvents();
         QVERIFY(!backend.details().contains("dimensions"));
+
+        // A picture replaced by a folder of the same name doesn't keep the
+        // picture's size.
+        backend.describe({{"path", photo}, {"kind", "image"}, {"mime", "image/png"}});
+        QTRY_VERIFY(backend.details().contains("dimensions"));
+        backend.describe({{"path", photo}, {"kind", "folder"}, {"mime", "inode/directory"}});
+        QVERIFY(!backend.details().contains("dimensions"));
     }
 
     void mounterOutlivedByGiosReply()

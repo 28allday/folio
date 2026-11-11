@@ -120,8 +120,9 @@ private:
     bool m_closingPreview = false;
     QString m_previewed;
     QVariantMap m_details;
-    // Whose details they are, and the newest describe(), which a reading
-    // has to match to be shown.
+    // Whose details they are (the path and its type, as a file can be
+    // replaced by a folder of the same name), and the newest describe(),
+    // which a reading has to match to be shown.
     QString m_described;
     quint64 m_describing = 0;
 };
