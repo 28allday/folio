@@ -268,7 +268,29 @@ static bool copyFile(const QString &from, const QString &to, FileOps::Job *job) 
     return ok;
 }
 
-static FileOps::Step identified(FileOps::Step step);
+// Where a step's item is now, and where flipping it takes it (empty for
+// into the trash, where it goes under a name found then).
+static std::pair<QString, QString> ends(const FileOps::Step &step) {
+    // A folder removed is nowhere, and comes back where it was.
+    if (step.folder)
+        return step.gone ? std::pair{QString(), step.path} : std::pair{step.path, QString()};
+    if (!step.trash)
+        return {step.path, step.other};
+    if (step.other.isEmpty())
+        return {step.path, {}};
+    return {step.other, step.path};
+}
+
+// The step, knowing which item is where it leaves it, so undo can tell it
+// from another put there since. Nothing's known when nothing's there.
+static FileOps::Step identified(FileOps::Step step) {
+    struct stat info;
+    const bool there = ::lstat(QFile::encodeName(ends(step).first).constData(), &info) == 0;
+    step.device = there ? info.st_dev : 0;
+    step.inode = there ? info.st_ino : 0;
+    step.type = there ? info.st_mode & S_IFMT : 0;
+    return step;
+}
 
 bool FileOps::copyRecursively(const QString &from, const QString &to, QString *error, bool move, Job *job,
                               bool *made, QList<Step> *moved) {
@@ -458,30 +480,6 @@ static bool put(const QString &from, const QString &to, bool move, QString *erro
     return true;
 }
 
-// Where a step's item is now, and where flipping it takes it (empty for
-// into the trash, where it goes under a name found then).
-static std::pair<QString, QString> ends(const FileOps::Step &step) {
-    // A folder removed is nowhere, and comes back where it was.
-    if (step.folder)
-        return step.gone ? std::pair{QString(), step.path} : std::pair{step.path, QString()};
-    if (!step.trash)
-        return {step.path, step.other};
-    if (step.other.isEmpty())
-        return {step.path, {}};
-    return {step.other, step.path};
-}
-
-// The step, knowing which item is where it leaves it, so undo can tell it
-// from another put there since. Nothing's known when nothing's there.
-static FileOps::Step identified(FileOps::Step step) {
-    struct stat info;
-    const bool there = ::lstat(QFile::encodeName(ends(step).first).constData(), &info) == 0;
-    step.device = there ? info.st_dev : 0;
-    step.inode = there ? info.st_ino : 0;
-    step.type = there ? info.st_mode & S_IFMT : 0;
-    return step;
-}
-
 // Whether the item at `path` is the one `step` left there, as far as it's
 // known.
 static bool sameAsLeft(const FileOps::Step &step, const QString &path) {
@@ -489,23 +487,6 @@ static bool sameAsLeft(const FileOps::Step &step, const QString &path) {
     return step.inode == 0
            || (::lstat(QFile::encodeName(path).constData(), &info) == 0 && info.st_dev == step.device
                && info.st_ino == step.inode && (info.st_mode & S_IFMT) == step.type);
-}
-
-// Notes what putting `from` at `to` changed, for undo: a move that finished
-// can be moved back, as can what moved of one that didn't (`moved`), and a
-// copy that made something (even one that stopped partway) can go to the
-// trash. What was at `to` already, and stayed when the copy failed, was
-// never the copy's.
-static void note(QList<FileOps::Step> *steps, const QString &from, const QString &to, bool move, bool finished,
-                 bool made, const QList<FileOps::Step> &moved) {
-    if (!steps)
-        return;
-    if (move && finished)
-        *steps << identified({false, to, from});
-    else if (move)
-        *steps << moved;
-    else if (made)
-        *steps << identified({true, to, {}});
 }
 
 // Puts `from` at `to`, first sending what's there to the trash when
@@ -529,7 +510,16 @@ static bool putReplacing(const QString &from, const QString &to, bool move, bool
     bool arrived = false;
     QList<FileOps::Step> moved;
     const bool finished = put(from, to, move, error, job, &arrived, &moved);
-    note(steps, from, to, move, finished, arrived, moved);
+    // Noted for undo: a move that finished can be moved back, as can what
+    // moved of one that didn't, and a copy that made something (even one
+    // that stopped partway) can go to the trash. What was at `to` already,
+    // and stayed when the copy failed, was never the copy's.
+    if (steps && move && finished)
+        *steps << identified({false, to, from});
+    else if (steps && move)
+        *steps << moved;
+    else if (steps && arrived)
+        *steps << identified({true, to, {}});
     if (made)
         *made = arrived;
     if (!finished && !trashed.isEmpty() && !taken(to)) {
@@ -2109,7 +2099,7 @@ void FileOps::format(const QString &id, const QString &label, const QString &typ
         emit failed(tr("Folio can't make that kind of drive."));
         return;
     }
-    if (!Disks::labelFits(name, type)) {
+    if (name.size() > fs->labelLimit) {
         emit failed(tr("%1 keeps at most %2 characters of a drive's name.").arg(QString::fromLatin1(fs->name)).arg(fs->labelLimit));
         return;
     }

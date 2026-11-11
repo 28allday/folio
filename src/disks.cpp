@@ -218,11 +218,6 @@ QVariantMap Disks::formatOptions(const QString &type, const QString &label) {
     return options;
 }
 
-bool Disks::labelFits(const QString &label, const QString &type) {
-    const FileSystem *fs = fileSystem(type);
-    return fs && label.size() <= fs->labelLimit;
-}
-
 std::shared_ptr<Disks> Disks::instance() {
     QMutexLocker locker(&s_lock);
     if (!s_instance)

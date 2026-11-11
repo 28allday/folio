@@ -3035,15 +3035,12 @@ private slots:
     void formattingNamesDrivesAsExfatAllows()
     {
         // Each filesystem keeps its own length of name.
-        QVERIFY(Disks::labelFits("PHOTOS 2026", "exfat"));
-        QVERIFY(!Disks::labelFits("PHOTOS 20266", "exfat"));
-        QVERIFY(!Disks::labelFits("PHOTOS 20266", "vfat"));
-        QVERIFY(Disks::labelFits("PHOTOS 2026 FROM LISBON", "ntfs"));
-        QVERIFY(!Disks::labelFits(QString(33, 'x'), "ntfs"));
-        QVERIFY(Disks::labelFits("PHOTOS 2026 LIS", "ext4"));
-        QVERIFY(Disks::labelFits("PHOTOS 2026 LISB", "ext4"));
-        QVERIFY(!Disks::labelFits(QString(17, 'x'), "ext4"));
-        QVERIFY(!Disks::labelFits("PHOTOS", "zfs"));
+        const auto limit = [](const char *type) { return Disks::fileSystem(type)->labelLimit; };
+        QCOMPARE(limit("exfat"), 11);
+        QCOMPARE(limit("vfat"), 11);
+        QCOMPARE(limit("ntfs"), 32);
+        QCOMPARE(limit("ext4"), 16);
+        QVERIFY(!Disks::fileSystem("zfs"));
         auto fake = fakeDisks();
         FileOps ops;
         QSignalSpy failed(&ops, &FileOps::failed);
@@ -3085,9 +3082,9 @@ private slots:
         QCOMPARE(types, (QStringList{"exfat", "vfat", "ext4"}));
 
         // The one picked is made, with a name as long as it keeps.
-        ops.format(sanDisk().identity, "Linux Backups", "ext4");
+        ops.format(sanDisk().identity, "Linux Backups 26", "ext4");
         QTRY_VERIFY(ops.busy().isEmpty());
-        QVERIFY(fake->calls.contains("addPartition " + sanDisk().block + " ext4 Linux Backups"));
+        QVERIFY(fake->calls.contains("addPartition " + sanDisk().block + " ext4 Linux Backups 26"));
 
         // A name too long for the filesystem, or a filesystem Folio doesn't
         // make, touches nothing.
