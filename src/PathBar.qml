@@ -188,12 +188,6 @@ Rectangle {
         }
         SortMenu { id: sortMenu }
         IconButton {
-            glyph: "hidden"
-            text: qsTr("Show hidden files")
-            active: backend.folder.showHidden
-            onClicked: backend.folder.showHidden = !backend.folder.showHidden
-        }
-        IconButton {
             glyph: "preview"
             text: qsTr("Details")
             active: bar.previewVisible

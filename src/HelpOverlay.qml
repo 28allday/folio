@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
+import "Format.js" as Format
 
 // Every shortcut, one keypress away (?).
 Rectangle {
@@ -87,7 +88,7 @@ Rectangle {
                             required property var modelData
                             required property int index
                             Layout.maximumWidth: index % 2 ? 340 : -1
-                            text: modelData
+                            text: index % 2 ? modelData : Format.keys(modelData)
                             wrapMode: Text.WordWrap
                             color: index % 2 ? theme.foreground : theme.accent
                         }

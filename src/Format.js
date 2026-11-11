@@ -57,3 +57,8 @@ function page(path, px, modified, paper, ink) {
     const hex = (color) => String(color).slice(1)
     return "image://thumb/page/" + px + "/" + changed + "/" + hex(paper) + "/" + hex(ink) + "/" + encodeURIComponent(path)
 }
+
+// A key combination as people read it: "Ctrl + C", not "Ctrl+C".
+function keys(text) {
+    return text.replace(/(\S)\+(?=\S)/g, "$1 + ")
+}

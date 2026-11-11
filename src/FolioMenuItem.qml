@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import "Format.js" as Format
 
 // A menu entry: its label, the key that does the same on the right, and for
 // a submenu Folio's own arrow. Highlighted (by mouse or keyboard) it takes a
@@ -45,7 +46,7 @@ MenuItem {
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             visible: !entry.subMenu
-            text: entry.keys
+            text: Format.keys(entry.keys)
             color: theme.secondaryForeground
             font.pixelSize: 11
         }
