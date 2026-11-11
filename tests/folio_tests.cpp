@@ -1468,13 +1468,19 @@ private slots:
         };
         QCOMPARE(shownWidth(then), 128);
 
-        QVERIFY(QImage(32, 64, QImage::Format_RGB32).save(file));
-        {
+        // Saved over twice within one second, as an editor's quick saves
+        // can be: the spec's whole seconds can't tell them apart.
+        const QDateTime second = QDateTime::fromSecsSinceEpoch(then.toSecsSinceEpoch() + 60);
+        auto saveAt = [&](const QSize &size, const QDateTime &when) {
+            QVERIFY(QImage(size, QImage::Format_RGB32).save(file));
             QFile saved(file);
             QVERIFY(saved.open(QIODevice::ReadWrite));
-            QVERIFY(saved.setFileTime(then.addSecs(60), QFileDevice::FileModificationTime));
-        }
-        QCOMPARE(shownWidth(then.addSecs(60)), 64);
+            QVERIFY(saved.setFileTime(when, QFileDevice::FileModificationTime));
+        };
+        saveAt({32, 64}, second.addMSecs(100));
+        QCOMPARE(shownWidth(second.addMSecs(100)), 64);
+        saveAt({64, 32}, second.addMSecs(600));
+        QCOMPARE(shownWidth(second.addMSecs(600)), 128);
     }
 
     void thumbnailsReadInstalledThumbnailers()

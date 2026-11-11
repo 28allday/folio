@@ -152,13 +152,10 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
     if (info.absoluteFilePath().startsWith(m_cache + "/"))
         return {};
 
-    const QString cached = cachePath(path, size);
-    const QString mtime = QString::number(info.lastModified().toSecsSinceEpoch());
-    // QImageReader::text() splits keys at ':', so "Thumb::MTime" is only
-    // readable from the decoded image.
-    if (const QImage image(cached); !image.isNull() && image.text("Thumb::MTime") == mtime)
+    const QDateTime modified = info.lastModified();
+    if (const QImage image(cachePath(path, size)); madeFor(image, modified))
         return image;
-    if (failedBefore(path, mtime))
+    if (failedBefore(path, modified))
         return {};
 
     // A folder's peek asks for any picture ("image/*"); named by extension,
@@ -173,12 +170,12 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
         // Only a reader or thumbnailer that ran and failed is remembered, so
         // one installed later still gets its turn.
         if (attempted)
-            rememberFailure(path, mtime);
+            rememberFailure(path, modified);
         return {};
     }
     if (image.width() > pixels || image.height() > pixels)
         image = image.scaled(pixels, pixels, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-    remember(image, path, size, mtime);
+    remember(image, path, size, modified);
     return image;
 }
 
@@ -229,28 +226,40 @@ QImage Thumbnails::runThumbnailer(const QString &command, const QString &path, i
     return QImage(output);
 }
 
-void Thumbnails::remember(QImage image, const QString &path, int size, const QString &mtime) const {
+void Thumbnails::remember(QImage image, const QString &path, int size, const QDateTime &modified) const {
     image.setText("Software", "folio");
-    save(std::move(image), cachePath(path, size), path, mtime);
+    save(std::move(image), cachePath(path, size), path, modified);
 }
 
-void Thumbnails::rememberFailure(const QString &path, const QString &mtime) const {
+void Thumbnails::rememberFailure(const QString &path, const QDateTime &modified) const {
     QImage marker(1, 1, QImage::Format_ARGB32);
     marker.fill(Qt::transparent);
-    save(std::move(marker), failPath(path), path, mtime);
+    save(std::move(marker), failPath(path), path, modified);
 }
 
-bool Thumbnails::failedBefore(const QString &path, const QString &mtime) const {
-    const QImage marker(failPath(path));
-    return !marker.isNull() && marker.text("Thumb::MTime") == mtime;
+bool Thumbnails::failedBefore(const QString &path, const QDateTime &modified) const {
+    return madeFor(QImage(failPath(path)), modified);
 }
 
-void Thumbnails::save(QImage image, const QString &target, const QString &path, const QString &mtime) const {
+// Whether a cached thumbnail (or failure marker) was made from the file as it
+// was last modified. The spec's Thumb::MTime is in whole seconds, which a
+// picture saved over within the same second matches; Folio's own also keep
+// the milliseconds. One another app made goes by the seconds alone.
+// QImageReader::text() splits keys at ':', so these are only readable from
+// the decoded image.
+bool Thumbnails::madeFor(const QImage &image, const QDateTime &modified) {
+    const QString exact = image.text("X-Folio::MTime");
+    return !image.isNull() && image.text("Thumb::MTime") == QString::number(modified.toSecsSinceEpoch())
+        && (exact.isEmpty() || exact == QString::number(modified.toMSecsSinceEpoch()));
+}
+
+void Thumbnails::save(QImage image, const QString &target, const QString &path, const QDateTime &modified) const {
     QDir().mkpath(QFileInfo(target).absolutePath());
     QFile::setPermissions(m_cache, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
 
     image.setText("Thumb::URI", fileUri(path));
-    image.setText("Thumb::MTime", mtime);
+    image.setText("Thumb::MTime", QString::number(modified.toSecsSinceEpoch()));
+    image.setText("X-Folio::MTime", QString::number(modified.toMSecsSinceEpoch()));
 
     // Written beside the target and renamed, so another app never reads half
     // a thumbnail.

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QHash>
+#include <QDateTime>
 #include <QImage>
 #include <QQuickAsyncImageProvider>
 #include <QStringList>
@@ -31,10 +32,11 @@ private:
     // Sets `attempted` when Qt's reader or a thumbnailer could take the file.
     QImage generate(const QString &path, const QString &mime, int pixels, bool &attempted) const;
     QImage runThumbnailer(const QString &command, const QString &path, int pixels) const;
-    void remember(QImage image, const QString &path, int size, const QString &mtime) const;
-    void rememberFailure(const QString &path, const QString &mtime) const;
-    bool failedBefore(const QString &path, const QString &mtime) const;
-    void save(QImage image, const QString &target, const QString &path, const QString &mtime) const;
+    void remember(QImage image, const QString &path, int size, const QDateTime &modified) const;
+    void rememberFailure(const QString &path, const QDateTime &modified) const;
+    bool failedBefore(const QString &path, const QDateTime &modified) const;
+    void save(QImage image, const QString &target, const QString &path, const QDateTime &modified) const;
+    static bool madeFor(const QImage &image, const QDateTime &modified);
 
     QString m_cache;
     QHash<QString, QString> m_thumbnailers;
