@@ -433,6 +433,20 @@ static QStringList outermost(const QStringList &paths) {
     return beyondLinks + outer;
 }
 
+// Does `each` to the outermost of `paths`, counting them in `job`, until
+// it's cancelled.
+template <typename Each>
+static void eachOutermost(const QStringList &paths, FileOps::Job &job, Each each) {
+    const QStringList outer = outermost(paths);
+    job.total = outer.size();
+    for (const QString &path : outer) {
+        if (job.cancelled)
+            break;
+        each(path);
+        ++job.done;
+    }
+}
+
 // Whether `folder` is the folder at `path` or inside it, wherever links lead,
 // so a link to a folder inside it counts. A link at `path` itself isn't a
 // folder here, since it's copied as a link.
@@ -873,7 +887,7 @@ void FileOps::startTransfer(const QStringList &paths, const QString &folder, Mod
             result.made = transfer(paths, folder, mode, &result.error, choices, &job, &result.steps);
             return result;
         },
-        [this, paths, folder, releaseClipboard, duplicating, moving](const Outcome &result, const Job &job) {
+        [this, paths, folder, releaseClipboard, duplicating, moving, name](const Outcome &result, const Job &job) {
             // Only the cut that was pasted is let go of; something copied
             // while it moved stays on the clipboard.
             bool cut = false;
@@ -881,8 +895,8 @@ void FileOps::startTransfer(const QStringList &paths, const QString &folder, Mod
                 && pathsFrom(QGuiApplication::clipboard()->mimeData(), &cut) == paths && cut)
                 QGuiApplication::clipboard()->clear();
             if (!result.steps.isEmpty())
-                remember({duplicating ? Duplicating : moving ? Moving : Copying,
-                          QFileInfo(paths.first()).fileName(), int(result.made.size()), result.steps});
+                remember({duplicating ? Duplicating : moving ? Moving : Copying, name, int(result.made.size()),
+                          result.steps});
             if (!result.error.isEmpty())
                 emit failed(result.error);
             else if (job.cancelled)
@@ -1243,19 +1257,14 @@ void FileOps::trash(const QStringList &paths) {
         },
         [paths](Job &job) {
             Outcome result;
-            const QStringList outer = outermost(paths);
-            job.total = outer.size();
-            for (const QString &path : outer) {
-                if (job.cancelled)
-                    break;
+            eachOutermost(paths, job, [&](const QString &path) {
                 QString why;
                 // In the trash, but not found there, it can't be undone.
                 if (const QString trashed = trashOne(path, &why); !trashed.isEmpty())
                     result.steps << identified({true, path, trashed});
                 else if (!why.isEmpty())
                     result.failures << tr("%1 (%2)").arg(QFileInfo(path).fileName(), why);
-                ++job.done;
-            }
+            });
             return result;
         },
         [this, name = QFileInfo(paths.first()).fileName()](const Outcome &result, const Job &job) {
@@ -1501,19 +1510,14 @@ void FileOps::restore(const QStringList &paths) {
         },
         [paths](Job &job) {
             Outcome result;
-            const QStringList outer = outermost(paths);
-            job.total = outer.size();
-            for (const QString &path : outer) {
-                if (job.cancelled)
-                    break;
+            eachOutermost(paths, job, [&](const QString &path) {
                 QString error;
                 const QString to = restoreOne(path, &error, &job);
                 if (!to.isEmpty())
                     result.made = {to};
                 else if (!error.isEmpty())
                     result.failures << error;
-                ++job.done;
-            }
+            });
             return result;
         },
         [this, count](const Outcome &result, const Job &job) {
@@ -1549,15 +1553,10 @@ void FileOps::deleteForever(const QStringList &paths) {
         },
         [paths](Job &job) {
             Outcome result;
-            const QStringList outer = outermost(paths);
-            job.total = outer.size();
-            for (const QString &path : outer) {
-                if (job.cancelled)
-                    break;
+            eachOutermost(paths, job, [&](const QString &path) {
                 if (!deleteTrashed(path))
                     result.failures << path;
-                ++job.done;
-            }
+            });
             return result;
         },
         [this](const Outcome &result, const Job &job) {
