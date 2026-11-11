@@ -11,6 +11,7 @@
 #include <QTemporaryDir>
 #include <QUrl>
 #include <QtTest>
+#include <unistd.h>
 
 #include "backend.h"
 #include "fileops.h"
@@ -349,6 +350,25 @@ private slots:
         QVERIFY(QFile::exists(to.filePath("locked/a.txt")));
         QCOMPARE(QFileInfo(to.filePath("private")).permissions(), QFileInfo(from.filePath("private")).permissions());
         QCOMPARE(QFileInfo(to.filePath("locked")).permissions(), QFileInfo(from.filePath("locked")).permissions());
+    }
+
+    void fileOpsCopyOnlyWhatCanBeRead()
+    {
+        // A folder that can't be read would look empty, so copying it fails
+        // rather than making an empty copy.
+        if (geteuid() == 0)
+            QSKIP("Root can read every folder.");
+        QTemporaryDir from, to;
+        QDir(from.path()).mkdir("secret");
+        write(from.filePath("secret/a.txt"), "a");
+        QVERIFY(QFile::setPermissions(from.filePath("secret"), QFile::WriteOwner | QFile::ExeOwner));
+        const auto unlock = qScopeGuard([&] {
+            QFile::setPermissions(from.filePath("secret"), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+        });
+        QString error;
+        QVERIFY(FileOps::transfer({from.filePath("secret")}, to.path(), false, &error).isEmpty());
+        QCOMPARE(error, QString("Couldn't read secret."));
+        QVERIFY(!QFile::exists(to.filePath("secret")));
     }
 
     void fileOpsClipboardFormats()

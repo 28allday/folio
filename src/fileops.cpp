@@ -128,6 +128,11 @@ bool FileOps::copyRecursively(const QString &from, const QString &to, QString *e
         }
         return true;
     }
+    // A folder that can't be read would list as empty and be copied empty.
+    if (!info.isReadable()) {
+        *error = QObject::tr("Couldn't read %1.").arg(info.fileName());
+        return false;
+    }
     if (!QDir().mkdir(to)) {
         *error = QObject::tr("Couldn't create %1.").arg(QFileInfo(to).fileName());
         return false;
