@@ -624,7 +624,8 @@ private slots:
     {
         // Search results can list a folder and what's in it. The folder
         // takes those along, so they aren't copied twice, found gone once
-        // it has moved, or deleted twice.
+        // it has moved, deleted twice, or restored without a note of their
+        // own.
         QTemporaryDir from, copies, moves, trash;
         QDir(from.path()).mkpath("album/inner");
         write(from.filePath("album/inner/a.jpg"), "picture");
@@ -644,6 +645,16 @@ private slots:
         QTRY_VERIFY(ops.busy().isEmpty());
         QCOMPARE(failed.count(), 0);
         QVERIFY(!QFileInfo::exists(trash.filePath("files/album")));
+
+        const auto restore = dataHomeAt(trash.path());
+        QDir(trash.path()).mkpath("Trash/files/album");
+        QDir(trash.path()).mkpath("Trash/info");
+        write(trash.filePath("Trash/files/album/a.jpg"), "picture");
+        write(trash.filePath("Trash/info/album.trashinfo"), "[Trash Info]\nPath=" + copies.filePath("restored").toUtf8() + "\n");
+        ops.restore({trash.filePath("Trash/files/album"), trash.filePath("Trash/files/album/a.jpg")});
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 0);
+        QVERIFY(QFile::exists(copies.filePath("restored/a.jpg")));
     }
 
     void fileOpsWeedOutWhatsInsideQuickly()

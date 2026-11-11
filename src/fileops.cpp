@@ -609,7 +609,7 @@ void FileOps::restore(const QStringList &paths) {
     watcher->setFuture(QtConcurrent::run([paths] {
         QStringList failures;
         QString last;
-        for (const QString &path : paths) {
+        for (const QString &path : outermost(paths)) {
             QString error;
             const QString to = restoreOne(path, &error);
             if (to.isEmpty())
