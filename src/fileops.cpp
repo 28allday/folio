@@ -314,16 +314,18 @@ bool FileOps::copyRecursively(const QString &from, const QString &to, QString *e
         *made = true;
     const QDir source(from);
     const auto entries = source.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System);
-    const bool counting = job && !job->countIn.isEmpty() && job->countIn == QDir::cleanPath(from);
-    if (counting)
-        job->total = entries.size();
+    // The job that counts this folder's items, if this is the folder it
+    // counts in.
+    Job *counter = job && !job->countIn.isEmpty() && job->countIn == QDir::cleanPath(from) ? job : nullptr;
+    if (counter)
+        counter->total = entries.size();
     for (const QFileInfo &entry : entries) {
         if (job && job->cancelled)
             return false;
         if (!copyRecursively(entry.filePath(), QDir(to).filePath(entry.fileName()), error, move, job))
             return false;
-        if (counting)
-            ++job->done;
+        if (counter)
+            counter->done.fetch_add(1);
     }
     QFile::setPermissions(to, info.permissions());
     // Only once it's empty: what turned up in it while the rest moved was
