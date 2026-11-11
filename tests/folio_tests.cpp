@@ -1666,6 +1666,55 @@ private slots:
         QCOMPARE(failed.count(), 0);
     }
 
+    void undoAndRedoAMergingMove()
+    {
+        // Moved onto a folder of the same name, a folder merges and goes;
+        // undo makes it and each folder in it again, empty ones too, with
+        // their permissions and times, and redo takes them away again.
+        QTemporaryDir data, from, to;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::forgetHistory();
+        QDir(from.path()).mkpath("album/empty");
+        QDir(to.path()).mkpath("album/empty");
+        write(from.filePath("album/a.jpg"), "a");
+        QFile::setPermissions(from.filePath("album/empty"), QFile::ReadOwner | QFile::ExeOwner | QFile::ReadGroup);
+        QFile::setPermissions(from.filePath("album"), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner | QFile::ExeOther);
+        const QDateTime then = QDateTime::currentDateTime().addDays(-3);
+        for (const char *folder : {"album", "album/empty"}) {
+            const timespec times[2] = {{0, UTIME_OMIT}, {then.toSecsSinceEpoch(), 0}};
+            QCOMPARE(::utimensat(AT_FDCWD, QFile::encodeName(from.filePath(folder)).constData(), times, 0), 0);
+        }
+        const auto permissions = [&](const char *folder) { return QFileInfo(from.filePath(folder)).permissions(); };
+        const auto wasThen = [&](const char *folder) {
+            return QFileInfo(from.filePath(folder)).lastModified().toSecsSinceEpoch() == then.toSecsSinceEpoch();
+        };
+        const auto emptyWas = permissions("album/empty"), albumWas = permissions("album");
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.cut({from.filePath("album")});
+        ops.paste(to.path());
+        ops.answerClash("replace", false);
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QVERIFY(!QFileInfo::exists(from.filePath("album")));
+        QCOMPARE(contents(to.filePath("album/a.jpg")), QByteArray("a"));
+
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(from.filePath("album/a.jpg")), QByteArray("a"));
+        QVERIFY(QFileInfo(from.filePath("album/empty")).isDir());
+        QCOMPARE(permissions("album/empty"), emptyWas);
+        QCOMPARE(permissions("album"), albumWas);
+        QVERIFY(wasThen("album"));
+        QVERIFY(wasThen("album/empty"));
+        QVERIFY(QFileInfo(to.filePath("album/empty")).isDir());
+
+        ops.redo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QVERIFY(!QFileInfo::exists(from.filePath("album")));
+        QCOMPARE(contents(to.filePath("album/a.jpg")), QByteArray("a"));
+        QCOMPARE(failed.count(), 0);
+    }
+
     void undoRefusesWhatsChangedSince()
     {
         // Undo checks everything is still where the change left it, and

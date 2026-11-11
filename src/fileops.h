@@ -6,6 +6,7 @@
 #include <QUrl>
 #include <QVariantList>
 #include <atomic>
+#include <ctime>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -56,6 +57,12 @@ public:
         // when it isn't known.
         quint64 device = 0, inode = 0;
         uint type = 0;
+        // A folder a merge emptied and removed (`folder`): undo makes it
+        // again at `path` with the permissions and modified time it had,
+        // and redo removes it. It's `gone` while removed.
+        bool folder = false, gone = false;
+        uint mode = 0;
+        timespec modified{};
     };
     // What undo names: the kind of change, and the item or how many.
     enum Kind { Renaming, Moving, Copying, Duplicating, MakingFolder, Compressing, Extracting, Trashing };

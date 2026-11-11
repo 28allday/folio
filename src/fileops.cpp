@@ -368,6 +368,9 @@ static bool put(const QString &from, const QString &to, bool move, QString *erro
 // Where a step's item is now, and where flipping it takes it (empty for
 // into the trash, where it goes under a name found then).
 static std::pair<QString, QString> ends(const FileOps::Step &step) {
+    // A folder removed is nowhere, and comes back where it was.
+    if (step.folder)
+        return step.gone ? std::pair{QString(), step.path} : std::pair{step.path, QString()};
     if (!step.trash)
         return {step.path, step.other};
     if (step.other.isEmpty())
@@ -443,13 +446,16 @@ static bool putReplacing(const QString &from, const QString &to, bool move, bool
 // Puts what's in the folder `from` into the folder `to`, which is already
 // there: what isn't there yet goes in, a folder onto a folder merges in
 // turn, and anything else in the way goes to the trash first. Moving, the
-// folder goes once it's empty.
+// folder goes once it's empty, noted with its permissions and modified time
+// from before anything left it, for undo to make it again as it was.
 static bool merge(const QString &from, const QString &to, bool move, QString *error, FileOps::Job *job,
                   QList<FileOps::Step> *steps) {
     if (!QFileInfo(from).isReadable()) {
         *error = QObject::tr("Couldn't read %1.").arg(QFileInfo(from).fileName());
         return false;
     }
+    struct stat before;
+    const bool known = ::lstat(QFile::encodeName(from).constData(), &before) == 0;
     const auto entries = QDir(from).entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System);
     for (const QFileInfo &entry : entries) {
         if (job && job->cancelled)
@@ -463,8 +469,13 @@ static bool merge(const QString &from, const QString &to, bool move, QString *er
         if (!putReplacing(entry.filePath(), there, move, taken(there), error, job, steps))
             return false;
     }
-    if (move)
-        QDir().rmdir(from);
+    if (move && QDir().rmdir(from) && steps && known) {
+        FileOps::Step removed{false, from, {}};
+        removed.folder = removed.gone = true;
+        removed.mode = before.st_mode;
+        removed.modified = before.st_mtim;
+        *steps << removed;
+    }
     return true;
 }
 
@@ -1569,8 +1580,9 @@ static QString unchanged(const QList<FileOps::Step> &steps, bool undoing) {
         // there can have gone to another.
         const bool trashed = step->trash && !step->other.isEmpty();
         // Nor is anything else put where it was.
-        if (!there(now) || (trashed && FileOps::originalPath(now) != step->path)
-            || (!after.contains(now) && !sameAsLeft(*step, now))) {
+        if (!now.isEmpty()
+            && (!there(now) || (trashed && FileOps::originalPath(now) != step->path)
+                || (!after.contains(now) && !sameAsLeft(*step, now)))) {
             const QString name = QFileInfo(step->path).fileName();
             return undoing ? FileOps::tr("Can't undo that: %1 isn't where it was left.").arg(name)
                            : FileOps::tr("Can't redo that: %1 isn't where it was left.").arg(name);
@@ -1581,16 +1593,45 @@ static QString unchanged(const QList<FileOps::Step> &steps, bool undoing) {
             return undoing ? FileOps::tr("Can't undo that: %1 already exists in %2.").arg(blocked.fileName(), folder)
                            : FileOps::tr("Can't redo that: %1 already exists in %2.").arg(blocked.fileName(), folder);
         }
-        after[now] = false;
+        if (!now.isEmpty())
+            after[now] = false;
         if (!next.isEmpty())
             after[next] = true;
     }
     return {};
 }
 
+// Gives a folder made again its permissions and modified time.
+static void settle(const FileOps::Step &step) {
+    const QByteArray path = QFile::encodeName(step.path);
+    ::chmod(path.constData(), step.mode & 07777);
+    const timespec times[2] = {{0, UTIME_OMIT}, step.modified};
+    ::utimensat(AT_FDCWD, path.constData(), times, AT_SYMLINK_NOFOLLOW);
+}
+
 // Makes the change in `step` the other way (back, or forward again),
 // turning `step` around to match.
 static bool flip(FileOps::Step &step, QString *error, FileOps::Job *job) {
+    if (step.folder) {
+        const QByteArray path = QFile::encodeName(step.path);
+        const QString name = QFileInfo(step.path).fileName();
+        // Made open to its owner, so what goes back in can; it gets its own
+        // permissions once that has (settle()).
+        if (step.gone && ::mkdir(path.constData(), (step.mode & 07777) | S_IRWXU) != 0) {
+            *error = FileOps::tr("Couldn't create %1.").arg(name);
+            return false;
+        }
+        struct stat now;
+        if (!step.gone && ::lstat(path.constData(), &now) == 0)
+            step.mode = now.st_mode;
+        if (!step.gone && ::rmdir(path.constData()) != 0) {
+            *error = FileOps::tr("Couldn't remove %1.").arg(name);
+            return false;
+        }
+        step.gone = !step.gone;
+        step = identified(step);
+        return true;
+    }
     if (!step.trash) {
         // The folder it came from may have gone with it, as a merge's does.
         QDir().mkpath(QFileInfo(step.other).absolutePath());
@@ -1653,6 +1694,10 @@ void FileOps::step(bool undoing) {
                 --result.left;
                 ++job.done;
             }
+            // What went back into a folder made again changed it.
+            for (qsizetype i = result.left; i < steps.size(); ++i)
+                if (steps[i].folder && !steps[i].gone)
+                    settle(steps[i]);
             result.steps = steps;
             return result;
         },
@@ -1678,7 +1723,7 @@ void FileOps::step(bool undoing) {
                 emit notice(didMessage(change, undoing));
             // What's back in a folder is selected there, as after a paste.
             for (const Step &step : result.steps.mid(result.left))
-                if (!step.trash || step.other.isEmpty()) {
+                if (!step.folder && (!step.trash || step.other.isEmpty())) {
                     const QFileInfo item(step.path);
                     emit done(item.absolutePath(), item.fileName());
                     break;
