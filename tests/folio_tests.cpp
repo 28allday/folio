@@ -5,6 +5,7 @@
 #include <QPainter>
 #include <QPdfWriter>
 #include <memory>
+#include <thread>
 #include <QFile>
 #include <QGuiApplication>
 #include <QImage>
@@ -129,6 +130,18 @@ static std::shared_ptr<FakeDisks> fakeDisks(const QList<Disk> &disks = {sanDisk(
     fake->disks = disks;
     Disks::replace(fake);
     return fake;
+}
+
+// `bytes` of made-up content at `path`.
+static QByteArray writeImageFile(const QString &path, qint64 bytes)
+{
+    QByteArray data(bytes, Qt::Uninitialized);
+    for (qint64 i = 0; i < bytes; ++i)
+        data[i] = char((i * 31 + i / 4096) & 0xff);
+    QFile file(path);
+    if (file.open(QIODevice::WriteOnly))
+        file.write(data);
+    return data;
 }
 
 class FolioTests : public QObject {
@@ -2565,6 +2578,162 @@ private slots:
         // Nothing on the system's own disk can be formatted from here.
         QVERIFY(ops.driveAt("/run/media/me/Spare").isEmpty());
         QVERIFY(ops.driveAt("/run/media/me/Elsewhere").isEmpty());
+    }
+
+    void burningOffersOnlyImages()
+    {
+        QTemporaryDir dir;
+        FileOps ops;
+        for (const char *name : {"ubuntu.iso", "raspios.img", "notes.txt"})
+            writeImageFile(dir.filePath(name), 4096);
+        QVERIFY(ops.canBurn(dir.filePath("ubuntu.iso")));
+        QVERIFY(ops.canBurn(dir.filePath("raspios.img")));
+        QVERIFY(!ops.canBurn(dir.filePath("notes.txt")));
+        QVERIFY(!ops.canBurn(dir.path()));
+    }
+
+    void burningListsTheDrivesThatCanTakeTheImage()
+    {
+        QTemporaryDir dir;
+        const QString image = dir.filePath("ubuntu.iso");
+        writeImageFile(image, 3 << 20);
+        Disk small = sanDisk();
+        small.block = "/org/freedesktop/UDisks2/block_devices/sdc";
+        small.vendor = "Kingston";
+        small.model = "DataTraveler";
+        small.size = 1'000'000;
+        Disk system = sanDisk();
+        system.block = "/org/freedesktop/UDisks2/block_devices/nvme0n1";
+        system.mounts = {"/"};
+        fakeDisks({sanDisk(), small, system});
+        FileOps ops;
+        const QVariantList targets = ops.burnTargets(image);
+        QCOMPARE(targets.size(), 2);
+        QCOMPARE(targets.at(0).toMap().value("text").toString(), QString("SanDisk Ultra · 32 GB"));
+        QVERIFY(targets.at(0).toMap().value("enabled").toBool());
+        QCOMPARE(targets.at(1).toMap().value("text").toString(), QString("Kingston DataTraveler · 1.0 MB (too small)"));
+        QVERIFY(!targets.at(1).toMap().value("enabled").toBool());
+
+        fakeDisks({system});
+        QVERIFY(ops.burnTargets(image).isEmpty());
+    }
+
+    void burningWritesTheImageThenEjects()
+    {
+        QTemporaryDir dir;
+        const QString image = dir.filePath("ubuntu.iso");
+        // More than two 4 MiB chunks, and not a whole number of them.
+        const QByteArray bytes = writeImageFile(image, (9 << 20) + 123);
+        auto fake = fakeDisks();
+        fake->device = dir.filePath("sdb");
+        FileOps ops;
+        QSignalSpy notice(&ops, &FileOps::notice), failed(&ops, &FileOps::failed);
+        QStringList busy;
+        connect(&ops, &FileOps::busyChanged, this, [&] { busy << ops.busy(); });
+        ops.burn(image, sanDisk().block);
+        QTRY_COMPARE(notice.count(), 1);
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(notice.at(0).at(0).toString(), QString("Burned ubuntu.iso to SanDisk Ultra. It's safe to remove now."));
+        QCOMPARE(busy.value(0), QString("Burning ubuntu.iso to SanDisk Ultra…"));
+        QFile device(fake->device);
+        QVERIFY(device.open(QIODevice::ReadOnly));
+        QVERIFY(device.readAll() == bytes);
+        const QString sdb = sanDisk().block;
+        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "open " + sdb, "eject " + sdb}));
+    }
+
+    void burningCanBeCancelledLeavingPartOfTheImage()
+    {
+        QTemporaryDir dir;
+        const QString image = dir.filePath("ubuntu.iso");
+        const QByteArray bytes = writeImageFile(image, 12 << 20);
+        // The device is a pipe the test reads at its own pace: the first
+        // chunk, then nothing until the burn is cancelled, then the rest.
+        int pipe[2];
+        QCOMPARE(::pipe2(pipe, O_CLOEXEC), 0);
+        auto fake = fakeDisks();
+        fake->fd = pipe[1];
+        std::atomic<bool> gotFirst = false, cancelled = false;
+        QByteArray received;
+        std::thread reader([&] {
+            char buffer[65536];
+            ssize_t n;
+            while ((n = ::read(pipe[0], buffer, sizeof buffer)) > 0) {
+                received.append(buffer, n);
+                if (received.size() >= (4 << 20) && !gotFirst) {
+                    gotFirst = true;
+                    while (!cancelled)
+                        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                }
+            }
+            ::close(pipe[0]);
+        });
+        FileOps ops;
+        QSignalSpy notice(&ops, &FileOps::notice), failed(&ops, &FileOps::failed);
+        ops.burn(image, sanDisk().block);
+        QTRY_VERIFY(gotFirst);
+        // While it's stuck, it says how far it's got, and nothing else
+        // runs beside it.
+        QTRY_COMPARE(ops.busy(), QString("Burning ubuntu.iso to SanDisk Ultra: 4.2 MB of 13 MB…"));
+        ops.format(sanDisk().block, "Photos");
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(failed.at(0).at(0).toString(), QString("Try again once the work under way is done."));
+        ops.cancel();
+        cancelled = true;
+        QTRY_COMPARE(notice.count(), 1);
+        reader.join();
+        QCOMPARE(notice.at(0).at(0).toString(), QString("Stopped burning. SanDisk Ultra now holds only part of ubuntu.iso."));
+        // It stopped after the chunk it was writing, short of the whole.
+        QCOMPARE(received.size(), 8 << 20);
+        QVERIFY(received == bytes.left(received.size()));
+        const QString sdb = sanDisk().block;
+        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "open " + sdb}));
+    }
+
+    void burningStopsAtWhatUdisksRefuses()
+    {
+        QTemporaryDir dir;
+        const QString image = dir.filePath("ubuntu.iso");
+        writeImageFile(image, 1 << 20);
+        auto fake = fakeDisks();
+        fake->device = dir.filePath("sdb");
+        fake->refuse["open"] = "Permission was refused.";
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed), notice(&ops, &FileOps::notice);
+        ops.burn(image, sanDisk().block);
+        QTRY_COMPARE(failed.count(), 1);
+        QCOMPARE(failed.at(0).at(0).toString(), QString("Couldn't burn ubuntu.iso to SanDisk Ultra. Permission was refused."));
+        const QString sdb = sanDisk().block;
+        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "open " + sdb}));
+        QVERIFY(!QFile::exists(fake->device));
+        QCOMPARE(notice.count(), 0);
+    }
+
+    void burningSaysWhenTheDriveGoes()
+    {
+        QTemporaryDir dir;
+        const QString image = dir.filePath("ubuntu.iso");
+        writeImageFile(image, 1 << 20);
+        // Pulled out before it started: udisks no longer lists it.
+        auto fake = fakeDisks({});
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.burn(image, sanDisk().block);
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(failed.at(0).at(0).toString(), QString("ubuntu.iso can't be burned onto that drive."));
+        QVERIFY(fake->calls.isEmpty());
+
+        // Pulled out while writing: the device takes no more.
+        fake = fakeDisks();
+        QFile gone(dir.filePath("gone"));
+        QVERIFY(gone.open(QIODevice::WriteOnly));
+        gone.close();
+        fake->fd = ::open(QFile::encodeName(gone.fileName()).constData(), O_RDONLY | O_CLOEXEC);
+        ops.burn(image, sanDisk().block);
+        QTRY_COMPARE(failed.count(), 2);
+        QVERIFY(failed.at(1).at(0).toString().startsWith("Couldn't burn ubuntu.iso to SanDisk Ultra. The drive stopped taking data ("));
+        const QString sdb = sanDisk().block;
+        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "open " + sdb}));
     }
 
     void drivesSayWhatsFreeInTheLanguagesDigits()

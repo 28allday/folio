@@ -3,10 +3,11 @@ import QtQuick
 // The right-click menu. On an item: Open, Open With (each app that can),
 // Always Open With (the same apps, to change the type's default), Preview,
 // Rename, Duplicate, Copy, Cut, Paste Into, Copy Path, Compress, Extract
-// Here (for archives), Share (Dropbox link, Taildrop, LocalSend: whichever
-// are available), Pin, Terminal, Delete. On empty space: Undo, Paste, New
-// Folder, Copy Path, Terminal, hidden files. In the trash: Restore, Empty
-// Trash and Delete Permanently, without the entries that change files. On a tailnet machine: Open, and
+// Here (for archives), Burn (for disk images), Share (Dropbox link,
+// Taildrop, LocalSend: whichever are available), Pin, Terminal, Delete.
+// On empty space: Undo, Paste, New Folder, Copy Path, Terminal, hidden
+// files. In the trash: Restore, Empty Trash and Delete Permanently,
+// without the entries that change files. On a tailnet machine: Open, and
 // nothing for files. Entries show their keys, so the menu also teaches the
 // shortcuts.
 FolioMenu {
@@ -21,6 +22,8 @@ FolioMenu {
     signal deleteRequested(var paths)
     signal emptyTrashRequested()
     signal pinRequested(string path)
+    // A disk image, and the drive (from fileOps.burnTargets) to burn it to.
+    signal burnRequested(string path, var drive)
     // In the trash the menu is about getting things back, or letting go.
     readonly property bool trashView: fileOps.inTrash(folder)
     // The tailnet view lists machines, which only open.
@@ -41,6 +44,10 @@ FolioMenu {
     readonly property bool forSelection: forItem && target.selected === true && backend.folder.selectedCount > 1
                                          && backend.folder.indexOf(target.name) >= 0
     readonly property var paths: !forItem ? [] : forSelection ? backend.folder.selectedPaths() : [target.path]
+    // One disk image, and the drives it could be burned to, asked of udisks
+    // as the menu opens rather than on every binding.
+    property bool canBurn: false
+    property var burnTargets: []
 
     // Opens at the pointer, or (from the keyboard, Alt+Return) beside the
     // item it's about.
@@ -50,13 +57,16 @@ FolioMenu {
         // Empty space among machines has nothing to offer.
         if (!forItem && !forFiles)
             return
-        // Submenus (Open With, Share) show only when they have entries.
+        canBurn = forItem && forFiles && !trashView && !forSelection && fileOps.canBurn(target.path)
+        burnTargets = canBurn ? fileOps.burnTargets(target.path) : []
+        // Submenus (Open With, Share, Burn) show only when they apply.
         // Menu makes their entries itself, so they're set here rather than
         // bound where they're declared.
         for (let i = 0; i < count; ++i) {
             const entry = itemAt(i)
             if (entry && entry.subMenu)
                 entry.shown = entry.subMenu === shareMenu ? canShare
+                            : entry.subMenu === burnMenu ? canBurn
                             : entry.subMenu === alwaysMenu ? canAlwaysOpenWith : canOpenWith
         }
         if (near)
@@ -175,6 +185,28 @@ FolioMenu {
         shown: !fileMenu.trashView && fileMenu.forItem && fileMenu.forFiles && fileOps.canExtract(fileMenu.paths)
         text: qsTr("Extract Here")
         onTriggered: fileOps.extract(fileMenu.paths)
+    }
+    // Each USB stick or SD card the image could go on, those too small for
+    // it listed but greyed out. Asked before anything's erased.
+    FolioMenu {
+        id: burnMenu
+        title: qsTr("Burn")
+        Repeater {
+            model: fileMenu.burnTargets
+            FolioMenuItem {
+                required property var modelData
+                text: modelData.text
+                enabled: modelData.enabled
+                onTriggered: fileMenu.burnRequested(fileMenu.target.path, modelData)
+            }
+        }
+        Repeater {
+            model: fileMenu.burnTargets.length === 0 ? 1 : 0
+            FolioMenuItem {
+                text: qsTr("No USB drives or SD cards")
+                enabled: false
+            }
+        }
     }
     // Share offers only what this machine has: a Dropbox link for things in
     // the Dropbox folder (while Dropbox runs), Taildrop to the online

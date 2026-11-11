@@ -141,6 +141,19 @@ public:
     // Disks::labelLimit characters), as Omarchy's format-drive does, and
     // mounts it again.
     Q_INVOKABLE void format(const QString &id, const QString &label);
+    // Whether `path` is a disk image to burn onto a drive: an .iso, or a
+    // raw .img such as a Raspberry Pi's.
+    Q_INVOKABLE bool canBurn(const QString &path) const;
+    // The drives it can be burned onto: {id, title, text, enabled}, where
+    // those too small for it say so and aren't enabled.
+    Q_INVOKABLE QVariantList burnTargets(const QString &image) const;
+    // Writes the image over the whole disk, then ejects it, as Omarchy's
+    // iso2sd does.
+    Q_INVOKABLE void burn(const QString &image, const QString &id);
+    // Copies the image to the open device `fd` in chunks, counting the
+    // bytes in the job and stopping when it's cancelled; empty, or why it
+    // failed.
+    static QString writeImage(const QString &image, int fd, Job *job);
 
     // Stops the work under way at the next file; what's done stays done.
     Q_INVOKABLE void cancel();

@@ -1850,6 +1850,111 @@ void FileOps::format(const QString &id, const QString &label) {
         });
 }
 
+bool FileOps::canBurn(const QString &path) const {
+    const QFileInfo info(path);
+    if (!info.isFile())
+        return false;
+    // Older MIME databases don't make an .iso a kind of raw disk image, so
+    // each is asked for by name.
+    const QMimeType type = QMimeDatabase().mimeTypeForFile(info);
+    return type.inherits("application/x-cd-image") || type.inherits("application/x-raw-disk-image");
+}
+
+QVariantList FileOps::burnTargets(const QString &image) const {
+    const qint64 size = QFileInfo(image).size();
+    QVariantList targets;
+    for (const Disk &disk : Disks::instance()->list()) {
+        const Disks::Fit fit = Disks::fit(disk, size);
+        if (fit == Disks::Unfit)
+            continue;
+        const QString title = Disks::title(disk);
+        targets << QVariantMap{{"id", disk.block},
+                               {"title", title},
+                               {"text", fit == Disks::Fits ? title : tr("%1 (too small)").arg(title)},
+                               {"enabled", fit == Disks::Fits}};
+    }
+    return targets;
+}
+
+void FileOps::burn(const QString &image, const QString &id) {
+    if (!idle())
+        return;
+    const QFileInfo info(image);
+    const auto disks = Disks::instance();
+    const std::optional<Disk> disk = diskWithId(*disks, id);
+    if (!disk || Disks::fit(*disk, info.size()) != Disks::Fits) {
+        emit failed(tr("%1 can't be burned onto that drive.").arg(info.fileName()));
+        return;
+    }
+    for (const QString &root : disk->mounts)
+        emit releasing(root);
+    const QString file = info.fileName();
+    const QString drive = Disks::name(*disk);
+    const qint64 size = info.size();
+    inBackground(
+        [file, drive, size](const Job &job) {
+            return job.bytes > 0 ? tr("Burning %1 to %2: %3 of %4…").arg(file, drive, Disks::size(job.bytes), Disks::size(size))
+                                 : tr("Burning %1 to %2…").arg(file, drive);
+        },
+        [disks, disk = *disk, image](Job &job) {
+            Outcome result;
+            for (const QString &filesystem : disk.filesystems)
+                if (result.error = disks->unmount(filesystem); !result.error.isEmpty())
+                    return result;
+            int fd = -1;
+            if (result.error = disks->open(disk, &fd); !result.error.isEmpty())
+                return result;
+            result.error = writeImage(image, fd, &job);
+            ::close(fd);
+            // Only a whole image is let go of; a partial one stays, to be
+            // burned again.
+            if (result.error.isEmpty() && !job.cancelled)
+                if (const QString error = disks->eject(disk); !error.isEmpty())
+                    result.failures << error;
+            return result;
+        },
+        [this, file, drive](const Outcome &result, const Job &job) {
+            emit drivesChanged();
+            if (!result.error.isEmpty())
+                emit failed(tr("Couldn't burn %1 to %2. %3").arg(file, drive, result.error));
+            else if (job.cancelled)
+                emit notice(tr("Stopped burning. %1 now holds only part of %2.").arg(drive, file));
+            else if (!result.failures.isEmpty())
+                emit failed(tr("Burned %1 to %2, but couldn't eject it. %3").arg(file, drive, result.failures.first()));
+            else
+                emit notice(tr("Burned %1 to %2. It's safe to remove now.").arg(file, drive));
+        });
+}
+
+QString FileOps::writeImage(const QString &image, int fd, Job *job) {
+    QFile in(image);
+    if (!in.open(QIODevice::ReadOnly))
+        return tr("%1 couldn't be read.").arg(QFileInfo(image).fileName());
+    // 4 MiB at a time, as iso2sd's dd does.
+    QByteArray buffer(4 << 20, Qt::Uninitialized);
+    while (!job->cancelled) {
+        const qint64 read = in.read(buffer.data(), buffer.size());
+        if (read < 0)
+            return tr("%1 couldn't be read.").arg(QFileInfo(image).fileName());
+        if (read == 0)
+            break;
+        for (qint64 at = 0; at < read;) {
+            const ssize_t written = ::write(fd, buffer.constData() + at, read - at);
+            if (written < 0 && errno == EINTR)
+                continue;
+            // A device that takes nothing more is full, or gone.
+            if (written <= 0)
+                return tr("The drive stopped taking data (%1).").arg(qt_error_string(written < 0 ? errno : ENOSPC));
+            at += written;
+            job->bytes += written;
+        }
+    }
+    // What can't be synced (EINVAL) has nothing waiting to be.
+    if (::fsync(fd) != 0 && errno != EINVAL)
+        return tr("The drive stopped taking data (%1).").arg(qt_error_string(errno));
+    return {};
+}
+
 bool FileOps::idle() {
     if (m_busy.isEmpty() && !m_pending)
         return true;

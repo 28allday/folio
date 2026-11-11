@@ -107,8 +107,14 @@ FocusScope {
                     qsTr("Empty Trash"), () => fileOps.emptyTrash())
     }
 
-    // Format… from a drive's menu in the sidebar.
+    // Format… from a drive's menu in the sidebar, and Burn from an image's.
     function formatDrive(disk) { formatDialog.open(disk) }
+    function confirmBurn(path, drive) {
+        const name = path.slice(path.lastIndexOf("/") + 1)
+        confirm.ask(qsTr("Burn %1?").arg(name),
+                    qsTr("Burning %1 erases everything on %2. This can't be undone.").arg(name, drive.title),
+                    qsTr("Burn"), () => fileOps.burn(path, drive.id), true)
+    }
 
     // Whichever pane has the keyboard is the one keys, the sidebar and the
     // details pane follow.
@@ -239,8 +245,8 @@ FocusScope {
         }
         function onFailed(message) { backend.showMessage(message) }
         function onNotice(notice) { backend.showNotice(notice) }
-        // A drive about to be formatted is left first, by every pane, and
-        // the sidebar shows it as it is afterwards.
+        // A drive about to be formatted or burned is left first, by every
+        // pane, and the sidebar shows it as it is afterwards.
         function onReleasing(root) { places.leave(root) }
         function onDrivesChanged() { places.refresh() }
     }
@@ -281,6 +287,7 @@ FocusScope {
         onDeleteRequested: (paths) => pane.confirmDelete(paths)
         onEmptyTrashRequested: pane.emptyTrash()
         onPinRequested: (path) => pane.togglePin(path)
+        onBurnRequested: (path, drive) => pane.confirmBurn(path, drive)
     }
 
     ColumnLayout {
