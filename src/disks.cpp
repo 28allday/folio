@@ -189,15 +189,15 @@ std::shared_ptr<Disks> s_instance;
 }
 
 const QList<Disks::FileSystem> &Disks::fileSystems() {
-    // Microsoft basic data for what Windows and macOS read too, Linux
-    // filesystem data for ext4. Labels: exFAT and FAT keep 11 characters,
-    // NTFS 32, ext4 16.
+    // exFAT works everywhere and holds anything; FAT32 is for old devices
+    // that know nothing newer; ext4 for drives only Linux will use. (NTFS
+    // adds nothing exFAT doesn't, and a Mac can't write to it.) Microsoft
+    // basic data for the first two, Linux filesystem data for ext4. Labels:
+    // exFAT and FAT keep 11 characters, ext4 16.
     static const QList<FileSystem> all{
         {"exfat", "exFAT", QT_TR_NOOP("Works with Mac, Windows and Linux, and holds big files."), 11,
          "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7"},
         {"vfat", "FAT32", QT_TR_NOOP("Works almost anywhere, old cameras and car stereos too, but no file can be over 4 GB."), 11,
-         "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7"},
-        {"ntfs", "NTFS", QT_TR_NOOP("For Windows. A Mac can read it but not write to it."), 32,
          "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7"},
         {"ext4", "ext4", QT_TR_NOOP("For Linux only, keeping Linux's permissions."), 16,
          "0fc63daf-8483-4772-8e79-3d69d8477de4"},

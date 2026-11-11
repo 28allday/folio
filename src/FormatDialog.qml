@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls
 
 // Formatting a drive, as Omarchy's format-drive does: the whole drive
 // erased to one partition under the name given here, exFAT (which Linux,
@@ -63,30 +64,31 @@ FolioDialog {
                 elide: Text.ElideRight
             }
         }
-    }
-    // The filesystems, side by side, with what the picked one is good for.
-    RowLayout {
-        Layout.fillWidth: true
-        visible: dialog.choices.length > 1
-        spacing: 6
-        Repeater {
-            model: dialog.choices
-            PlainButton {
-                required property var modelData
-                required property int index
-                text: modelData.name
-                active: dialog.choice === index
-                onClicked: dialog.choice = index
-                Accessible.name: modelData.name
+        // What to format it as, exFAT unless picked otherwise; what each is
+        // good for is said on hover.
+        PlainButton {
+            id: fsButton
+            visible: dialog.choices.length > 1
+            text: (dialog.picked.name || "") + "  ▾"
+            ToolTip.visible: hovered
+            ToolTip.delay: 600
+            ToolTip.text: dialog.picked.detail || ""
+            onClicked: fsMenu.popup(fsButton, 0, fsButton.height + 4)
+            FolioMenu {
+                id: fsMenu
+                Repeater {
+                    model: dialog.choices
+                    FolioMenuItem {
+                        required property var modelData
+                        required property int index
+                        text: modelData.name
+                        tip: modelData.detail
+                        keys: dialog.choice === index ? "✓" : ""
+                        onTriggered: dialog.choice = index
+                    }
+                }
             }
         }
-    }
-    Text {
-        Layout.fillWidth: true
-        visible: dialog.choices.length > 0
-        text: dialog.picked.detail || ""
-        color: theme.secondaryForeground
-        wrapMode: Text.Wrap
     }
     PlainField {
         id: field

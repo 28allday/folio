@@ -3157,7 +3157,7 @@ private slots:
         const auto limit = [](const char *type) { return Disks::fileSystem(type)->labelLimit; };
         QCOMPARE(limit("exfat"), 11);
         QCOMPARE(limit("vfat"), 11);
-        QCOMPARE(limit("ntfs"), 32);
+        QVERIFY(!Disks::fileSystem("ntfs"));
         QCOMPARE(limit("ext4"), 16);
         QVERIFY(!Disks::fileSystem("zfs"));
         auto fake = fakeDisks();
@@ -3193,12 +3193,12 @@ private slots:
     {
         // exFAT first, and only the filesystems whose tools are installed.
         auto fake = fakeDisks();
-        fake->missing = {"ntfs"};
+        fake->missing = {"vfat"};
         FileOps ops;
         QStringList types;
         for (const QVariant &choice : ops.formatChoices())
             types << choice.toMap().value("type").toString();
-        QCOMPARE(types, (QStringList{"exfat", "vfat", "ext4"}));
+        QCOMPARE(types, (QStringList{"exfat", "ext4"}));
 
         // The one picked is made, with a name as long as it keeps.
         ops.format(sanDisk().identity, "Linux Backups 26", "ext4");

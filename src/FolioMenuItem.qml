@@ -9,6 +9,11 @@ MenuItem {
     id: entry
 
     property string keys
+    // Said on hover, for an entry that needs a word more than its label.
+    property string tip
+    ToolTip.visible: tip.length > 0 && hovered
+    ToolTip.delay: 600
+    ToolTip.text: tip
     // Hidden entries take no room, and the arrow keys pass over them: Menu
     // skips only entries that are disabled or out of the tab chain, so
     // Return would otherwise run one nobody can see.
