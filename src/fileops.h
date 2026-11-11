@@ -29,6 +29,8 @@ public:
     // The clipboard holds files the way GNOME and KDE apps expect
     // (x-special/gnome-copied-files plus text/uri-list), and their paths as
     // plain text, so pasting into a terminal or editor gives the path.
+    // Whether Shift is held right now, for menus that change with it.
+    Q_INVOKABLE static bool shiftHeld();
     Q_INVOKABLE void copy(const QStringList &paths);
     Q_INVOKABLE void cut(const QStringList &paths);
     Q_INVOKABLE void yank(const QStringList &paths);

@@ -72,6 +72,10 @@ bool FileOps::canPaste() const {
     return clipboard && !pathsFrom(clipboard->mimeData(), nullptr).isEmpty();
 }
 
+bool FileOps::shiftHeld() {
+    return QGuiApplication::queryKeyboardModifiers() & Qt::ShiftModifier;
+}
+
 void FileOps::copy(const QStringList &paths) {
     if (!paths.isEmpty())
         QGuiApplication::clipboard()->setMimeData(mimeDataFor(paths, false));
