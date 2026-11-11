@@ -968,6 +968,13 @@ private slots:
         QVERIFY(save.step(here, {}, "nowhere/x.png").isEmpty());
         QVERIFY(save.step("recent:", {}, "x.png").isEmpty());
         QVERIFY(save.step("recent:", {}, "~x.png").isEmpty());
+        // A name typed with a stray space is the name without it; a file
+        // that really has the space in its name is that file.
+        write(dir.filePath(" spaced.png"), "x");
+        QCOMPARE(paths(save.step(here, {}, "new.png ")), QStringList({dir.filePath("new.png")}));
+        QCOMPARE(paths(save.step(here, {}, " spaced.png")), QStringList({dir.filePath(" spaced.png")}));
+        QCOMPARE(save.step(here, {}, " spaced.png").value("replaces").toStringList(), QStringList({" spaced.png"}));
+        QCOMPARE(paths(save.step(other, {}, dir.filePath(" spaced.png"))), QStringList({dir.filePath(" spaced.png")}));
         // A name ending in a slash says folder, and there's none there.
         QVERIFY(save.step(here, {}, "nothing/").isEmpty());
         // A link to nothing would be written through: that's a replace too.
