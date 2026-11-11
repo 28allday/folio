@@ -38,17 +38,11 @@
 static QList<FileOps::Change> s_undo, s_redo;
 static QList<FileOps *> s_everyone;
 static constexpr int historyLength = 50;
-// Counted whenever the redos are forgotten, so an undo that finishes after
-// a new change knows what it undid has no redo to go to any more.
-static quint64 s_generation = 0;
-// How many changes the undos have let go of, oldest first, so an undo
-// that's left some of a change puts it back where it was.
-static qint64 s_dropped = 0;
 
 // Work under way in this Folio, whichever pane started it. Panes work side
-// by side, but undo and redo take turns, each finding the history as the
-// last left it, and a drive is changed only while nothing else is under
-// way: not another drive's change, nor file work that may be on it.
+// by side, but an undo or redo runs alone, so nothing changes the items it
+// hasn't reached yet, nor the history it finds, and so does a drive's
+// change, so nothing is on the drive.
 static int s_working = 0;
 static bool s_inHistory = false, s_onDrive = false;
 
@@ -86,9 +80,7 @@ void FileOps::deleteIfDone() {
 bool FileOps::canStart(Lane lane) {
     if (s_onDrive)
         return false;
-    if (lane == Lane::Drive)
-        return s_working == 0;
-    return lane != Lane::History || !s_inHistory;
+    return lane == Lane::Files ? !s_inHistory : s_working == 0;
 }
 
 void FileOps::claim(Lane lane) {
@@ -1546,7 +1538,6 @@ void FileOps::restore(const QStringList &paths) {
 // so when they're tried.
 static void forgetRedos() {
     s_redo.clear();
-    ++s_generation;
     tellEveryone();
 }
 
@@ -1609,6 +1600,8 @@ QString FileOps::rename(const QString &path, const QString &name) {
         return {};
     if (clean.contains('/'))
         return tr("A name can't contain \"/\".");
+    if (!canStart(Lane::Files))
+        return tr("Try again once the work under way is done.");
     const QString destination = QDir(info.absolutePath()).filePath(clean);
     // QFile::rename never overwrites, and lets a name change only its case
     // on drives that ignore case, where the new name already "exists".
@@ -1621,6 +1614,10 @@ QString FileOps::rename(const QString &path, const QString &name) {
 }
 
 void FileOps::newFolder(const QString &folder) {
+    if (!canStart(Lane::Files)) {
+        emit failed(tr("Try again once the work under way is done."));
+        return;
+    }
     if (!QFileInfo(folder).isDir()) {
         emit failed(tr("Folders can't be made here."));
         return;
@@ -1644,17 +1641,13 @@ void FileOps::newFolder(const QString &folder) {
 // latest few.
 static void keep(QList<FileOps::Change> &list, const FileOps::Change &change) {
     list << change;
-    if (list.size() <= historyLength)
-        return;
-    list.removeFirst();
-    if (&list == &s_undo)
-        ++s_dropped;
+    if (list.size() > historyLength)
+        list.removeFirst();
 }
 
 void FileOps::remember(const Change &change) {
     keep(s_undo, change);
     s_redo.clear();
-    ++s_generation;
     tellEveryone();
 }
 
@@ -1683,7 +1676,6 @@ void FileOps::renumber(const Job &job) {
 void FileOps::forgetHistory() {
     s_undo.clear();
     s_redo.clear();
-    ++s_generation;
     tellEveryone();
 }
 
@@ -1858,11 +1850,8 @@ void FileOps::step(bool undoing) {
         emit failed(problem);
         return;
     }
-    // Taken off while it runs; where it was is kept for what's left of it,
-    // and which history it's from, for what it did.
+    // Taken off while it runs, nothing else changing the history meanwhile.
     const Change change = from.takeLast();
-    const qint64 at = s_dropped + s_undo.size();
-    const quint64 generation = s_generation;
     tellEveryone();
     inBackground(
         [undoing](const Job &job) {
@@ -1895,21 +1884,12 @@ void FileOps::step(bool undoing) {
             result.left += moved.size();
             return result;
         },
-        [this, change, undoing, at, generation](const Outcome &result, const Job &job) {
+        [this, change, undoing](const Outcome &result, const Job &job) {
             // What was flipped goes over to the other list, turned around so
-            // it flips back the last first too; what wasn't stays, an undo's
-            // below what other panes changed meanwhile. A change made
-            // meanwhile forgot the redos, and with them what an undo did and
-            // what a redo left.
-            const bool redosKept = s_generation == generation;
-            if (result.left > 0) {
-                const Change rest{change.kind, change.name, change.count, result.steps.mid(0, result.left)};
-                if (undoing && at >= s_dropped)
-                    s_undo.insert(qMin(at - s_dropped, s_undo.size()), rest);
-                else if (!undoing && redosKept)
-                    s_redo << rest;
-            }
-            if (result.left < result.steps.size() && (redosKept || !undoing)) {
+            // it flips back the last first too; what wasn't stays.
+            if (result.left > 0)
+                (undoing ? s_undo : s_redo) << Change{change.kind, change.name, change.count, result.steps.mid(0, result.left)};
+            if (result.left < result.steps.size()) {
                 QList<Step> flipped = result.steps.mid(result.left);
                 std::reverse(flipped.begin(), flipped.end());
                 keep(undoing ? s_redo : s_undo, Change{change.kind, change.name, change.count, flipped});

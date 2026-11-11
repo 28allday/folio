@@ -284,7 +284,7 @@ private:
     // canStart()): file work, an undo or redo, or changing a drive.
     enum class Lane { Files, History, Drive };
     // Whether work in `lane` may start beside what every pane has under
-    // way: undos and redos one at a time, and a drive's change alone.
+    // way: an undo or redo, and a drive's change, alone.
     static bool canStart(Lane lane);
     // Counts this pane's work as under way, and stops counting it.
     void claim(Lane lane);

@@ -1962,7 +1962,7 @@ private slots:
         write(dir.filePath("a.txt"), "a");
         write(dir.filePath("c.txt"), "c");
         FileOps left, right;
-        QSignalSpy failed(&right, &FileOps::failed);
+        QSignalSpy failed(&right, &FileOps::failed), leftFailed(&left, &FileOps::failed);
         QCOMPARE(left.rename(dir.filePath("a.txt"), "b.txt"), QString());
         QCOMPARE(left.rename(dir.filePath("c.txt"), "d.txt"), QString());
         left.undo();
@@ -1973,19 +1973,25 @@ private slots:
         QVERIFY(QFile::exists(dir.filePath("c.txt")));
         QVERIFY(QFile::exists(dir.filePath("b.txt")));
 
-        // A change made while an undo runs forgets the redos, the one the
-        // undo makes as well; what wasn't undone stays below that change.
-        QSignalSpy notice(&left, &FileOps::notice);
+        // Nor can another pane change files while an undo runs, which could
+        // put another item where the undo hasn't reached yet.
         left.undo();
-        QCOMPARE(right.rename(dir.filePath("c.txt"), "e.txt"), QString());
+        QCOMPARE(right.rename(dir.filePath("c.txt"), "e.txt"), QString("Try again once the work under way is done."));
+        right.newFolder(dir.path());
+        right.duplicate(dir.filePath("c.txt"));
+        QCOMPARE(failed.count(), 3);
+        QCOMPARE(failed.last().first().toString(), QString("Try again once the work under way is done."));
         QTRY_VERIFY(left.busy().isEmpty());
-        QVERIFY(QFile::exists(dir.filePath("a.txt")));
-        left.redo();
-        QCOMPARE(notice.last().first().toString(), QString("There's nothing to redo."));
-        left.undo();
-        QTRY_VERIFY(left.busy().isEmpty());
-        QVERIFY(QFile::exists(dir.filePath("c.txt")));
+        QCOMPARE(QDir(dir.path()).entryList(QDir::AllEntries | QDir::NoDotAndDotDot), QStringList({"a.txt", "c.txt"}));
         QCOMPARE(left.undoName(), QString());
+
+        // And an undo waits for file work in another pane.
+        right.duplicate(dir.filePath("c.txt"));
+        left.redo();
+        QCOMPARE(leftFailed.count(), 1);
+        QCOMPARE(leftFailed.last().first().toString(), QString("Try again once the work under way is done."));
+        QTRY_VERIFY(right.busy().isEmpty());
+        QVERIFY(QFile::exists(dir.filePath("a.txt")));
     }
 
     void drivesChangeOnlyWhileNoFilesDo()
