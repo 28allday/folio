@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "Format.js" as Format
 
 // Home's folders, pinned folders, views, drives and tailnet machines. The one holding the current folder
 // stays lit while you dig into it, so you always know which root you're under.
@@ -18,6 +19,8 @@ Rectangle {
     signal finished()
     // The ? in the corner: show or hide the shortcuts.
     signal helpRequested()
+    // Format… in a drive's menu, with what udisks knows of the drive.
+    signal formatRequested(var disk)
     property int cursor: 0
     // The pane the sidebar acts on: the one used last.
     property var target: backend
@@ -66,12 +69,36 @@ Rectangle {
 
     Keys.onUpPressed: cursor = Math.max(0, cursor - 1)
     Keys.onDownPressed: cursor = Math.min(rows.length - 1, cursor + 1)
-    Keys.onReturnPressed: activate(cursor)
-    Keys.onEnterPressed: activate(cursor)
+    Keys.onReturnPressed: (event) => { if (!openDriveMenu(event)) activate(cursor) }
+    Keys.onEnterPressed: (event) => { if (!openDriveMenu(event)) activate(cursor) }
     // The way to the files: left, when mirrored.
     Keys.onRightPressed: if (!LayoutMirroring.enabled) activate(cursor)
     Keys.onLeftPressed: if (LayoutMirroring.enabled) activate(cursor)
     Keys.onEscapePressed: finished()
+
+    // Alt+⏎ (or the Menu key) on a drive opens its menu beside it; the
+    // files' menu stands aside for it.
+    readonly property var keyedDrive: activeFocus && cursor >= devicesAt && cursor < peersAt
+                                      ? driveRows.itemAt(cursor - devicesAt) : null
+    function menuKey(event) {
+        return ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.AltModifier))
+            || event.key === Qt.Key_Menu || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))
+    }
+    Keys.onShortcutOverride: (event) => event.accepted = menuKey(event) && keyedDrive !== null
+    // Return has its own handler, which Keys calls before this one.
+    Keys.onPressed: (event) => event.accepted = openDriveMenu(event)
+    function openDriveMenu(event) {
+        if (!menuKey(event) || !keyedDrive)
+            return false
+        driveMenu.show(keyedDrive.modelData, keyedDrive)
+        return true
+    }
+
+    DriveMenu {
+        id: driveMenu
+        onOpenRequested: (path) => { sidebar.target.navigate(path); sidebar.finished() }
+        onFormatRequested: (disk) => sidebar.formatRequested(disk)
+    }
 
     // The deepest place the current folder sits under.
     readonly property string activePath: {
@@ -84,6 +111,12 @@ Rectangle {
             }
         }
         return best
+    }
+
+    // A drive that couldn't be let go of says why where the files are.
+    Connections {
+        target: places
+        function onFailed(message) { sidebar.target.showMessage(message) }
     }
 
     function statusText(status) {
@@ -118,12 +151,15 @@ Rectangle {
         readonly property bool dropHover: rowDrop.containsDrag
         property string status
         property color statusColor
+        // A quiet second line under the name, for what's too long to sit
+        // beside it in the narrow sidebar.
+        property string detail
         // Room at the row's far end (its left, when mirrored), for a button
         // over it. Padding isn't mirrored by itself.
         property real endPadding: 14
 
         Layout.fillWidth: true
-        implicitHeight: 34
+        implicitHeight: detail.length > 0 ? 44 : 34
         leftPadding: mirrored ? endPadding : 14
         rightPadding: mirrored ? 14 : endPadding
         hoverEnabled: true
@@ -155,15 +191,29 @@ Rectangle {
         }
         contentItem: RowLayout {
             spacing: 14
-            Glyph { name: row.glyph; color: row.active ? theme.brightForeground : theme.foreground }
-            // Set, so that it's mirrored: left as it is, a Latin name would
-            // follow its own script and stay on the left.
-            Text {
+            // Kept in its place, but empty, while the row shows a button over it.
+            Glyph { name: row.glyph; opacity: row.glyph ? 1 : 0; color: row.active ? theme.brightForeground : theme.foreground }
+            ColumnLayout {
                 Layout.fillWidth: true
-                horizontalAlignment: Text.AlignLeft
-                text: row.text
-                elide: Text.ElideRight
-                color: row.active ? theme.brightForeground : theme.foreground
+                spacing: 2
+                // Set, so that they're mirrored: left as they are, Latin
+                // text would follow its own script and stay on the left.
+                Text {
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignLeft
+                    text: row.text
+                    elide: Text.ElideRight
+                    color: row.active ? theme.brightForeground : theme.foreground
+                }
+                Text {
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignLeft
+                    visible: row.detail.length > 0
+                    text: row.detail
+                    elide: Text.ElideRight
+                    color: theme.secondaryForeground
+                    font.pixelSize: 11
+                }
             }
             Text { visible: row.status.length > 0; text: row.status; color: row.statusColor; font.pixelSize: 11 }
         }
@@ -305,10 +355,16 @@ Rectangle {
                 }
             }
 
+            // Each drive says how much is free under its name, where there's
+            // room for it, and while it's hovered or has the keyboard its icon
+            // becomes the button that ejects it. Right-clicked, it has a menu
+            // of what else can be done to it.
             SectionLabel { text: qsTr("Devices"); visible: places.devices.length > 0 }
             Repeater {
+                id: driveRows
                 model: places.devices
                 PlaceRow {
+                    id: driveRow
                     required property var modelData
                     required property int index
                     dropPath: modelData.path
@@ -316,9 +372,30 @@ Rectangle {
                     keyed: sidebar.activeFocus && sidebar.cursor === sidebar.devicesAt + index
                     onKeyedChanged: if (keyed) sidebar.reveal(this)
                     text: modelData.name
-                    glyph: modelData.icon
+                    glyph: eject.visible ? "" : modelData.icon
                     active: sidebar.activePath === modelData.path
                     onClicked: sidebar.target.navigate(modelData.path)
+                    detail: {
+                        translator.language // Re-read when the language (and so its digits) changes.
+                        return modelData.free < 0 ? "" : Format.free(modelData.free)
+                    }
+                    TapHandler {
+                        acceptedButtons: Qt.RightButton
+                        onTapped: driveMenu.show(driveRow.modelData, null)
+                    }
+                    IconButton {
+                        id: eject
+                        // Where the drive's own icon is, centered on it.
+                        anchors.left: parent.left
+                        anchors.leftMargin: driveRow.leftPadding + 8 - width / 2
+                        anchors.verticalCenter: parent.verticalCenter
+                        implicitWidth: 28
+                        implicitHeight: 28
+                        visible: driveRow.modelData.release !== "" && (driveRow.hovered || hovered || driveRow.keyed)
+                        glyph: "eject"
+                        text: driveRow.modelData.release === "eject" ? qsTr("Eject") : qsTr("Unmount")
+                        onClicked: places.eject(driveRow.modelData.path)
+                    }
                 }
             }
 
