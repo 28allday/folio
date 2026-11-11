@@ -31,7 +31,7 @@ Rectangle {
         ["Ctrl+= / Ctrl+- / Ctrl+0", qsTr("Bigger, smaller or normal tiles (or Ctrl+scroll)")],
         ["Space", qsTr("Preview the selected file")],
         ["Ctrl+I", qsTr("Show or hide the details pane")],
-        ["Ctrl+D", qsTr("Pin or unpin the folder (or drag it to the sidebar)")],
+        ["Ctrl+P", qsTr("Pin or unpin the folder (or drag it to the sidebar)")],
         ["Ctrl+C / X / V", qsTr("Copy, cut, paste files")],
         ["Ctrl+Shift+C", qsTr("Copy the path as text")],
         ["F2 / Ctrl+Shift+D", qsTr("Rename / duplicate")],

@@ -169,7 +169,7 @@ FocusScope {
     Shortcut { sequences: ["Ctrl+L", "Alt+D"]; enabled: pane.keys; onActivated: pathBar.editPath() }
     // Pins the selected folder, or the folder being shown when a file is
     // selected; pressed again, unpins it.
-    Shortcut { sequence: "Ctrl+D"; enabled: pane.active && !pane.inTailnet; onActivated: pane.togglePin(pane.current.isDir ? pane.current.path : backend.path) }
+    Shortcut { sequence: "Ctrl+P"; enabled: pane.active && !pane.inTailnet; onActivated: pane.togglePin(pane.current.isDir ? pane.current.path : backend.path) }
     Shortcut { sequence: "Ctrl+1"; enabled: pane.active; onActivated: pane.viewMode = "grid" }
     Shortcut { sequence: "Ctrl+2"; enabled: pane.active; onActivated: pane.viewMode = "list" }
     Shortcut { sequence: "Ctrl+3"; enabled: pane.active; onActivated: pane.viewMode = "columns" }

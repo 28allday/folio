@@ -124,6 +124,12 @@ FolioMenu {
         keys: "Space"
         onTriggered: backend.togglePreview(fileMenu.target.path)
     }
+    FolioMenuItem {
+        shown: fileMenu.forFolder
+        text: fileMenu.forFolder && places.isPinned(fileMenu.target.path) ? qsTr("Unpin") : qsTr("Pin")
+        keys: "Ctrl+P"
+        onTriggered: fileMenu.pinRequested(fileMenu.target.path)
+    }
     MenuLine { shown: fileMenu.forItem && fileMenu.forFiles }
     FolioMenuItem {
         shown: !fileMenu.trashView && fileMenu.forItem && fileMenu.forFiles
@@ -252,12 +258,6 @@ FolioMenu {
         }
         onObjectAdded: (index, object) => shareMenu.addMenu(object)
         onObjectRemoved: (index, object) => shareMenu.removeMenu(object)
-    }
-    FolioMenuItem {
-        shown: fileMenu.forFolder
-        text: fileMenu.forFolder && places.isPinned(fileMenu.target.path) ? qsTr("Unpin") : qsTr("Pin")
-        keys: "Ctrl+D"
-        onTriggered: fileMenu.pinRequested(fileMenu.target.path)
     }
     // On empty space, only where the folder shown is one to work in.
     FolioMenuItem {
