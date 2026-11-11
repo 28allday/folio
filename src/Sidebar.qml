@@ -287,7 +287,7 @@ Rectangle {
                     required property int index
                     dropTrashes: modelData.icon === "trash"
                     onDropHoverChanged: sidebar.dropHovers += dropHover ? 1 : -1
-                    text: modelData.name
+                    text: modelData.icon === "trash" ? qsTr("Trash") : qsTr("Recents")
                     glyph: modelData.icon
                     active: sidebar.activePath === modelData.path
                     onClicked: sidebar.target.navigate(modelData.path)

@@ -146,9 +146,10 @@ void Places::refreshPlaces() {
 
     m_places = places;
 
-    // Views: lists that aren't a folder of their own.
-    m_views = {QVariantMap{{"name", tr("Recents")}, {"path", FolderModel::recentPath()}, {"icon", "recent"}},
-               QVariantMap{{"name", tr("Trash")}, {"path", QDir::cleanPath(FileOps::homeTrash() + "/files")}, {"icon", "trash"}}};
+    // Views: lists that aren't a folder of their own. The sidebar names
+    // them, so a language switch renames them at once.
+    m_views = {QVariantMap{{"path", FolderModel::recentPath()}, {"icon", "recent"}},
+               QVariantMap{{"path", QDir::cleanPath(FileOps::homeTrash() + "/files")}, {"icon", "trash"}}};
 }
 
 QString Places::bookmarksPath() const {

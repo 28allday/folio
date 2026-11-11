@@ -137,7 +137,9 @@ Rectangle {
                 spacing: 10
 
                 Repeater {
-                    model: backend.crumbs
+                    // Recents and Trash are named in C++, which retranslating
+                    // QML doesn't redo.
+                    model: { translator.language; return backend.crumbs }
                     Row {
                         id: crumb
                         required property var modelData

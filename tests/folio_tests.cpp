@@ -1292,12 +1292,11 @@ private slots:
         write(notes, "hello");
         Backend backend(dir.path());
         backend.describe({{"path", photo}, {"kind", "image"}, {"mime", "image/png"}});
-        QCOMPARE(backend.details().value("type").toString(), QMimeDatabase().mimeTypeForName("image/png").comment());
-        QVERIFY(!backend.details().contains("dimensions"));
+        QVERIFY(backend.details().isEmpty());
         QTRY_COMPARE(backend.details().value("dimensions").toString(), QString("40 × 30"));
 
-        // The next item starts from its type alone, and what was read for
-        // one left behind is dropped.
+        // The next item starts with nothing, and what was read for one left
+        // behind is dropped.
         backend.describe({{"path", photo}, {"kind", "image"}, {"mime", "image/png"}});
         backend.describe({{"path", notes}, {"kind", "text"}, {"mime", "text/plain"}});
         QVERIFY(!backend.details().contains("dimensions"));

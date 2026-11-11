@@ -25,8 +25,8 @@ Rectangle {
     // A tailnet machine shows its system and host, and has no date.
     readonly property bool machine: hasItem && item.kind === "peer"
     function homeless(path) { return path.startsWith(places.home + "/") ? "~" + path.slice(places.home.length) : path }
-    // Its type's name, and a picture's size or a text's opening lines once
-    // they've been read off the UI thread.
+    // A picture's size or a text's opening lines once they've been read off
+    // the UI thread.
     readonly property var info: backend.details
     // Described once the folder's loaded has put the cursor back on its
     // item: a re-read leaves another item on the cursor's row for a moment,
@@ -102,7 +102,10 @@ Rectangle {
             }
             Text {
                 Layout.fillWidth: true
-                text: Format.summary(pane.item, pane.info.type)
+                text: {
+                    translator.language // The type's name comes from the system, in the language of the moment.
+                    return Format.summary(pane.item, backend.typeName(pane.item.mime || ""))
+                }
                 color: theme.secondaryForeground
                 font.pixelSize: 12
                 elide: Text.ElideRight

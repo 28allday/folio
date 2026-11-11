@@ -238,10 +238,9 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
     const QString kind = item.value("kind").toString();
     const QString mime = item.value("mime").toString();
     const quint64 generation = ++m_describing;
-    // The system's own name for the type ("JPEG image"), already translated,
-    // needs nothing from the file. The same item again (its folder re-read)
-    // keeps what it shows until the new reading is in, rather than flickering.
-    QVariantMap details{{"type", QMimeDatabase().mimeTypeForName(mime).comment()}};
+    // The same item again (its folder re-read) keeps what it shows until
+    // the new reading is in, rather than flickering.
+    QVariantMap details;
     if (const QString described = path + '\n' + mime; described != m_described) {
         m_described = described;
         m_details = details;
@@ -282,6 +281,10 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
         }
         return read;
     }));
+}
+
+QString Backend::typeName(const QString &mime) {
+    return QMimeDatabase().mimeTypeForName(mime).comment();
 }
 
 Backend::~Backend() {
