@@ -3,6 +3,7 @@
 #include <QCache>
 #include <QCollator>
 #include <QDir>
+#include <QDirIterator>
 #include <QXmlStreamReader>
 #include <QUrl>
 #include <QStandardPaths>
@@ -214,7 +215,7 @@ static QDir::Filters entryFilters(bool showHidden) {
 }
 
 QVector<FolderModel::Entry> FolderModel::list(const QString &path, bool showHidden, const QString &sort,
-                                              QString *error) {
+                                              QString *error, const std::function<bool()> &stop) {
     if (path == recentPath()) {
         // Recents are always most recently used first; that's what they're for.
         return listRecent(recentFile(), showHidden);
@@ -233,11 +234,12 @@ QVector<FolderModel::Entry> FolderModel::list(const QString &path, bool showHidd
     // Extension-only matching: reading every file's header would make large
     // folders and network mounts crawl.
     QMimeDatabase mimes;
-    const auto infos = dir.entryInfoList(entryFilters(showHidden), QDir::NoSort);
-    entries.reserve(infos.size());
-    for (const QFileInfo &info : infos)
-        entries.push_back(entryFor(info, mimes));
-
+    QDirIterator it(path, entryFilters(showHidden));
+    while (it.hasNext()) {
+        if (stop && stop())
+            return {};
+        entries.push_back(entryFor(it.nextFileInfo(), mimes));
+    }
     sortEntries(entries, sort);
     return entries;
 }
@@ -273,9 +275,11 @@ QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QStri
     while (!folders.isEmpty() && entries.size() < limit) {
         if (stop && stop())
             return {};
-        const QString folder = folders.takeFirst();
-        const auto infos = QDir(folder).entryInfoList(filters, QDir::NoSort);
-        for (const QFileInfo &info : infos) {
+        QDirIterator it(folders.takeFirst(), filters);
+        while (it.hasNext()) {
+            if (stop && stop())
+                return {};
+            const QFileInfo info = it.nextFileInfo();
             if (info.fileName().contains(query, Qt::CaseInsensitive) && entries.size() < limit) {
                 Entry e = entryFor(info, mimes);
                 e.name = base.relativeFilePath(e.path);
@@ -426,9 +430,10 @@ void FolderModel::reload() {
     });
     watcher->setFuture(QtConcurrent::run([path, showHidden, sort, query, latest, generation] {
         QString error;
+        const auto overtaken = [&] { return *latest != generation; };
         auto entries = query.isEmpty() || path == recentPath()
-            ? list(path, showHidden, sort, &error)
-            : search(path, query, showHidden, sort, [&] { return *latest != generation; });
+            ? list(path, showHidden, sort, &error, overtaken)
+            : search(path, query, showHidden, sort, overtaken);
         return qMakePair(entries, error);
     }));
 }

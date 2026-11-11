@@ -93,7 +93,9 @@ public:
     Q_INVOKABLE QStringList selectedPaths() const;
 
     // Synchronous building blocks, used by the background passes and tests.
-    static QVector<Entry> list(const QString &path, bool showHidden, const QString &sort, QString *error);
+    // A listing stops, empty, as soon as `stop` returns true.
+    static QVector<Entry> list(const QString &path, bool showHidden, const QString &sort, QString *error,
+                               const std::function<bool()> &stop = {});
     static Entry entryFor(const QFileInfo &info, const QMimeDatabase &mimes);
     // An entry as QML reads it, by the names of its fields.
     static QVariantMap toMap(const Entry &entry);
@@ -142,8 +144,8 @@ private:
     QString m_sort = "name";
     QString m_query;
     quint64 m_generation = 0;
-    // The newest listing's generation, shared with the background search
-    // and folder counts, so work that's been overtaken (more typing,
+    // The newest listing's generation, shared with the background listing,
+    // search and folder counts, so work that's been overtaken (more typing,
     // another folder, the model gone) stops early.
     std::shared_ptr<std::atomic<quint64>> m_latest = std::make_shared<std::atomic<quint64>>(0);
     QFileSystemWatcher m_watcher;

@@ -233,6 +233,48 @@ private slots:
         QCOMPARE(model.count(), 0);
     }
 
+    void folderModelStopsReadingWhatsBeenOvertaken()
+    {
+        // A big folder left before it's been read, or a search of it, stops
+        // being read instead of holding on to a thread of the pool that the
+        // next listing, the folder counts and file transfers all wait for.
+        // With a pool of one thread, the next folder waits for the overtaken
+        // read to stop, so it shows in a fraction of the time the read takes.
+        QTemporaryDir big, small, other;
+        for (int i = 0; i < 20000; ++i)
+            write(big.filePath(QString("%1.txt").arg(i)), "x");
+        write(small.filePath("a.txt"), "x");
+        write(other.filePath("b.txt"), "x");
+        QElapsedTimer timer;
+        timer.start();
+        FolderModel::list(big.path(), false, "name", nullptr);
+        const qint64 listing = timer.restart();
+        FolderModel::search(big.path(), "none", false, "name");
+        const qint64 searching = timer.elapsed();
+
+        QThreadPool *pool = QThreadPool::globalInstance();
+        pool->waitForDone();
+        const int threads = pool->maxThreadCount();
+        pool->setMaxThreadCount(1);
+        const auto restore = qScopeGuard([&] { pool->setMaxThreadCount(threads); });
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+
+        model.setPath(big.path());
+        timer.restart();
+        model.setPath(small.path());
+        QVERIFY(loaded.wait(5000));
+        QVERIFY(timer.elapsed() < listing / 2);
+
+        model.setPath(big.path());
+        QVERIFY(loaded.wait(5000));
+        model.setQuery("none");
+        timer.restart();
+        model.setPath(other.path());
+        QVERIFY(loaded.wait(5000));
+        QVERIFY(timer.elapsed() < searching / 2);
+    }
+
     void folderModelTellsCopiedFoldersApart()
     {
         // A copy (cp -a, rsync -a) lists exactly like its original, but its
