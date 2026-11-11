@@ -1,0 +1,33 @@
+name: Build and test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    # Folio is an Arch package built against Arch's Qt, so it's tested there.
+    container: archlinux:latest
+    steps:
+      - name: Install the build and test dependencies
+        # Arch is rolling, so update first; poppler is for the PDF thumbnail
+        # test, which skips without it.
+        run: |
+          pacman -Syu --noconfirm --needed \
+            base-devel cmake git \
+            glib2 libarchive zlib xdg-utils hicolor-icon-theme \
+            qt6-base qt6-declarative qt6-imageformats qt6-multimedia qt6-svg qt6-wayland \
+            poppler
+
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: bin/build
+
+      - name: Test
+        # Some tests talk to a session bus (the desktop's file manager
+        # interface), which a container doesn't have.
+        run: dbus-run-session -- bin/test
