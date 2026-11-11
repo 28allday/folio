@@ -63,9 +63,12 @@ public:
     virtual QString unmount(const QString &filesystem) = 0;
     // A new, empty GPT partition table over the whole disk.
     virtual QString makeTable(const Disk &disk) = 0;
-    // One partition filling the table, of the Microsoft basic data type,
-    // formatted exFAT with `label`; `partition` is the filesystem made.
-    virtual QString addExfat(const Disk &disk, const QString &label, QString *partition) = 0;
+    // One partition filling the table, formatted `type` (a FileSystem's)
+    // with `label`; `partition` is the filesystem made.
+    virtual QString addPartition(const Disk &disk, const QString &type, const QString &label, QString *partition) = 0;
+    // Whether this machine has what it takes to make `type` (mkfs.exfat,
+    // mkfs.ntfs…), as udisks says.
+    virtual bool canFormat(const QString &type) = 0;
     virtual QString mount(const QString &filesystem) = 0;
     // A file descriptor writing to the whole disk, which only udisks may
     // hand out. The caller closes it.
@@ -98,8 +101,17 @@ public:
     enum Fit { Unfit, TooSmall, Fits };
     static Fit fit(const Disk &disk, qint64 imageSize);
 
-    // exFAT keeps at most 11 UTF-16 characters of a label (mkfs.exfat and
-    // libblockdev both refuse longer ones).
-    static constexpr int labelLimit = 11;
-    static bool labelFits(const QString &label) { return label.size() <= labelLimit; }
+    // What a drive can be formatted as, in the order offered: udisks' name
+    // for it, how a person knows it, what it's good for, the longest label
+    // its mkfs keeps (in UTF-16 characters), and its GPT partition type.
+    struct FileSystem {
+        const char *type;
+        const char *name;
+        const char *detail;
+        int labelLimit;
+        const char *partitionType;
+    };
+    static const QList<FileSystem> &fileSystems();
+    static const FileSystem *fileSystem(const QString &type);
+    static bool labelFits(const QString &label, const QString &type);
 };

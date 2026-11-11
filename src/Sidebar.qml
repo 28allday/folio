@@ -182,7 +182,8 @@ Rectangle {
         }
         contentItem: RowLayout {
             spacing: 14
-            Glyph { name: row.glyph; color: row.active ? theme.brightForeground : theme.foreground }
+            // Kept in its place, but empty, while the row shows a button over it.
+            Glyph { name: row.glyph; opacity: row.glyph ? 1 : 0; color: row.active ? theme.brightForeground : theme.foreground }
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 2

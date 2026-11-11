@@ -2093,10 +2093,26 @@ QVariantMap FileOps::driveAt(const QString &root) const {
     return {};
 }
 
-void FileOps::format(const QString &id, const QString &label) {
+QVariantList FileOps::formatChoices() const {
+    // Only what this machine can make; exFAT, the first, is the default.
+    QVariantList choices;
+    const auto disks = Disks::instance();
+    for (const Disks::FileSystem &fs : Disks::fileSystems())
+        if (disks->canFormat(QString::fromLatin1(fs.type)))
+            choices << QVariantMap{{"type", QString::fromLatin1(fs.type)}, {"name", QString::fromLatin1(fs.name)},
+                                   {"detail", tr(fs.detail)}, {"labelLimit", fs.labelLimit}};
+    return choices;
+}
+
+void FileOps::format(const QString &id, const QString &label, const QString &type) {
     const QString name = label.trimmed();
-    if (!Disks::labelFits(name)) {
-        emit failed(tr("A drive's name can have at most %1 characters.").arg(Disks::labelLimit));
+    const Disks::FileSystem *fs = Disks::fileSystem(type);
+    if (!fs) {
+        emit failed(tr("Folio can't make that kind of drive."));
+        return;
+    }
+    if (!Disks::labelFits(name, type)) {
+        emit failed(tr("%1 keeps at most %2 characters of a drive's name.").arg(QString::fromLatin1(fs->name)).arg(fs->labelLimit));
         return;
     }
     if (!idle(Lane::Drive))
@@ -2112,7 +2128,7 @@ void FileOps::format(const QString &id, const QString &label) {
     const QString drive = Disks::name(*disk);
     inBackground(
         [drive](const Job &) { return tr("Formatting %1…").arg(drive); },
-        [disks, disk = *disk, name](Job &job) {
+        [disks, disk = *disk, name, type](Job &job) {
             Outcome result;
             for (const QString &filesystem : disk.filesystems)
                 if (result.error = disks->unmount(filesystem); !result.error.isEmpty())
@@ -2126,7 +2142,7 @@ void FileOps::format(const QString &id, const QString &label) {
             QString partition;
             if (result.error = disks->makeTable(disk); !result.error.isEmpty())
                 return result;
-            if (result.error = disks->addExfat(disk, name, &partition); !result.error.isEmpty())
+            if (result.error = disks->addPartition(disk, type, name, &partition); !result.error.isEmpty())
                 return result;
             result.made << partition;
             // Mounted again, it's back in the sidebar, ready to fill.

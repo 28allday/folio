@@ -90,10 +90,13 @@ public:
     QList<Disk> list() override { return disks; }
     QString unmount(const QString &filesystem) override { return made("unmount " + filesystem, "unmount"); }
     QString makeTable(const Disk &disk) override { return made("makeTable " + disk.block, "makeTable"); }
-    QString addExfat(const Disk &disk, const QString &label, QString *partition) override {
+    QString addPartition(const Disk &disk, const QString &type, const QString &label, QString *partition) override {
         *partition = disk.block + "1";
-        return made("addExfat " + disk.block + " " + label, "addExfat");
+        return made("addPartition " + disk.block + " " + type + " " + label, "addPartition");
     }
+    // Every filesystem but those named in `missing` can be made.
+    QStringList missing;
+    bool canFormat(const QString &type) override { return !missing.contains(type); }
     QString mount(const QString &filesystem) override { return made("mount " + filesystem, "mount"); }
     QString open(const Disk &disk, int *descriptor) override {
         if (const QString error = made("open " + disk.block, "open"); !error.isEmpty())
@@ -3031,14 +3034,22 @@ private slots:
 
     void formattingNamesDrivesAsExfatAllows()
     {
-        QVERIFY(Disks::labelFits("PHOTOS 2026"));
-        QVERIFY(!Disks::labelFits("PHOTOS 20266"));
+        // Each filesystem keeps its own length of name.
+        QVERIFY(Disks::labelFits("PHOTOS 2026", "exfat"));
+        QVERIFY(!Disks::labelFits("PHOTOS 20266", "exfat"));
+        QVERIFY(!Disks::labelFits("PHOTOS 20266", "vfat"));
+        QVERIFY(Disks::labelFits("PHOTOS 2026 FROM LISBON", "ntfs"));
+        QVERIFY(!Disks::labelFits(QString(33, 'x'), "ntfs"));
+        QVERIFY(Disks::labelFits("PHOTOS 2026 LIS", "ext4"));
+        QVERIFY(Disks::labelFits("PHOTOS 2026 LISB", "ext4"));
+        QVERIFY(!Disks::labelFits(QString(17, 'x'), "ext4"));
+        QVERIFY(!Disks::labelFits("PHOTOS", "zfs"));
         auto fake = fakeDisks();
         FileOps ops;
         QSignalSpy failed(&ops, &FileOps::failed);
         ops.format(sanDisk().identity, "Holiday Photos");
         QCOMPARE(failed.count(), 1);
-        QCOMPARE(failed.at(0).at(0).toString(), QString("A drive's name can have at most 11 characters."));
+        QCOMPARE(failed.at(0).at(0).toString(), QString("exFAT keeps at most 11 characters of a drive's name."));
         QVERIFY(fake->calls.isEmpty());
         QVERIFY(ops.busy().isEmpty());
     }
@@ -3058,8 +3069,34 @@ private slots:
         QCOMPARE(busy.value(0), QString("Formatting SanDisk Ultra…"));
         QCOMPARE(changed.count(), 1);
         const QString sdb = sanDisk().block;
-        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "makeTable " + sdb, "addExfat " + sdb + " Photos",
+        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "makeTable " + sdb, "addPartition " + sdb + " exfat Photos",
                                            "mount " + sdb + "1"}));
+    }
+
+    void formattingOffersWhatThisMachineCanMake()
+    {
+        // exFAT first, and only the filesystems whose tools are installed.
+        auto fake = fakeDisks();
+        fake->missing = {"ntfs"};
+        FileOps ops;
+        QStringList types;
+        for (const QVariant &choice : ops.formatChoices())
+            types << choice.toMap().value("type").toString();
+        QCOMPARE(types, (QStringList{"exfat", "vfat", "ext4"}));
+
+        // The one picked is made, with a name as long as it keeps.
+        ops.format(sanDisk().identity, "Linux Backups", "ext4");
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QVERIFY(fake->calls.contains("addPartition " + sanDisk().block + " ext4 Linux Backups"));
+
+        // A name too long for the filesystem, or a filesystem Folio doesn't
+        // make, touches nothing.
+        fake->calls.clear();
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.format(sanDisk().identity, "Holiday Photos", "vfat");
+        ops.format(sanDisk().identity, "Photos", "zfs");
+        QCOMPARE(failed.count(), 2);
+        QVERIFY(fake->calls.isEmpty());
     }
 
     void formattingStopsAtWhatUdisksRefuses()

@@ -158,10 +158,12 @@ public:
     // or empty unless it's a drive plugged in that may be erased (see
     // Disks::fit).
     Q_INVOKABLE QVariantMap driveAt(const QString &root) const;
-    // Erases the disk to one exFAT partition named `label` (at most
-    // Disks::labelLimit characters), as Omarchy's format-drive does, and
-    // mounts it again.
-    Q_INVOKABLE void format(const QString &id, const QString &label);
+    // What a drive can be formatted as on this machine: {type, name,
+    // detail, labelLimit}, exFAT first.
+    Q_INVOKABLE QVariantList formatChoices() const;
+    // Erases the disk to one partition of `type` (exFAT by default, as
+    // Omarchy's format-drive makes) named `label`, and mounts it again.
+    Q_INVOKABLE void format(const QString &id, const QString &label, const QString &type = QStringLiteral("exfat"));
     // Whether `path` is a disk image to burn onto a drive: an .iso, or a
     // raw .img such as a Raspberry Pi's.
     Q_INVOKABLE bool canBurn(const QString &path) const;

@@ -19,7 +19,6 @@ const QString prefix = "org.freedesktop.UDisks2.";
 // What a GPT partition holding a FAT or exFAT filesystem is marked as, so
 // Windows and macOS mount it too: Microsoft basic data, parted's
 // "msftdata".
-const QString basicData = "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7";
 
 // Byte strings from udisks end in a NUL.
 QString fromBytes(const QByteArray &bytes) {
@@ -99,16 +98,33 @@ public:
         return failure(call(disk.block, prefix + "Block", "Format", {QString("gpt"), QVariantMap{{"tear-down", true}}}));
     }
 
-    QString addExfat(const Disk &disk, const QString &label, QString *partition) override {
+    QString addPartition(const Disk &disk, const QString &type, const QString &label, QString *partition) override {
+        const FileSystem *fs = fileSystem(type);
+        if (!fs)
+            return QObject::tr("Folio can't make that kind of drive.");
         // From 1 MiB, as parted's "1MiB 100%" does; a size of 0 fills the
         // rest of the disk.
         const QDBusMessage reply = call(disk.block, prefix + "PartitionTable", "CreatePartitionAndFormat",
                                         {QVariant::fromValue(qulonglong(1 << 20)), QVariant::fromValue(qulonglong(0)),
-                                         basicData, QString(), QVariantMap(), QString("exfat"),
+                                         QString::fromLatin1(fs->partitionType), QString(), QVariantMap(), type,
                                          QVariantMap{{"label", label}}});
         if (reply.type() != QDBusMessage::ErrorMessage)
             *partition = reply.arguments().value(0).value<QDBusObjectPath>().path();
         return failure(reply);
+    }
+
+    bool canFormat(const QString &type) override {
+        const QDBusMessage reply = call("/org/freedesktop/UDisks2/Manager", prefix + "Manager", "CanFormat", {type});
+        if (reply.type() == QDBusMessage::ErrorMessage || reply.arguments().isEmpty())
+            return false;
+        // (available, the program missing when it isn't).
+        const QDBusArgument answer = reply.arguments().constFirst().value<QDBusArgument>();
+        bool available = false;
+        QString missing;
+        answer.beginStructure();
+        answer >> available >> missing;
+        answer.endStructure();
+        return available;
     }
 
     QString mount(const QString &filesystem) override {
@@ -170,6 +186,35 @@ private:
 QMutex s_lock;
 std::shared_ptr<Disks> s_instance;
 
+}
+
+const QList<Disks::FileSystem> &Disks::fileSystems() {
+    // Microsoft basic data for what Windows and macOS read too, Linux
+    // filesystem data for ext4. Labels: exFAT and FAT keep 11 characters,
+    // NTFS 32, ext4 16.
+    static const QList<FileSystem> all{
+        {"exfat", "exFAT", QT_TR_NOOP("Works with Mac, Windows and Linux, and holds big files."), 11,
+         "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7"},
+        {"vfat", "FAT32", QT_TR_NOOP("Works almost anywhere, old cameras and car stereos too, but no file can be over 4 GB."), 11,
+         "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7"},
+        {"ntfs", "NTFS", QT_TR_NOOP("For Windows. A Mac can read it but not write to it."), 32,
+         "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7"},
+        {"ext4", "ext4", QT_TR_NOOP("For Linux only, keeping Linux's permissions."), 16,
+         "0fc63daf-8483-4772-8e79-3d69d8477de4"},
+    };
+    return all;
+}
+
+const Disks::FileSystem *Disks::fileSystem(const QString &type) {
+    for (const FileSystem &fs : fileSystems())
+        if (type == QLatin1String(fs.type))
+            return &fs;
+    return nullptr;
+}
+
+bool Disks::labelFits(const QString &label, const QString &type) {
+    const FileSystem *fs = fileSystem(type);
+    return fs && label.size() <= fs->labelLimit;
 }
 
 std::shared_ptr<Disks> Disks::instance() {
