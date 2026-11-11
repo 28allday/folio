@@ -55,19 +55,36 @@ std::optional<QStringList> commandOf(const QJsonValue &value) {
     return list;
 }
 
+// A plugin's commands run as the user, so only the user (or root, for a
+// package's) may have put them there: owned by one of them, and writable by
+// no one else.
+bool trusted(const QString &path) {
+    const QFileInfo info(path);
+    return (info.ownerId() == ::getuid() || info.ownerId() == 0)
+           && !(info.permissions() & (QFileDevice::WriteGroup | QFileDevice::WriteOther));
+}
+
 // Sets a process up to run a plugin's command: in its folder, with its
 // environment and nothing on standard input. ./x and bin/x are the
-// plugin's own programs; a bare name comes from PATH.
-void prepare(QProcess &process, const Plugins::Manifest &plugin, const QStringList &command,
+// plugin's own programs, and false when one of those (or a folder on the
+// way to it) isn't trusted; a bare name comes from PATH.
+bool prepare(QProcess &process, const Plugins::Manifest &plugin, const QStringList &command,
              const QProcessEnvironment &environment) {
     QString program = command.value(0);
-    if (program.contains('/') && !QDir::isAbsolutePath(program))
-        program = QDir(plugin.dir).filePath(program);
+    if (program.contains('/') && !QDir::isAbsolutePath(program)) {
+        program = QDir::cleanPath(QDir(plugin.dir).filePath(program));
+        for (QString p = program; p != plugin.dir; p = QFileInfo(p).path())
+            if (!p.startsWith(plugin.dir + "/") || (QFileInfo::exists(p) && !trusted(p))) {
+                complain(plugin.id, program + " isn't run: it's outside the plugin's folder, or others may change it");
+                return false;
+            }
+    }
     process.setProgram(program);
     process.setArguments(command.mid(1));
     process.setWorkingDirectory(plugin.dir);
     process.setProcessEnvironment(environment);
     process.setStandardInputFile(QProcess::nullDevice());
+    return true;
 }
 
 QString pathOf(const QString &plugin, const QString &item) {
@@ -224,14 +241,11 @@ QList<Plugins::Manifest> Plugins::read(const QStringList &folders, const QString
 
     QList<Manifest> manifests;
     for (auto it = dirs.cbegin(); it != dirs.cend(); ++it) {
-        // Its commands run as the user, so only the user (or root, for a
-        // package's) may have put them there.
-        const QFileInfo dir(it.value());
-        if ((dir.ownerId() != ::getuid() && dir.ownerId() != 0) || dir.permissions().testFlag(QFileDevice::WriteOther)) {
-            complain(it.key(), "isn't read: " + it.value() + " belongs to someone else, or anyone may change it");
+        QFile file(it.value() + "/manifest.json");
+        if (!trusted(it.value()) || (file.exists() && !trusted(file.fileName()))) {
+            complain(it.key(), "isn't read: " + it.value() + " belongs to someone else, or others may change it");
             continue;
         }
-        QFile file(it.value() + "/manifest.json");
         if (!file.open(QIODevice::ReadOnly)) {
             complain(it.key(), "has no manifest.json in " + it.value());
             continue;
@@ -293,7 +307,8 @@ Plugins::Run Plugins::execute(const Manifest &plugin, const QStringList &command
                               int timeout, const std::atomic<bool> *stop) {
     Run run;
     QProcess process;
-    prepare(process, plugin, command, environment);
+    if (!prepare(process, plugin, command, environment))
+        return run;
     // A group of its own, so ending it ends everything it started too.
     process.setChildProcessModifier([] { ::setpgid(0, 0); });
     process.start();
@@ -690,9 +705,10 @@ void Plugins::act(const Manifest &plugin, const QString &key, const QString &lab
     if (detach) {
         // Started and forgotten: a program with a window of its own.
         QProcess process;
-        prepare(process, plugin, command, environment);
         Result result;
-        if (!process.startDetached())
+        if (!prepare(process, plugin, command, environment))
+            result.error = tr("%1: %2").arg(label, tr("it couldn't be started"));
+        else if (!process.startDetached())
             result.error = tr("%1: %2").arg(label, process.errorString());
         finish(done, result);
         return;

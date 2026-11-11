@@ -1820,10 +1820,45 @@ private slots:
         writePlugin(folder.path(), "open-to-all", R"({"folio": 1})");
         QFile::setPermissions(folder.filePath("open-to-all"), QFile::permissions(folder.filePath("open-to-all"))
                                                                   | QFileDevice::WriteOther);
+        // Nor could one a group may write to, or whose manifest others may
+        // change.
+        writePlugin(folder.path(), "open-to-group", R"({"folio": 1})");
+        QFile::setPermissions(folder.filePath("open-to-group"), QFile::permissions(folder.filePath("open-to-group"))
+                                                                    | QFileDevice::WriteGroup);
+        writePlugin(folder.path(), "open-manifest", R"({"folio": 1})");
+        QFile::setPermissions(folder.filePath("open-manifest/manifest.json"),
+                              QFile::permissions(folder.filePath("open-manifest/manifest.json")) | QFileDevice::WriteGroup);
         QStringList ids;
         for (const auto &m : Plugins::read({folder.path(), folder.filePath("missing")}, "en"))
             ids << m.id;
         QCOMPARE(ids, QStringList({"good"}));
+    }
+
+    void pluginCommandsOthersMayChangeArentRun()
+    {
+        QTemporaryDir folder;
+        writePlugin(folder.path(), "shared", R"({"folio": 1})",
+                    {{"mine", "#!/bin/sh\necho '{}'\n"}, {"theirs", "#!/bin/sh\necho '{}'\n"},
+                     {"bin/inside", "#!/bin/sh\necho '{}'\n"}});
+        const auto plugin = Plugins::read({folder.path()}, "en").value(0);
+        QCOMPARE(plugin.id, QString("shared"));
+        const auto env = QProcessEnvironment::systemEnvironment();
+        QVERIFY(Plugins::execute(plugin, {"./mine"}, env, 5000).ok());
+        QVERIFY(Plugins::execute(plugin, {"bin/inside"}, env, 5000).ok());
+        // A program a group may change, one in a folder a group may change,
+        // or one outside the plugin's folder isn't run.
+        QFile::setPermissions(folder.filePath("shared/theirs"),
+                              QFile::permissions(folder.filePath("shared/theirs")) | QFileDevice::WriteGroup);
+        QFile::setPermissions(folder.filePath("shared/bin"),
+                              QFile::permissions(folder.filePath("shared/bin")) | QFileDevice::WriteGroup);
+        QVERIFY(!Plugins::execute(plugin, {"./theirs"}, env, 5000).started);
+        QVERIFY(!Plugins::execute(plugin, {"bin/inside"}, env, 5000).started);
+        QFile outside(folder.filePath("outside"));
+        QVERIFY(outside.open(QIODevice::WriteOnly));
+        outside.write("#!/bin/sh\necho '{}'\n");
+        outside.close();
+        outside.setPermissions(outside.permissions() | QFileDevice::ExeOwner);
+        QVERIFY(!Plugins::execute(plugin, {"../outside"}, env, 5000).started);
     }
 
     void pluginsOfTheUserReplacePackagedOnes()

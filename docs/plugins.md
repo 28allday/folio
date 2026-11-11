@@ -13,9 +13,11 @@ killed and one that prints nonsense is ignored; either way your rows and menu
 entries just don't show until it works again, and Folio carries on.
 
 Plugins are trusted like Nautilus scripts: they run as you, with your files.
-Install only plugins you'd run yourself. A plugin's folder must belong to you
-(or to root, for a package's) and not be writable by everyone; otherwise
-Folio skips it.
+Install only plugins you'd run yourself. A plugin's folder and its
+`manifest.json` must belong to you (or to root, for a package's) and be
+writable by no one else, not even a group; otherwise Folio skips it. The same
+goes for a command of the plugin's own (`./x`, `bin/x`) and the folders it's
+in, or Folio won't run it.
 
 ## Where plugins live
 
