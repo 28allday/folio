@@ -146,18 +146,25 @@ FolioMenu {
     readonly property bool canLocalSend: onItem && fileOps.hasLocalSend()
     readonly property bool canShare: canDropbox || canTaildrop || canLocalSend
 
+    // The entries are made only while they apply, rather than hidden:
+    // opening Share from the keyboard highlights its first entry, even a
+    // hidden one, and Return would run it.
     FolioMenu {
         id: shareMenu
         title: qsTr("Share")
-        FolioMenuItem {
-            shown: fileMenu.canDropbox
-            text: qsTr("Dropbox Link")
-            onTriggered: fileOps.dropboxLink(fileMenu.target.path)
+        Repeater {
+            model: fileMenu.canDropbox ? 1 : 0
+            FolioMenuItem {
+                text: qsTr("Dropbox Link")
+                onTriggered: fileOps.dropboxLink(fileMenu.target.path)
+            }
         }
-        FolioMenuItem {
-            shown: fileMenu.canLocalSend
-            text: qsTr("LocalSend…")
-            onTriggered: fileOps.shareLocalSend(fileMenu.paths)
+        Repeater {
+            model: fileMenu.canLocalSend ? 1 : 0
+            FolioMenuItem {
+                text: qsTr("LocalSend…")
+                onTriggered: fileOps.shareLocalSend(fileMenu.paths)
+            }
         }
     }
     // Taildrop is its own menu inside Share, one entry per machine; it's
