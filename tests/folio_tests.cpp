@@ -3069,6 +3069,43 @@ private slots:
         QVERIFY2(problems.isEmpty(), qPrintable(problems.join('\n')));
     }
 
+    void bundledPluginsCatalogTheirText()
+    {
+        // Each plugin that comes with Folio has an en.json for translators
+        // to work from: its manifest's text is in it, everything in it shows
+        // somewhere in the plugin (a script's printf writes %1 as %%1), and
+        // its other catalogs match it, as Folio's own do.
+        QStringList problems;
+        for (const QString &id : QDir(bundled()).entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+            const QString dir = bundled() + "/" + id;
+            const QJsonObject english = readCatalog(dir + "/i18n/en.json", &problems);
+            QString files;
+            for (const QFileInfo &info : QDir(dir).entryInfoList(QDir::Files)) {
+                QFile file(info.filePath());
+                if (file.open(QIODevice::ReadOnly))
+                    files += QString::fromUtf8(file.readAll()).replace("%%", "%").replace("'\\''", "'");
+            }
+            const QJsonObject manifest = readCatalog(dir + "/manifest.json", &problems);
+            const QJsonObject view = manifest.value("view").toObject();
+            QStringList shown{manifest.value("section").toObject().value("title").toString(),
+                              view.value("title").toString(), view.value("label").toString(),
+                              view.value("empty").toString()};
+            for (const QJsonValue &share : manifest.value("share").toArray())
+                shown << share.toObject().value("label").toString() << share.toObject().value("busy").toString();
+            for (const QString &text : std::as_const(shown))
+                if (!text.isEmpty() && !english.contains(text))
+                    problems << id + ": missing from en.json: " + text;
+            for (auto it = english.begin(); it != english.end(); ++it) {
+                if (it.value().toString() != it.key())
+                    problems << id + ": should be itself: " + it.key();
+                if (!files.contains(it.key()))
+                    problems << id + ": in en.json but the plugin never shows it: " + it.key();
+            }
+            problems << catalogProblems(dir + "/i18n");
+        }
+        QVERIFY2(problems.isEmpty(), qPrintable(problems.join('\n')));
+    }
+
     void catalogChecksCatchBrokenTranslations()
     {
         QTemporaryDir dir;

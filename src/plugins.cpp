@@ -11,6 +11,7 @@
 #include <QFutureWatcher>
 #include <QImageReader>
 #include <QJsonDocument>
+#include <QLocale>
 #include <QMap>
 #include <QProcess>
 #include <QRegularExpression>
@@ -716,10 +717,11 @@ void Plugins::act(const Manifest &plugin, const QString &key, const QString &lab
         // Started and forgotten: a program with a window of its own.
         QProcess process;
         Result result;
+        // %1 is what was picked: a Share entry, or a plugin's item.
         if (!prepare(process, plugin, command, environment))
-            result.error = tr("%1: %2").arg(label, tr("it couldn't be started"));
+            result.error = tr("%1 couldn't be started.").arg(label);
         else if (!process.startDetached())
-            result.error = tr("%1: %2").arg(label, process.errorString());
+            result.error = tr("%1 couldn't be started: %2").arg(label, process.errorString());
         finish(done, result);
         return;
     }
@@ -763,12 +765,14 @@ Plugins::Result Plugins::interpret(const Manifest &plugin, const QString &label,
     result.copy = said.value("copy").toString();
     result.path = said.value("path").toString();
     if (!run.ok() && result.error.isEmpty()) {
-        const QString why = !run.lastError.isEmpty() ? run.lastError
-                          : !run.started             ? tr("it couldn't be started")
-                          : run.tooLong              ? tr("it printed too much")
-                          : run.code < 0             ? tr("it crashed")
-                                                     : tr("it stopped with code %1").arg(run.code);
-        result.error = tr("%1: %2").arg(label, why);
+        // %1 is what was picked: a Share entry, or a plugin's item.
+        result.error = !run.lastError.isEmpty()
+                           //: What was picked in a plugin, then the error it printed, as it printed it.
+                           ? tr("%1: %2").arg(label, run.lastError)
+                       : !run.started ? tr("%1 couldn't be started.").arg(label)
+                       : run.tooLong  ? tr("%1 printed too much.").arg(label)
+                       : run.code < 0 ? tr("%1 crashed.").arg(label)
+                                      : tr("%1 stopped with code %2.").arg(label, QLocale().toString(run.code));
     }
     // A failure does nothing else it asks.
     if (!result.error.isEmpty())

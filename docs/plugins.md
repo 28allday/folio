@@ -249,7 +249,7 @@ listed. They fill its section, its view and its submenus.
 
 **`places`** puts a status, or another icon, on sidebar rows Folio already
 has: Home's folders, pinned folders and drives. `path` may start with `~`.
-`status` is a word or two, shown quietly at the row's right and translated;
+`status` is a word or two, shown quietly at the row's end and translated;
 `tone` colors it: `quiet` (the default), `warning` (the theme's yellow) or
 `error` (its red). Leave `status` out when there's nothing worth saying; up
 to date is the normal state and says nothing. When two plugins mark the same
@@ -387,6 +387,10 @@ an object from the English text to its translation. Folio uses the catalog
 for the manifest's labels and titles and the text its commands print, as
 marked above, falling back from `pt-BR` to `pt` to the English. Names, ids,
 values and anything to copy are never looked up.
+
+An `i18n/en.json` listing every English text the plugin shows, each as
+itself, gives translators the whole of it to work from; the plugins that
+come with Folio have one.
 
 ## When something's wrong
 

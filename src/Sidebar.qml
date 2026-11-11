@@ -358,7 +358,7 @@ Rectangle {
                             glyph: modelData.icon
                             active: sidebar.inside(modelData.root)
                             onClicked: sidebar.target.open(modelData.path)
-                            rightPadding: forgetItem.visible ? forgetItem.implicitWidth + 6 : 14
+                            endPadding: forgetItem.visible ? forgetItem.implicitWidth + 6 : 14
                             IconButton {
                                 id: forgetItem
                                 anchors.right: parent.right
