@@ -159,9 +159,10 @@ FocusScope {
     Connections {
         target: view.item
         function onContextMenu(item, folder) { fileMenu.show(item, folder) }
-        // Only the cursor moving is remembered. A re-read leaves the cursor
-        // on its row while a new file can push its item down a row; the
-        // folder's loaded then puts it back on the item.
+        // The cursor's item is remembered as the cursor moves, and once the
+        // folder's loaded has placed it. Not when a re-read leaves the cursor
+        // on its row while a new file pushes its item down: loaded then puts
+        // it back on the item.
         function onCurrentIndexChanged() {
             const path = backend.folder.get(view.item.currentIndex).path
             if (path)
@@ -199,6 +200,10 @@ FocusScope {
                 view.item.select(row >= 0 ? row : Math.min(view.item.currentIndex, backend.folder.count - 1), true)
             else
                 view.item.select(-1, false)
+            // Remembered here too: put on the row it was already on, the
+            // cursor doesn't signal a move, and an item from the folder
+            // before would stay remembered.
+            pane.lastPath = backend.folder.get(view.item.currentIndex).path || ""
         }
     }
 
