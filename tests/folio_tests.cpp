@@ -2706,6 +2706,44 @@ private slots:
         QVERIFY(fake->calls.isEmpty());
     }
 
+    void onlyOneDriveIsChangedAtATime()
+    {
+        // Each pane has its own file work, but drives are the computer's:
+        // one pane's burn and another's format mustn't overlap.
+        QTemporaryDir dir;
+        const QString image = dir.filePath("ubuntu.iso");
+        writeImageFile(image, 1 << 20);
+        auto fake = fakeDisks();
+        fake->device = dir.filePath("sdb");
+        std::atomic<bool> unmounting = false, release = false;
+        fake->during = [&](const QString &method) {
+            if (method != "unmount")
+                return;
+            unmounting = true;
+            while (!release)
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        };
+        FileOps burning, formatting;
+        QSignalSpy failed(&formatting, &FileOps::failed), burnt(&burning, &FileOps::notice);
+        burning.burn(image, sanDisk().identity);
+        QTRY_VERIFY(unmounting);
+        formatting.format(sanDisk().identity, "Photos");
+        formatting.burn(image, sanDisk().identity);
+        QCOMPARE(failed.count(), 2);
+        QVERIFY(formatting.busy().isEmpty());
+        release = true;
+        QTRY_COMPARE(burnt.count(), 1);
+        const QString sdb = sanDisk().block;
+        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "open " + sdb, "eject " + sdb}));
+
+        // Once it's done, the next may go.
+        fake->calls.clear();
+        fake->during = nullptr;
+        QSignalSpy formatted(&formatting, &FileOps::notice);
+        formatting.format(sanDisk().identity, "Photos");
+        QTRY_COMPARE(formatted.count(), 1);
+    }
+
     void burningWritesTheImageThenEjects()
     {
         QTemporaryDir dir;

@@ -1799,6 +1799,22 @@ static QString unchanged(Disks &disks, const Disk &disk) {
     return diskWithId(disks, disk.identity) ? QString() : FileOps::tr("The drive was changed or removed.");
 }
 
+// Whether a drive is being formatted or burned, by any pane. Each pane has
+// its own file work, but drives are the computer's, and two changes to one
+// mustn't overlap. Taken on the UI thread as the work starts, and given
+// back by the worker as it ends, so it's freed even when the pane that
+// started it closes first.
+static std::atomic<bool> s_changingDrive = false;
+
+static bool claimDrive() {
+    bool free = false;
+    return s_changingDrive.compare_exchange_strong(free, true);
+}
+
+struct DriveClaim {
+    ~DriveClaim() { s_changingDrive = false; }
+};
+
 // Whether the file at `path` is on the disk, which burning it would erase
 // half way through reading it.
 static bool holds(const Disk &disk, const QString &path) {
@@ -1830,12 +1846,17 @@ void FileOps::format(const QString &id, const QString &label) {
         emit failed(tr("That drive is gone."));
         return;
     }
+    if (!claimDrive()) {
+        emit failed(tr("Try again once the work under way is done."));
+        return;
+    }
     for (const QString &root : disk->mounts)
         emit releasing(root);
     const QString drive = Disks::name(*disk);
     inBackground(
         [drive](const Job &) { return tr("Formatting %1…").arg(drive); },
         [disks, disk = *disk, name](Job &job) {
+            const DriveClaim claim;
             Outcome result;
             for (const QString &filesystem : disk.filesystems)
                 if (result.error = disks->unmount(filesystem); !result.error.isEmpty())
@@ -1906,6 +1927,10 @@ void FileOps::burn(const QString &image, const QString &id) {
         emit failed(tr("%1 can't be burned onto that drive.").arg(info.fileName()));
         return;
     }
+    if (!claimDrive()) {
+        emit failed(tr("Try again once the work under way is done."));
+        return;
+    }
     for (const QString &root : disk->mounts)
         emit releasing(root);
     const QString file = info.fileName();
@@ -1917,6 +1942,7 @@ void FileOps::burn(const QString &image, const QString &id) {
                                  : tr("Burning %1 to %2…").arg(file, drive);
         },
         [disks, disk = *disk, image](Job &job) {
+            const DriveClaim claim;
             Outcome result;
             for (const QString &filesystem : disk.filesystems)
                 if (result.error = disks->unmount(filesystem); !result.error.isEmpty())
