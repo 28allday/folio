@@ -53,23 +53,28 @@ GridView {
     acceptedButtons: Qt.NoButton
     boundsBehavior: Flickable.StopAtBounds
     model: backend.folder
-    // Tiles grow with the zoom; the name and details under them don't.
+    // Tiles grow with the zoom; the name and details under them don't. A
+    // narrow pane (one side of a split) caps it at a tile its width holds.
     property real zoom: 1
+    readonly property real tileZoom: Math.max(0.5, Math.min(zoom, (width - 40) / 128))
     signal zoomRequested(int step)
     WheelHandler {
+        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
         acceptedModifiers: Qt.ControlModifier
         onWheel: (event) => grid.zoomRequested(event.angleDelta.y > 0 ? 1 : -1)
     }
-    readonly property int columns: Math.max(1, Math.floor(width / (40 + 128 * zoom)))
+    // The rows reflow, so bring the cursor's tile back into view.
+    onTileZoomChanged: Qt.callLater(() => { if (currentIndex >= 0) { forceLayout(); positionViewAtIndex(currentIndex, GridView.Contain) } })
+    readonly property int columns: Math.max(1, Math.floor(width / (40 + 128 * tileZoom)))
     cellWidth: Math.floor(width / columns)
-    cellHeight: 100 + Math.round(92 * zoom)
+    cellHeight: 100 + Math.round(92 * tileZoom)
     highlightFollowsCurrentItem: false
     ScrollBar.vertical: FolioScrollBar { }
 
     delegate: FileTile {
         width: grid.cellWidth
         height: grid.cellHeight
-        zoom: grid.zoom
+        zoom: grid.tileZoom
         current: selected
         onClicked: (modifiers) => { selecting.click(index, modifiers); grid.forceActiveFocus() }
         onActivated: backend.open(path)
