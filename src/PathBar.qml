@@ -91,8 +91,8 @@ Rectangle {
             visible: bar.searching && !bar.editing
             font.pixelSize: 14
             rightPadding: scope.implicitWidth + 24
-            // Where it searches, at the end of the field. (A placeholder
-            // would float up as a label.)
+            // Where it searches, at the end of the field. Unlike a
+            // placeholder, it stays while typing.
             Text {
                 id: scope
                 anchors.right: parent.right
