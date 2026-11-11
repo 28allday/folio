@@ -5743,6 +5743,65 @@ private slots:
         QTRY_VERIFY(ended(thumbnailer.toInt()) && ended(helper.toInt()));
     }
 
+    void thumbnailsStopWhatAFinishedThumbnailerLeft()
+    {
+        QTemporaryDir dir;
+        // The thumbnailer starts a helper of its own, notes the helper's number beside itself, and ends at once.
+        const QString script = dir.filePath("leave.sh"), clip = dir.filePath("clip.mp4");
+        write(script, "sleep 300 &\necho $! > \"$0.helper\"\n");
+        write(dir.filePath("demo.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=/bin/sh \"" + script.toUtf8() + "\" %i %o\nMimeType=video/mp4;\n");
+        write(clip, "not a video");
+        const Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
+        QVERIFY(thumbnails.load(clip, "video/mp4", 128).isNull());
+
+        QFile noted(script + ".helper");
+        QVERIFY(noted.open(QIODevice::ReadOnly));
+        const QString helper = QString::fromLatin1(noted.readAll()).trimmed();
+        QVERIFY(helper.toInt() > 0);
+        QTRY_VERIFY(ended(helper.toInt()));
+    }
+
+    void thumbnailsStopAThumbnailerWhenFolioQuits()
+    {
+        QTemporaryDir dir;
+        // The thumbnailer notes its number beside itself and never ends; Folio would wait a minute for it.
+        const QString script = dir.filePath("hang.sh"), clip = dir.filePath("clip.mp4");
+        write(script, "echo $$ > \"$0.number\"\nexec sleep 300\n");
+        write(dir.filePath("demo.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=/bin/sh \"" + script.toUtf8() + "\" %i %o\nMimeType=video/mp4;\n");
+        write(clip, "not a video");
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.path()}, 60000);
+        QFuture<QImage> loaded = QtConcurrent::run([&] { return thumbnails.load(clip, "video/mp4", 128); });
+        QTRY_VERIFY(QFileInfo(script + ".number").size() > 1);
+
+        // Quitting stops it at once, and a file it was stopped on is not held back.
+        thumbnails.quit();
+        QTRY_VERIFY_WITH_TIMEOUT(loaded.isFinished(), 5000);
+        QVERIFY(loaded.result().isNull());
+        QFile noted(script + ".number");
+        QVERIFY(noted.open(QIODevice::ReadOnly));
+        QTRY_VERIFY(ended(QString::fromLatin1(noted.readAll()).trimmed().toInt()));
+        QVERIFY(!QFile::exists(dir.filePath("cache/" + Thumbnails::failures + "/" + Thumbnails::cacheKey(clip))));
+    }
+
+    void thumbnailsServeASmallerSizeFromALargerOne()
+    {
+        QTemporaryDir dir;
+        // The thumbnailer copies its input out and notes each run beside itself.
+        const QString script = dir.filePath("copy.sh"), clip = dir.filePath("clip.mp4");
+        write(script, "cp \"$1\" \"$2\" && echo run >> \"$0.runs\"\n");
+        write(dir.filePath("demo.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=/bin/sh \"" + script.toUtf8() + "\" %i %o\nMimeType=video/mp4;\n");
+        QVERIFY(QImage(512, 256, QImage::Format_RGB32).save(clip, "PNG"));
+        const Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
+
+        // A tile's thumbnail, scaled down, is a row's: the thumbnailer runs once, and each run notes four bytes.
+        QCOMPARE(thumbnails.load(clip, "video/mp4", 512).size(), QSize(512, 256));
+        QCOMPARE(thumbnails.load(clip, "video/mp4", 128).size(), QSize(128, 64));
+        QCOMPARE(QFileInfo(script + ".runs").size(), 4);
+    }
+
     void thumbnailsTryAgainWhatAnOlderVersionCouldnt()
     {
         QTemporaryDir dir;

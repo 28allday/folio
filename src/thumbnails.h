@@ -7,6 +7,7 @@
 #include <QQuickAsyncImageProvider>
 #include <QStringList>
 #include <QThreadPool>
+#include <atomic>
 
 // Thumbnails per the freedesktop thumbnail spec: one shared cache under
 // ~/.cache/thumbnails, keyed by the MD5 of the file's URI and invalidated by
@@ -27,6 +28,9 @@ public:
     // Returns a thumbnail no larger than `size` on its longest side, from the
     // cache when it is fresh, or a null image when none can be made.
     QImage load(const QString &path, const QString &mime, int size) const;
+    // Stops the thumbnailers still running and starts no more, as Folio quits: it waits for every thumbnail being made,
+    // and a hung thumbnailer would keep it waiting.
+    void quit() { m_quitting = true; }
 
     static QString cacheKey(const QString &path);
     // The spec's fail/<program>-<version>: the number is raised when Folio learns to draw more, so old failures are tried again.
@@ -44,9 +48,9 @@ private:
     QString failPath(const QString &path) const;
     // Sets `attempted` when Qt's reader or a thumbnailer could take the file.
     QImage generate(const QString &path, const QString &mime, int pixels, bool &attempted) const;
-    // Both answer whether the program ran at all: one that could not start has not judged the file.
+    // Both answer whether the program judged the file: one that could not start, or was stopped as Folio quit, has not.
     bool runThumbnailer(const QString &command, const QString &path, int pixels, QImage &image) const;
-    static bool pdfPage(const QString &path, int pixels, QImage &image, int patience);
+    bool pdfPage(const QString &path, int pixels, QImage &image) const;
     void remember(QImage image, const QString &path, int size, const QDateTime &modified) const;
     // A failure goes with the type's thumbnailer as it was then, none included: one installed since gets its turn.
     void rememberFailure(const QString &path, const QDateTime &modified, const QString &thumbnailer) const;
@@ -56,6 +60,7 @@ private:
 
     QString m_cache;
     int m_patience;
+    std::atomic_bool m_quitting{false};
     QHash<QString, QString> m_thumbnailers;
 };
 
