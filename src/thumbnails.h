@@ -42,8 +42,9 @@ private:
     QString failPath(const QString &path) const;
     // Sets `attempted` when Qt's reader or a thumbnailer could take the file.
     QImage generate(const QString &path, const QString &mime, int pixels, bool &attempted) const;
-    QImage runThumbnailer(const QString &command, const QString &path, int pixels) const;
-    static QImage pdfPage(const QString &path, int pixels);
+    // Both answer whether the program ran at all: one that could not start has not judged the file.
+    bool runThumbnailer(const QString &command, const QString &path, int pixels, QImage &image) const;
+    static bool pdfPage(const QString &path, int pixels, QImage &image);
     void remember(QImage image, const QString &path, int size, const QDateTime &modified) const;
     // A failure goes with the type's thumbnailer as it was then, none included: one installed since gets its turn.
     void rememberFailure(const QString &path, const QDateTime &modified, const QString &thumbnailer) const;

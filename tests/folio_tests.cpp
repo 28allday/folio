@@ -5266,6 +5266,108 @@ private slots:
                  "--size=128,128 100% " + QUrl::fromLocalFile(clip).toString(QUrl::FullyEncoded));
     }
 
+    void thumbnailsRememberOnlyAVerdictOnTheFile()
+    {
+        QTemporaryDir dir;
+        const auto marked = [&](const QString &path) {
+            return QFile::exists(dir.filePath("cache/" + Thumbnails::failures + "/" + Thumbnails::cacheKey(path)));
+        };
+        const auto spec = [&](const QString &name, const QString &exec, const QString &type) {
+            write(dir.filePath(name + ".thumbnailer"), ("[Thumbnailer Entry]\nExec=" + exec + "\nMimeType=" + type + ";\n").toUtf8());
+        };
+        const auto script = [&](const QString &name, const QByteArray &body) {
+            write(dir.filePath(name), body);
+            return "/bin/sh \"" + dir.filePath(name) + "\" %i %o";
+        };
+        const auto clip = [&](const QString &name) {
+            write(dir.filePath(name), "not a video");
+            return dir.filePath(name);
+        };
+        const QString frame = dir.filePath("frame.png"), copier = dir.filePath("copier"), unstartable = dir.filePath("unstartable");
+        const auto owner = QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner;
+        QVERIFY(QImage(10, 20, QImage::Format_RGB32).save(frame));
+        QVERIFY(QFile::copy("/bin/cp", copier) && QFile::setPermissions(copier, owner));
+        write(unstartable, "#!/no/such/interpreter\n");
+        QVERIFY(QFile::setPermissions(unstartable, owner));
+
+        spec("gone", "\"" + dir.filePath("no-such-program") + "\" %i %o", "video/mp4");
+        spec("copier", "\"" + copier + "\" \"" + frame + "\" %o", "video/webm");
+        spec("taker", script("take.sh", "rm \"$1\"\nexit 1\n"), "video/ogg");
+        spec("writer", script("write.sh", "echo more >> \"$1\"\nexit 1\n"), "video/quicktime");
+        spec("failer", script("fail.sh", "echo run >> \"$0.runs\"\nexit 1\n"), "video/mpeg");
+        spec("unstartable", "\"" + unstartable + "\" %i %o", "application/pdf");
+        // A program in a folder with a percent sign in its name is spelled with %% in Exec.
+        const QString percent = dir.filePath("100%tools/copier");
+        QVERIFY(QDir(dir.path()).mkpath("100%tools") && QFile::copy("/bin/cp", percent) && QFile::setPermissions(percent, owner));
+        spec("percent", "\"" + QString(percent).replace("%", "%%") + "\" \"" + frame + "\" %o", "video/x-matroska");
+        const Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
+
+        // A spec whose program is not installed is no thumbnailer, and its type's package is still the one to name.
+        QVERIFY(thumbnails.thumbnailerFor("video/mp4").isEmpty());
+        QCOMPARE(thumbnails.missingPackage("video/mp4"), QString("ffmpegthumbnailer"));
+        QVERIFY(thumbnails.load(clip("gone.mp4"), "video/mp4", 128).isNull());
+        QVERIFY(!marked(dir.filePath("gone.mp4")));
+        // One that is there under a name with a percent sign is found and draws.
+        QCOMPARE(thumbnails.load(clip("percent.mkv"), "video/x-matroska", 128).size(), QSize(10, 20));
+
+        // A thumbnailer that could not start has said nothing about the file: once it can, it draws it.
+        const QString later = clip("later.webm");
+        QVERIFY(QFile::remove(copier));
+        QVERIFY(thumbnails.load(later, "video/webm", 128).isNull());
+        QVERIFY(!marked(later));
+        QVERIFY(QFile::copy("/bin/cp", copier) && QFile::setPermissions(copier, owner));
+        QCOMPARE(thumbnails.load(later, "video/webm", 128).size(), QSize(10, 20));
+
+        // A PDF's thumbnailer that cannot start leaves the page to pdftoppm, whose verdict counts only when it ran too.
+        const QString pdftoppm = dir.filePath("bin/pdftoppm");
+        const QByteArray programs = qgetenv("PATH");
+        QVERIFY(QDir(dir.path()).mkpath("bin"));
+        const auto pageWith = [&](const QByteArray &program, const QString &pdf) {
+            write(pdftoppm, program);
+            QFile::setPermissions(pdftoppm, owner);
+            qputenv("PATH", dir.filePath("bin").toUtf8());
+            const QImage page = thumbnails.load(pdf, "application/pdf", 128);
+            qputenv("PATH", programs);
+            return page;
+        };
+        const QString torn = clip("torn.pdf"), paper = clip("paper.pdf");
+        QVERIFY(pageWith("#!/bin/sh\nexit 1\n", torn).isNull());
+        QVERIFY(marked(torn));
+        QVERIFY(pageWith("#!/no/such/interpreter\n", paper).isNull());
+        QVERIFY(!marked(paper));
+        // Its last argument is the page's path without the ending.
+        const QByteArray drawing = "#!/bin/sh\nfor last; do :; done\n/bin/cp \"" + frame.toUtf8() + "\" \"$last.png\"\n";
+        QCOMPARE(pageWith(drawing, clip("drawn.pdf")).size(), QSize(10, 20));
+
+        // A file taken away during the run, or written to, was not judged as it is now.
+        const QString taken = clip("taken.ogv"), written = clip("written.mov");
+        QVERIFY(thumbnails.load(taken, "video/ogg", 128).isNull());
+        QVERIFY(!QFile::exists(taken));
+        QVERIFY(!marked(taken));
+        {
+            QFile old(written);
+            QVERIFY(old.open(QIODevice::ReadWrite));
+            QVERIFY(old.setFileTime(QDateTime::currentDateTime().addSecs(-60), QFileDevice::FileModificationTime));
+        }
+        QVERIFY(thumbnails.load(written, "video/quicktime", 128).isNull());
+        QCOMPARE(QFileInfo(written).size(), 16);
+        QVERIFY(!marked(written));
+
+        // A file that cannot be read is not tried, so it is not held back once it can be; one that fails is.
+        if (geteuid() == 0)
+            QSKIP("root reads every file");
+        const QString locked = clip("locked.mpg"), runs = dir.filePath("fail.sh.runs");
+        QVERIFY(QFile::setPermissions(locked, QFile::WriteOwner));
+        QVERIFY(thumbnails.load(locked, "video/mpeg", 128).isNull());
+        QVERIFY(!QFile::exists(runs));
+        QVERIFY(!marked(locked));
+        QVERIFY(QFile::setPermissions(locked, QFile::ReadOwner | QFile::WriteOwner));
+        QVERIFY(thumbnails.load(locked, "video/mpeg", 128).isNull());
+        QVERIFY(thumbnails.load(locked, "video/mpeg", 128).isNull());
+        QVERIFY(marked(locked));
+        QCOMPARE(QFileInfo(runs).size(), 4);
+    }
+
     void thumbnailsTryAgainWhatAnOlderVersionCouldnt()
     {
         QTemporaryDir dir;

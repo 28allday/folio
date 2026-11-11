@@ -99,6 +99,21 @@ QStringList expandCommand(const QString &command, const QString &input, const QS
     return args;
 }
 
+// How a started helper ended. One that never started has said nothing about the file it was given.
+enum class Ran { NotStarted, Failed, Finished };
+
+Ran finish(QProcess &process) {
+    if (!process.waitForStarted(15000))
+        return Ran::NotStarted;
+    // A broken file must never hang a tile forever.
+    if (!process.waitForFinished(15000)) {
+        process.kill();
+        process.waitForFinished(1000);
+        return Ran::Failed;
+    }
+    return process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0 ? Ran::Finished : Ran::Failed;
+}
+
 // Each optional package's thumbnailers and the MimeType= lines they ship, as "video/mp4;video/webm;".
 struct PackageTypes {
     const char *package;
@@ -201,7 +216,10 @@ Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbna
             }
             const QString exec = fields.value("Exec");
             const QString tryExec = fields.value("TryExec");
-            if (exec.isEmpty() || (!tryExec.isEmpty() && QStandardPaths::findExecutable(tryExec).isEmpty()))
+            // The program Exec names, read as it will run (%% is one percent sign), has to be there: a spec a removed program left behind draws nothing.
+            const QStringList command = expandCommand(exec, {}, {}, 0);
+            const auto missing = [](const QString &program) { return QStandardPaths::findExecutable(program).isEmpty(); };
+            if (command.isEmpty() || missing(command.first()) || (!tryExec.isEmpty() && missing(tryExec)))
                 continue;
             for (const QString &declared : fields.value("MimeType").split(';', Qt::SkipEmptyParts)) {
                 const QString mime = declared.trimmed();
@@ -275,13 +293,19 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
     const QString thumbnailer = m_thumbnailers.value(type);
     if (failedBefore(path, modified, thumbnailer))
         return {};
+    // A file that cannot be read is not a broken one: nothing is tried, so nothing is remembered.
+    if (!info.isReadable())
+        return {};
     const int pixels = bucketPixels(bucketFor(size));
     bool attempted = false;
     QImage image = generate(path, type, pixels, attempted);
     if (image.isNull()) {
         // Only a reader or thumbnailer that ran and failed is remembered, so
         // one installed later still gets its turn.
-        if (attempted)
+        if (!attempted)
+            return {};
+        // A file moved away or written to meanwhile was never judged as it is now.
+        if (QFileInfo(path).lastModified() == modified)
             rememberFailure(path, modified, thumbnailer);
         return {};
     }
@@ -315,14 +339,18 @@ QImage Thumbnails::generate(const QString &path, const QString &mime, int pixels
     }
     const QString command = m_thumbnailers.value(mime);
     if (!command.isEmpty()) {
-        attempted = true;
-        return runThumbnailer(command, path, pixels);
+        // A thumbnailer that could not start has not judged the file, whatever a reader made of it first; a PDF is then left to pdftoppm.
+        QImage image;
+        attempted = runThumbnailer(command, path, pixels, image);
+        if (attempted)
+            return image;
     }
     // Without a PDF thumbnailer installed, Poppler's pdftoppm (there with
     // CUPS) draws the first page.
     if (mime == "application/pdf" && !QStandardPaths::findExecutable("pdftoppm").isEmpty()) {
-        attempted = true;
-        return pdfPage(path, pixels);
+        QImage image;
+        attempted = pdfPage(path, pixels, image);
+        return image;
     }
     return {};
 }
@@ -374,31 +402,27 @@ QImage Thumbnails::textPage(const QString &path, int pixels, const QColor &paper
     return page;
 }
 
-QImage Thumbnails::pdfPage(const QString &path, int pixels) {
+bool Thumbnails::pdfPage(const QString &path, int pixels, QImage &image) {
     QTemporaryDir scratch;
     if (!scratch.isValid())
-        return {};
+        return false;
     QProcess process;
     process.start("pdftoppm", {"-f", "1", "-l", "1", "-singlefile", "-png", "-scale-to", QString::number(pixels),
                                path, scratch.filePath("page")});
-    if (!process.waitForFinished(15000)) {
-        process.kill();
-        process.waitForFinished(1000);
-        return {};
-    }
-    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0)
-        return {};
-    return QImage(scratch.filePath("page.png"));
+    const Ran ran = finish(process);
+    if (ran == Ran::Finished)
+        image = QImage(scratch.filePath("page.png"));
+    return ran != Ran::NotStarted;
 }
 
-QImage Thumbnails::runThumbnailer(const QString &command, const QString &path, int pixels) const {
+bool Thumbnails::runThumbnailer(const QString &command, const QString &path, int pixels, QImage &image) const {
     QTemporaryDir scratch;
     if (!scratch.isValid())
-        return {};
+        return false;
     const QString output = scratch.filePath("thumbnail.png");
     QStringList args = expandCommand(command, path, output, pixels);
     if (args.isEmpty())
-        return {};
+        return false;
     const QString program = args.takeFirst();
     // ffmpegthumbnailer's -f frames the picture as a film strip; the tile
     // marks a video with its own play badge instead.
@@ -408,15 +432,10 @@ QImage Thumbnails::runThumbnailer(const QString &command, const QString &path, i
     QProcess process;
     process.setProcessChannelMode(QProcess::ForwardedErrorChannel);
     process.start(program, args);
-    // A broken file must never hang a tile forever.
-    if (!process.waitForFinished(15000)) {
-        process.kill();
-        process.waitForFinished(1000);
-        return {};
-    }
-    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0)
-        return {};
-    return QImage(output);
+    const Ran ran = finish(process);
+    if (ran == Ran::Finished)
+        image = QImage(output);
+    return ran != Ran::NotStarted;
 }
 
 void Thumbnails::remember(QImage image, const QString &path, int size, const QDateTime &modified) const {
