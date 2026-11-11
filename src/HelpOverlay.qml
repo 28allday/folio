@@ -90,6 +90,9 @@ Rectangle {
                             required property var modelData
                             required property int index
                             Layout.maximumWidth: index % 2 ? 340 : -1
+                            // Set, so that it's mirrored: left as it is, an
+                            // English description would follow its own script.
+                            horizontalAlignment: Text.AlignLeft
                             text: index % 2 ? modelData : Format.keys(modelData)
                             wrapMode: Text.WordWrap
                             color: index % 2 ? theme.foreground : theme.accent
