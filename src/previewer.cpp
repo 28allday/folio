@@ -49,23 +49,42 @@ QString Previewer::readText(const QString &path, qint64 limit) {
     QByteArray data = file.read(limit + 1);
     if (data.left(8192).contains('\0'))
         return {};
-    // Cut where a line ends, not inside one (or inside a character).
+    // Cut where a line ends, not inside one; with no line end to cut at,
+    // at least not inside a character.
     if (data.size() > limit) {
         data.truncate(limit);
-        if (const qsizetype end = data.lastIndexOf('\n'); end >= 0)
+        if (const qsizetype end = data.lastIndexOf('\n'); end >= 0) {
             data.truncate(end + 1);
+        } else {
+            // Back to the start of the last character, then keep it only
+            // if all of its bytes made it in.
+            qsizetype start = data.size() - 1;
+            while (start > 0 && start > data.size() - 4 && (uchar(data.at(start)) & 0xC0) == 0x80)
+                --start;
+            const uchar lead = uchar(data.at(start));
+            const int length = lead < 0x80 ? 1 : lead >= 0xF0 ? 4 : lead >= 0xE0 ? 3 : lead >= 0xC0 ? 2 : 1;
+            if (data.size() - start < length)
+                data.truncate(start);
+        }
     }
     return QString::fromUtf8(data);
 }
 
 QString Previewer::markdownOpening(const QString &text, int cells) {
     // A table cell is counted by its | (a row has one more than its cells,
-    // which errs on the safe side).
+    // which errs on the safe side). Code in fences is shown as it is, never
+    // laid out as a table, so its | don't count.
     qsizetype at = 0;
+    bool fenced = false;
     while (at < text.size()) {
         qsizetype end = text.indexOf('\n', at);
         end = end < 0 ? text.size() : end + 1;
-        cells -= QStringView(text).mid(at, end - at).count('|');
+        const QStringView line = QStringView(text).mid(at, end - at);
+        const QStringView trimmed = line.trimmed();
+        if (trimmed.startsWith(u"```") || trimmed.startsWith(u"~~~"))
+            fenced = !fenced;
+        else if (!fenced)
+            cells -= line.count('|');
         // One line is a paragraph, however many | it has.
         if (cells < 0)
             return text.left(at > 0 ? at : end);

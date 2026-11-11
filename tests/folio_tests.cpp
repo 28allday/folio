@@ -2037,6 +2037,21 @@ private slots:
         QCOMPARE(Previewer::markdownOpening(prose), prose);
         const QString pipes = QString("|").repeated(2000) + "\nafter\n";
         QCOMPARE(Previewer::markdownOpening(pipes), QString("|").repeated(2000) + "\n");
+
+        // A code example full of | isn't a table: what follows it stays.
+        QString code = "# Usage\n\n```\n";
+        for (int i = 0; i < 400; ++i)
+            code += "a | b | c\n";
+        code += "```\n\nThe end.\n";
+        QCOMPARE(Previewer::markdownOpening(code, 600), code);
+
+        // A single line of three-byte characters is cut between characters,
+        // never inside one.
+        QTemporaryDir unicode;
+        write(unicode.filePath("one-line.txt"), QString(50000, QChar(0x20AC)).toUtf8());
+        const QString read = Previewer::readText(unicode.filePath("one-line.txt"), 131072);
+        QVERIFY(!read.contains(QChar::ReplacementCharacter));
+        QCOMPARE(read.size(), 131072 / 3);
     }
 
     void previewerStepsThroughTheFolder()
