@@ -164,7 +164,7 @@ Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbna
     }
     QMimeDatabase mimes;
     for (const QString &directory : directories) {
-        // A spec may name a type by an alias, as glycin names DDS pictures image/x-dds.
+        // A .thumbnailer file may name a type by an alias, as glycin names DDS pictures image/x-dds.
         QHash<QString, QString> named, aliased;
         QDirIterator it(directory, {"*.thumbnailer"}, QDir::Files);
         while (it.hasNext()) {
@@ -193,7 +193,7 @@ Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbna
                     aliased.insert(type, exec);
             }
         }
-        // Within one directory the spec that names a type itself wins over one that names an alias of it.
+        // Within one directory the file that names a type itself wins over one that names an alias of it.
         m_thumbnailers.insert(aliased);
         m_thumbnailers.insert(named);
     }
