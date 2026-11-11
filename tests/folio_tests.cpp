@@ -349,8 +349,9 @@ private slots:
                  + QString::fromUtf8(list.readAllStandardOutput()).split('\n', Qt::SkipEmptyParts);
         };
         QCOMPARE(compress({"a/inner/x.txt", "b/y.txt"}), QStringList({dir.path(), "Archive.zip", "a/inner/x.txt", "b/y.txt"}));
-        // A folder beside a file inside it: the archive holds the folder.
-        QCOMPARE(compress({"a/inner/x.txt", "a/inner"}), QStringList({dir.filePath("a"), "Archive.zip", "inner/x.txt", "inner/", "inner/x.txt"}));
+        // A folder beside a file inside it (as search results list them):
+        // the archive holds the folder, and the file once, within it.
+        QCOMPARE(compress({"a/inner/x.txt", "a/inner"}), QStringList({dir.filePath("a"), "inner.zip", "inner/", "inner/x.txt"}));
     }
 
     void fileOpsLetGoOfOnlyThePastedCut()

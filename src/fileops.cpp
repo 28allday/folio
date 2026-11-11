@@ -12,6 +12,7 @@
 #include <QStandardPaths>
 #include <QUrl>
 #include <QtConcurrent>
+#include <algorithm>
 #include <unistd.h>
 
 // GIO's headers use `signals` as a struct member, which Qt defines as a
@@ -276,7 +277,17 @@ QString FileOps::archiveName(const QStringList &paths, const QString &folder) {
     return freeName(folder, base + ".zip");
 }
 
-void FileOps::compress(const QStringList &paths) {
+void FileOps::compress(const QStringList &selected) {
+    // A folder takes what's in it along, so anything also selected inside
+    // it (search results list both) is left out rather than archived twice.
+    QStringList paths;
+    for (const QString &path : selected) {
+        const bool inside = std::any_of(selected.begin(), selected.end(), [&](const QString &other) {
+            return QDir::cleanPath(path).startsWith(QDir::cleanPath(other) + "/");
+        });
+        if (!inside)
+            paths << path;
+    }
     if (paths.isEmpty())
         return;
     // Search results and Recents can span folders, so the archive goes in
