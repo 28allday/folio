@@ -50,8 +50,11 @@ FocusScope {
         const index = view.item ? view.item.currentIndex : -1
         return index >= 0 ? backend.folder.get(index) : ({})
     }
-    // An open preview stays on the selected item.
-    onCurrentChanged: if (backend.previewing && current.path) backend.followSelection(current.path)
+    // An open preview stays on the selected item, followed once the
+    // folder's loaded has put the cursor back on it: a re-read leaves
+    // another item on the cursor's row for a moment.
+    onCurrentChanged: Qt.callLater(follow)
+    function follow() { if (backend.previewing && current.path) backend.followSelection(current.path) }
 
     // In the trash, Delete means for good (after asking), and there's
     // Restore and Empty Trash. Nothing is renamed or made there: an item

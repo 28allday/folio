@@ -23,7 +23,11 @@ Rectangle {
     // Its type's name, and a picture's size or a text's opening lines once
     // they've been read off the UI thread.
     readonly property var info: backend.details
-    onItemChanged: backend.describe(item)
+    // Described once the folder's loaded has put the cursor back on its
+    // item: a re-read leaves another item on the cursor's row for a moment,
+    // and describing that would drop what's been read of this one.
+    onItemChanged: Qt.callLater(describe)
+    function describe() { backend.describe(item) }
 
     color: theme.darkBackground
 
