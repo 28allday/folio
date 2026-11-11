@@ -5,6 +5,7 @@
 #include <QFileInfo>
 #include <QFutureWatcher>
 #include <QGuiApplication>
+#include <QLocale>
 #include <QMimeData>
 #include <QMimeDatabase>
 #include <QProcess>
@@ -467,22 +468,28 @@ void FileOps::trash(const QStringList &paths) {
     inBackground(
         tr("Moving %Ln items to the trash…", "", paths.size()),
         [paths] {
-            QStringList failedNames;
+            // Each name with GIO's reason, put into words back on the UI
+            // thread, in the language's own punctuation.
+            QList<QPair<QString, QString>> failures;
             for (const QString &path : outermost(paths)) {
                 GFile *file = g_file_new_for_path(path.toUtf8().constData());
                 GError *error = nullptr;
                 if (!g_file_trash(file, nullptr, &error)) {
-                    failedNames << QFileInfo(path).fileName() + (error ? QStringLiteral(" (") + QString::fromUtf8(error->message) + ")" : QString());
+                    failures.append({QFileInfo(path).fileName(), error ? QString::fromUtf8(error->message) : QString()});
                     if (error)
                         g_error_free(error);
                 }
                 g_object_unref(file);
             }
-            return failedNames;
+            return failures;
         },
-        [this](const QStringList &failedNames) {
-            if (!failedNames.isEmpty())
-                emit failed(tr("Couldn't move to the trash: %1").arg(failedNames.join(", ")));
+        [this](const QList<QPair<QString, QString>> &failures) {
+            if (failures.isEmpty())
+                return;
+            QStringList entries;
+            for (const auto &[name, error] : failures)
+                entries << (error.isEmpty() ? name : tr("%1 (%2)").arg(name, error));
+            emit failed(tr("Couldn't move to the trash: %1").arg(QLocale().createSeparatedList(entries)));
         });
 }
 
