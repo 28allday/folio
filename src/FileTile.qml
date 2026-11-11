@@ -92,7 +92,7 @@ Item {
     }
 
     // Size and when, quietly, under the name: "28.0 KB · 2:14 PM" today,
-    // "28.0 KB · 11/9/26" before; the item count for a folder, the system
+    // "28.0 KB · 11/9/26" before; just the item count for a folder, the system
     // for a machine.
     Text {
         anchors.top: label.bottom
@@ -104,7 +104,9 @@ Item {
             if (tile.kind === "peer")
                 return tile.extension
             const size = tile.isDir ? Format.count(tile.itemCount) : Format.size(tile.size)
-            const date = Format.when(tile.modified)
+            // A folder's own date says little (it changes when anything in
+            // it is added or removed), so only files show one.
+            const date = tile.isDir ? "" : Format.when(tile.modified)
             return [size, date].filter(part => part.length > 0).join(" · ")
         }
         color: theme.secondaryForeground
