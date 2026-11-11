@@ -24,6 +24,7 @@ Rectangle {
         ["Ctrl+L", qsTr("Type a path (Tab completes)")],
         ["/", qsTr("Search this folder and below")],
         ["Ctrl+1 / 2 / 3", qsTr("Grid, list or columns")],
+        ["Ctrl+= / Ctrl+- / Ctrl+0", qsTr("Bigger, smaller or normal tiles (or Ctrl+scroll)")],
         ["Space", qsTr("Preview the selected file")],
         ["Ctrl+I", qsTr("Show or hide the details pane")],
         ["Ctrl+D", qsTr("Pin or unpin the folder (or drag it to the sidebar)")],

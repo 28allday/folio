@@ -27,6 +27,15 @@ FocusScope {
     // the view of the pane it was split from.
     property string viewMode: host ? host.viewMode : "grid"
     onViewModeChanged: if (host && !closable) host.viewMode = viewMode
+    // How big the grid's tiles are, in steps (Ctrl+= / Ctrl+- / Ctrl+0, or
+    // Ctrl+scroll), shared and remembered the same way as the view.
+    property real zoom: host ? host.zoom : 1
+    onZoomChanged: if (host && !closable) host.zoom = zoom
+    readonly property var zoomSteps: [0.75, 1, 1.25, 1.5, 2]
+    function zoomBy(step) {
+        const at = zoomSteps.indexOf(zoom)
+        zoom = zoomSteps[Math.max(0, Math.min(zoomSteps.length - 1, (at < 0 ? 1 : at) + step))]
+    }
     function cycleView() {
         viewMode = viewMode === "grid" ? "list" : viewMode === "list" ? "columns" : "grid"
     }
@@ -146,6 +155,9 @@ FocusScope {
     Shortcut { sequence: "Ctrl+1"; enabled: pane.active; onActivated: pane.viewMode = "grid" }
     Shortcut { sequence: "Ctrl+2"; enabled: pane.active; onActivated: pane.viewMode = "list" }
     Shortcut { sequence: "Ctrl+3"; enabled: pane.active; onActivated: pane.viewMode = "columns" }
+    Shortcut { sequences: [StandardKey.ZoomIn, "Ctrl+="]; enabled: pane.active; onActivated: pane.zoomBy(1) }
+    Shortcut { sequences: [StandardKey.ZoomOut]; enabled: pane.active; onActivated: pane.zoomBy(-1) }
+    Shortcut { sequence: "Ctrl+0"; enabled: pane.active; onActivated: pane.zoom = 1 }
     Shortcut { sequences: ["Return", "Enter"]; enabled: pane.keys && pane.activeFocus; onActivated: if (pane.current.path) backend.open(pane.current.path) }
     Shortcut { sequences: ["Backspace", "Alt+Up"]; enabled: pane.keys; onActivated: backend.goUp() }
     Shortcut { sequences: ["Alt+Left", "Back"]; enabled: pane.active; onActivated: backend.back() }
@@ -325,7 +337,7 @@ FocusScope {
                 }
             }
         }
-        Component { id: gridView; FolderGrid { } }
+        Component { id: gridView; FolderGrid { zoom: pane.zoom; onZoomRequested: (step) => pane.zoomBy(step) } }
         Component { id: listView; FolderList { } }
         Component { id: columnsView; FolderColumns { } }
     }

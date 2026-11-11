@@ -27,6 +27,7 @@ ApplicationWindow {
     property bool helpVisible: false
     property bool previewVisible: true
     property string viewMode: "grid"
+    property real zoom: 1
 
     // The pane keys, the sidebar and the details go to.
     property var activePane: leftPane
@@ -42,6 +43,7 @@ ApplicationWindow {
     // Remembers the view between launches (~/.config/folio/folio.conf).
     Settings {
         property alias viewMode: win.viewMode
+        property alias zoom: win.zoom
     }
 
     // Ctrl+Alt+N: a second pane on the right, starting where the active
@@ -55,6 +57,7 @@ ApplicationWindow {
             rightPane.anchors.fill = splitHost
             rightPane.closable = true
             rightPane.viewMode = activePane.viewMode
+            rightPane.zoom = activePane.zoom
             rightPane.barExtension = Qt.binding(() => win.detailsWidth)
             rightPane.closeRequested.connect(closeSplit)
         }

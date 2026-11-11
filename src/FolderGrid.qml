@@ -53,15 +53,23 @@ GridView {
     acceptedButtons: Qt.NoButton
     boundsBehavior: Flickable.StopAtBounds
     model: backend.folder
-    readonly property int columns: Math.max(1, Math.floor(width / 168))
+    // Tiles grow with the zoom; the name and details under them don't.
+    property real zoom: 1
+    signal zoomRequested(int step)
+    WheelHandler {
+        acceptedModifiers: Qt.ControlModifier
+        onWheel: (event) => grid.zoomRequested(event.angleDelta.y > 0 ? 1 : -1)
+    }
+    readonly property int columns: Math.max(1, Math.floor(width / (40 + 128 * zoom)))
     cellWidth: Math.floor(width / columns)
-    cellHeight: 192
+    cellHeight: 100 + Math.round(92 * zoom)
     highlightFollowsCurrentItem: false
     ScrollBar.vertical: FolioScrollBar { }
 
     delegate: FileTile {
         width: grid.cellWidth
         height: grid.cellHeight
+        zoom: grid.zoom
         current: selected
         onClicked: (modifiers) => { selecting.click(index, modifiers); grid.forceActiveFocus() }
         onActivated: backend.open(path)

@@ -10,6 +10,7 @@ Item {
     id: tile
 
     required property int index
+    property real zoom: 1
     required property string name
     required property string path
     required property bool isDir
@@ -39,33 +40,43 @@ Item {
                                      : kind === "image" ? theme.cyan
                                      : theme.secondaryForeground
 
+    // The art is drawn at 128×92 and scaled, so a zoom keeps its shapes;
+    // the box around it takes the scaled size for the layout.
     Item {
-        id: art
-        width: 128
-        height: 92
+        id: artBox
+        width: 128 * tile.zoom
+        height: 92 * tile.zoom
         anchors.top: parent.top
         anchors.topMargin: 18
         anchors.horizontalCenter: parent.horizontalCenter
 
-        Loader {
-            anchors.fill: parent
-            sourceComponent: tile.isDir ? folderArt : fileArt
-        }
+        Item {
+            id: art
+            width: 128
+            height: 92
+            scale: tile.zoom
+            transformOrigin: Item.TopLeft
 
-        // A folder takes files dropped on it, lighting up while they hover.
-        DropArea {
-            id: folderDrop
-            anchors.fill: parent
-            enabled: tile.isDir
-            keys: ["text/uri-list"]
-            onEntered: (drag) => { drag.accepted = fileOps.canDrop(drag.urls, tile.path) }
-            onDropped: (drop) => { fileOps.dropInto(drop.urls, tile.path); drop.accept(Qt.MoveAction) }
+            Loader {
+                anchors.fill: parent
+                sourceComponent: tile.isDir ? folderArt : fileArt
+            }
+
+            // A folder takes files dropped on it, lighting up while they hover.
+            DropArea {
+                id: folderDrop
+                anchors.fill: parent
+                enabled: tile.isDir
+                keys: ["text/uri-list"]
+                onEntered: (drag) => { drag.accepted = fileOps.canDrop(drag.urls, tile.path) }
+                onDropped: (drop) => { fileOps.dropInto(drop.urls, tile.path); drop.accept(Qt.MoveAction) }
+            }
         }
     }
 
     Text {
         id: label
-        anchors.top: art.bottom
+        anchors.top: artBox.bottom
         anchors.topMargin: 12
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width - 28
@@ -180,7 +191,7 @@ Item {
                 y: (parent.height - height) / 2
                 asynchronous: true
                 fillMode: parent.crop ? Image.PreserveAspectCrop : Image.Stretch
-                source: tile.kind === "text" ? "" : Format.thumb(tile.path, tile.mime, 256, tile.modified)
+                source: tile.kind === "text" ? "" : Format.thumb(tile.path, tile.mime, tile.zoom > 1 ? 512 : 256, tile.modified)
                 visible: status === Image.Ready
                 layer.enabled: tile.iconRadius > 0 && status === Image.Ready
                 layer.effect: MultiEffect {
