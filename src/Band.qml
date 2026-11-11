@@ -66,10 +66,8 @@ MouseArea {
     onReleased: {
         // A click on empty space lets go of the cursor too, so keys that act
         // on the cursor's item (Delete, F2, Return) have nothing to act on.
-        if (!dragging) {
-            view.currentIndex = -1
-            backend.folder.clearSelection()
-        }
+        if (!dragging)
+            view.letGo()
         dragging = false
     }
 

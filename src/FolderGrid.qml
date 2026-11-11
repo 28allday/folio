@@ -6,6 +6,10 @@ GridView {
     id: grid
 
     function select(row, keep) { selecting.select(row, keep) }
+    // A click on empty space lets go of the cursor; the pane then keeps it
+    // let go of through a re-read or a switch of view.
+    signal cursorLetGo()
+    function letGo() { selecting.letGo(); cursorLetGo() }
     function focusView() { forceActiveFocus() }
     // Where the keyboard's menu (Alt+Return) opens: beside the cursor's item.
     function menuAnchor() { return currentItem }

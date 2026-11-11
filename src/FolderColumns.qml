@@ -13,6 +13,8 @@ Item {
     readonly property int columnWidth: 260
 
     function select(row, keep) { selecting.select(row, keep) }
+    signal cursorLetGo()
+    function letGo() { selecting.letGo(); cursorLetGo() }
 
     Selecting { id: selecting; view: here }
     function focusView() { here.forceActiveFocus() }

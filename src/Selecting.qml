@@ -61,6 +61,13 @@ QtObject {
         view.positionViewAtIndex(index, ListView.Contain)
     }
 
+    // No cursor and nothing selected: what a click on empty space leaves.
+    function letGo() {
+        moveTo(-1)
+        backend.folder.clearSelection()
+        anchor = -1
+    }
+
     // Puts the cursor on `row` (or, for -1, the first item). `keep` leaves a
     // selection of several alone, for a folder that was only re-read.
     function select(row, keep) {

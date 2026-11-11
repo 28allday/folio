@@ -162,6 +162,7 @@ FocusScope {
     Connections {
         target: view.item
         function onContextMenu(item, folder) { fileMenu.show(item, folder) }
+        function onCursorLetGo() { pane.lastPath = "" }
         // The cursor's item is remembered as the cursor moves, and once the
         // folder's loaded has placed it. Not when a re-read leaves the cursor
         // on its row while a new file pushes its item down: loaded then puts
@@ -209,10 +210,11 @@ FocusScope {
             const row = backend.folder.indexOfPath(pane.lastPath)
             if (pending)
                 view.item.select(backend.folder.indexOf(pending), false)
-            else if (same)
-                view.item.select(row >= 0 ? row : Math.min(view.item.currentIndex, backend.folder.count - 1), true)
-            else
+            else if (!same)
                 view.item.select(-1, false)
+            // A cursor let go of on purpose stays let go of.
+            else if (pane.lastPath || view.item.currentIndex >= 0)
+                view.item.select(row >= 0 ? row : Math.min(view.item.currentIndex, backend.folder.count - 1), true)
             // Remembered here too: put on the row it was already on, the
             // cursor doesn't signal a move, and an item from the folder
             // before would stay remembered.
@@ -288,7 +290,13 @@ FocusScope {
                            : pane.viewMode === "columns" ? columnsView
                            : gridView
             // A new view picks up the selection the old one had.
-            onLoaded: { item.select(backend.folder.indexOfPath(pane.lastPath), true); item.focusView() }
+            onLoaded: {
+                if (pane.lastPath)
+                    item.select(backend.folder.indexOfPath(pane.lastPath), true)
+                else
+                    item.letGo()
+                item.focusView()
+            }
 
             // Files dropped on empty space land in this folder; folders
             // inside take drops on themselves first.
