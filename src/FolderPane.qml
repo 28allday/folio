@@ -174,10 +174,20 @@ FocusScope {
     }
 
     // Finished file work selects what it made (the pasted file, the new
-    // folder, the new name) once the folder has re-read.
+    // folder, the new name): right away when the folder already lists it
+    // (a long move's folder arrived long before the move was done),
+    // otherwise once the folder has re-read.
     Connections {
         target: fileOps
-        function onDone(folder, name) { if (folder === backend.path) backend.expectSelection(name) }
+        function onDone(folder, name) {
+            if (folder !== backend.path)
+                return
+            const row = backend.folder.indexOf(name)
+            if (row >= 0 && view.item)
+                view.item.select(row, false)
+            else
+                backend.expectSelection(name)
+        }
         function onFailed(message) { backend.showMessage(message) }
         function onNotice(notice) { backend.showNotice(notice) }
     }
