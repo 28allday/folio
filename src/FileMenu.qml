@@ -3,7 +3,7 @@ import QtQuick
 // The right-click menu. On an item: Open, Open With (each app that can),
 // Always Open With (the same apps, to change the type's default), Preview,
 // Rename, Duplicate, Copy, Cut, Paste Into, Copy Path, Compress, Extract
-// Here (for archives), Burn (for disk images), Share (Dropbox link,
+// (for archives), Burn (for disk images), Share (Dropbox link,
 // Taildrop, LocalSend: whichever are available), Pin, Terminal, Delete.
 // On empty space: Undo, Paste, New Folder, Copy Path, Terminal, hidden
 // files. In the trash: Restore, Empty Trash and Delete Permanently,

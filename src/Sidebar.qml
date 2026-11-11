@@ -344,8 +344,8 @@ Rectangle {
 
             // Each drive says how much is free under its name, where there's
             // room for it, and while it's hovered or has the keyboard its icon
-            // becomes the button that ejects it.
-            // Right-clicked, it has a menu of what else can be done to it.
+            // becomes the button that ejects it. Right-clicked, it has a menu
+            // of what else can be done to it.
             SectionLabel { text: qsTr("Devices"); visible: places.devices.length > 0 }
             Repeater {
                 id: driveRows

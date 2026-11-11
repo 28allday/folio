@@ -106,7 +106,7 @@ public:
     // Packs the items into a .zip beside them (bsdtar, from libarchive).
     Q_INVOKABLE void compress(const QStringList &paths);
     // Whether these are all archives bsdtar can unpack (zip, tar and its
-    // compressed forms, 7z, rar, iso).
+    // compressed forms, 7z, rar), never a disk image, which is for burning.
     Q_INVOKABLE bool canExtract(const QStringList &paths) const;
     // Unpacks each archive beside itself: an archive of one item gives
     // that item, one of several a folder named after the archive.

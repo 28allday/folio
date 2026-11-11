@@ -3,9 +3,10 @@ import QtQuick.Layouts
 
 // Formatting a drive, as Omarchy's format-drive does: the whole drive
 // erased to one partition under the name given here, exFAT (which Linux,
-// macOS and Windows all read) unless another filesystem is picked. The drive is named the way it's known (its
-// name, maker, model and size), and erasing it is said plainly. Format is
-// red and never the default: Enter and Escape cancel.
+// macOS and Windows all read) unless another filesystem is picked. The
+// drive is named the way it's known (its name, maker, model and size), and
+// erasing it is said plainly. Format is red and never the default: Enter
+// and Escape cancel.
 FolioDialog {
     id: dialog
 
