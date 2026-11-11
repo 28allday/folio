@@ -2002,6 +2002,43 @@ private slots:
         QTRY_COMPARE(previewer.viewer(), QString("other"));
     }
 
+    void previewerShowsOnlyWhatLaysOutQuickly()
+    {
+        // The preview lays out all it's given on its UI thread, about a
+        // third of a millisecond per KB: a long log is cut to its opening
+        // part, at the end of a line.
+        QTemporaryDir dir;
+        QByteArray log;
+        for (int i = 0; log.size() < 300 * 1024; ++i)
+            log += "line " + QByteArray::number(i) + " of the log\n";
+        write(dir.filePath("big.log"), log);
+        const QString opening = Previewer::readText(dir.filePath("big.log"));
+        QVERIFY(opening.size() <= 128 * 1024);
+        QVERIFY(opening.size() > 100 * 1024);
+        QVERIFY(opening.endsWith("of the log\n"));
+
+        // Markdown tables cost far more: 16 KB of one kept the preview
+        // frozen for 150 ms, and a few MB for many seconds. The text stops
+        // at the row where its tables pass 600 cells; prose, and a lone
+        // line of | that isn't a table, are left alone.
+        QByteArray table = "# Rows\n\n| a | b | c |\n|---|---|---|\n";
+        for (int i = 0; i < 5000; ++i)
+            table += "| " + QByteArray::number(i) + " | x | y |\n";
+        write(dir.filePath("rows.md"), table);
+        Previewer previewer;
+        previewer.start(dir.filePath("rows.md"), false, "name");
+        QTRY_VERIFY(!previewer.text().isEmpty());
+        QCOMPARE(previewer.viewer(), QString("markdown"));
+        QVERIFY(previewer.text().startsWith("# Rows\n\n| a | b | c |\n|---|---|---|\n| 0 | x | y |\n"));
+        QVERIFY(previewer.text().count('|') <= 600);
+        QVERIFY(previewer.text().count('|') > 500);
+        QVERIFY(previewer.text().endsWith(" | x | y |\n"));
+        const QString prose = QString("Words, words.\n").repeated(2000);
+        QCOMPARE(Previewer::markdownOpening(prose), prose);
+        const QString pipes = QString("|").repeated(2000) + "\nafter\n";
+        QCOMPARE(Previewer::markdownOpening(pipes), QString("|").repeated(2000) + "\n");
+    }
+
     void previewerStepsThroughTheFolder()
     {
         QTemporaryDir dir;

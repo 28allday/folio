@@ -46,10 +46,32 @@ QString Previewer::readText(const QString &path, qint64 limit) {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly))
         return {};
-    const QByteArray data = file.read(limit);
+    QByteArray data = file.read(limit + 1);
     if (data.left(8192).contains('\0'))
         return {};
+    // Cut where a line ends, not inside one (or inside a character).
+    if (data.size() > limit) {
+        data.truncate(limit);
+        if (const qsizetype end = data.lastIndexOf('\n'); end >= 0)
+            data.truncate(end + 1);
+    }
     return QString::fromUtf8(data);
+}
+
+QString Previewer::markdownOpening(const QString &text, int cells) {
+    // A table cell is counted by its | (a row has one more than its cells,
+    // which errs on the safe side).
+    qsizetype at = 0;
+    while (at < text.size()) {
+        qsizetype end = text.indexOf('\n', at);
+        end = end < 0 ? text.size() : end + 1;
+        cells -= QStringView(text).mid(at, end - at).count('|');
+        // One line is a paragraph, however many | it has.
+        if (cells < 0)
+            return text.left(at > 0 ? at : end);
+        at = end;
+    }
+    return text;
 }
 
 void Previewer::start(const QString &path, bool showHidden, const QString &sort) {
@@ -174,10 +196,12 @@ void Previewer::setIndex(int index, bool report) {
             emit changed();
         });
         const bool showHidden = m_showHidden;
-        watcher->setFuture(QtConcurrent::run([entry = e, showHidden, count, text]() mutable {
+        const bool markdown = m_viewer == "markdown";
+        watcher->setFuture(QtConcurrent::run([entry = e, showHidden, count, text, markdown]() mutable {
             if (count)
                 FolderModel::summarize(entry, showHidden);
-            return qMakePair(entry, text ? readText(entry.path) : QString());
+            const QString read = text ? readText(entry.path) : QString();
+            return qMakePair(entry, markdown ? markdownOpening(read) : read);
         }));
     }
     emit changed();

@@ -57,8 +57,14 @@ public:
     // Which view shows a type: image, animated, thumbnail, video, audio,
     // pdf, markdown, text, folder or other.
     static QString viewerFor(const QString &mime, bool isDir);
-    // The opening part of a text file, or nothing when it looks binary.
-    static QString readText(const QString &path, qint64 limit = 512 * 1024);
+    // The opening part of a text file, ending at a line when there's more,
+    // or nothing when it looks binary. Laying out text takes the UI thread
+    // about a third of a millisecond per KB, so the preview reads 128 KB.
+    static QString readText(const QString &path, qint64 limit = 128 * 1024);
+    // The top of a Markdown text up to the line where its tables pass
+    // `cells` cells: laid out, each costs the UI thread about as much as a
+    // whole line of prose, and a long table froze the preview for seconds.
+    static QString markdownOpening(const QString &text, int cells = 600);
 
 signals:
     void changed();
