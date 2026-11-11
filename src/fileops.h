@@ -170,6 +170,9 @@ public:
 
     // Stops the work under way at the next file; what's done stays done.
     Q_INVOKABLE void cancel();
+    // Deletes this once the work under way is done, for a pane that's
+    // closed: what the work changes still reaches the history.
+    void deleteWhenDone();
 
     // A name taken where things are going, asked about one at a time before
     // anything moves: {name, folder (its name), merge (a folder onto a
@@ -262,6 +265,7 @@ signals:
 
 private:
     void setBusy(const QString &busy);
+    void deleteIfDone();
     // What a piece of work takes part in beside other panes' (see
     // canStart()): file work, an undo or redo, or changing a drive.
     enum class Lane { Files, History, Drive };

@@ -67,6 +67,21 @@ FileOps::~FileOps() {
     release();
 }
 
+void FileOps::deleteWhenDone() {
+    // Checked once each piece of work has finished, and what it went on
+    // to (an extraction placing what it unpacked) has started.
+    connect(this, &FileOps::busyChanged, this, &FileOps::deleteIfDone, Qt::QueuedConnection);
+    deleteIfDone();
+}
+
+void FileOps::deleteIfDone() {
+    if (!m_busy.isEmpty())
+        return;
+    // There's no one left to answer a clash.
+    dropClash();
+    deleteLater();
+}
+
 bool FileOps::canStart(Lane lane) {
     if (s_onDrive)
         return false;

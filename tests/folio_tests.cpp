@@ -4,6 +4,7 @@
 #include <QPageSize>
 #include <QPainter>
 #include <QPdfWriter>
+#include <QPointer>
 #include <memory>
 #include <functional>
 #include <thread>
@@ -1782,6 +1783,36 @@ private slots:
         release = true;
         QTRY_COMPARE(formatted.count(), 1);
         QCOMPARE(QDir(dir.path()).entryList(QDir::Files), QStringList({"a (copy).txt", "a.txt"}));
+    }
+
+    void workOutlivesItsClosedPane()
+    {
+        // A pane closed while its work runs leaves the work to finish, and
+        // what it changed can still be undone from another.
+        QTemporaryDir data, dir;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::forgetHistory();
+        write(dir.filePath("a.txt"), "a");
+        QPointer<FileOps> closed = new FileOps;
+        closed->duplicate(dir.filePath("a.txt"));
+        QVERIFY(!closed->busy().isEmpty());
+        closed->deleteWhenDone();
+        QVERIFY(closed);
+        QTRY_VERIFY(!closed);
+        FileOps other;
+        QCOMPARE(other.undoName(), QString("Undo Duplicate"));
+        QVERIFY(QFile::exists(dir.filePath("a (copy).txt")));
+
+        // One waiting on a clash goes without asking.
+        closed = new FileOps;
+        closed->copy({dir.filePath("a.txt")});
+        QTemporaryDir to;
+        write(to.filePath("a.txt"), "old");
+        closed->paste(to.path());
+        QVERIFY(!closed->clash().isEmpty());
+        closed->deleteWhenDone();
+        QTRY_VERIFY(!closed);
+        QCOMPARE(contents(to.filePath("a.txt")), QByteArray("old"));
     }
 
     void undoRefusesWhatsChangedSince()
