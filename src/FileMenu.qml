@@ -82,7 +82,10 @@ FolioMenu {
     }
     FolioMenuItem {
         shown: fileMenu.forItem
-        text: fileMenu.forFolder ? qsTr("Open Folder") : qsTr("Open")
+        // Names the app it opens in: "Open with Plain".
+        readonly property string app: fileMenu.forItem && !fileMenu.forFolder ? fileOps.defaultAppName(fileMenu.target.mime || "") : ""
+        //: %1 is the name of the app the file opens in, like "Plain".
+        text: fileMenu.forFolder ? qsTr("Open Folder") : app ? qsTr("Open With %1").arg(app) : qsTr("Open")
         keys: "⏎"
         onTriggered: backend.open(fileMenu.target.path)
     }
