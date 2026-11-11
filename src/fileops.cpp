@@ -215,8 +215,15 @@ QStringList FileOps::transfer(const QStringList &paths, const QString &folder, M
             made << name;
             continue;
         }
-        if (!copyRecursively(path, destination, error, move))
+        if (!copyRecursively(path, destination, error, move)) {
+            // Each original went as it was copied, so what arrived is now the
+            // only copy of it: it's shown, and said to be only part.
+            if (move && QFileInfo::exists(destination)) {
+                made << name;
+                *error = QObject::tr("Moved only part of %1: %2").arg(info.fileName(), *error);
+            }
             break;
+        }
         made << name;
         const QFileInfo left(path);
         if (move && (left.exists() || left.isSymLink())) {

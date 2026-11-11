@@ -422,6 +422,32 @@ private slots:
         QVERIFY(QFile::exists(other->filePath("album/inner/a.jpg")));
     }
 
+    void fileOpsSayWhenAMoveAcrossDrivesStopsPartway()
+    {
+        // Each original goes as it's copied, so a move that stops partway
+        // (a full USB stick) has already taken some of the folder. What
+        // arrived is shown and said to be only part, not left looking like
+        // a failed copy that's safe to delete.
+        if (geteuid() == 0)
+            QSKIP("Root can read every file.");
+        const auto other = elsewhere();
+        if (!other)
+            QSKIP("Needs a second drive.");
+        QTemporaryDir from;
+        QDir(from.path()).mkpath("box/a");
+        QDir(from.path()).mkpath("box/z");
+        write(from.filePath("box/a/1.txt"), "1");
+        write(from.filePath("box/m.txt"), "m");
+        write(from.filePath("box/z/2.txt"), "2");
+        QVERIFY(QFile::setPermissions(from.filePath("box/m.txt"), QFile::WriteOwner));
+        QString error;
+        QCOMPARE(FileOps::transfer({from.filePath("box")}, other->path(), FileOps::Move, &error), QStringList({"box"}));
+        QCOMPARE(error, QString("Moved only part of box: Couldn't copy m.txt."));
+        QVERIFY(QFile::exists(other->filePath("box/a/1.txt")));
+        QVERIFY(!QFile::exists(from.filePath("box/a/1.txt")));
+        QVERIFY(QFile::exists(from.filePath("box/z/2.txt")));
+    }
+
     void fileOpsCopyLinksAsWritten()
     {
         // A link relative to its folder points into the copy, not back at
