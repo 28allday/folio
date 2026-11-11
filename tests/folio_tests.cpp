@@ -2961,6 +2961,20 @@ private slots:
         QVERIFY(!Disks::holdsSystem(stick));
     }
 
+    void disksSwappedForACopyArentTheSameDisk()
+    {
+        // A card swapped in its reader for a copy of it has the same path,
+        // drive, size and filesystems; only when it was put in differs.
+        const QString card = "/org/freedesktop/UDisks2/block_devices/mmcblk0";
+        const QString reader = "/org/freedesktop/UDisks2/drives/SD_Reader";
+        Disks::Objects objects;
+        objects[card] = {{"Block", {{"Device", "/dev/mmcblk0"}, {"Drive", reader}, {"Size", 31'914'983'424LL}, {"IdUUID", "2026-11-11"}}}};
+        objects[reader] = {{"Drive", {{"Id", "SD-Reader-1"}, {"ConnectionBus", "sdio"}, {"TimeMediaDetected", qulonglong(1)}}}};
+        const QString before = Disks::parse(objects).value(0).identity;
+        objects[reader]["Drive"]["TimeMediaDetected"] = qulonglong(2);
+        QVERIFY(Disks::parse(objects).value(0).identity != before);
+    }
+
     void disksHoldingVolumesOrSwapCountAsTheSystems()
     {
         // The system on an external SSD under LVM: its root is mounted from

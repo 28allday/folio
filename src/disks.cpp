@@ -262,7 +262,9 @@ QList<Disk> Disks::parse(const Objects &objects) {
         disk.block = it.key();
         disk.drive = drive;
         disk.device = block.value("Device").toString();
-        disk.identity = QStringList{disk.block, about.value("Id").toString(), block.value("Size").toString()}.join('\n');
+        disk.identity = QStringList{disk.block, about.value("Id").toString(), block.value("Size").toString(),
+                                    about.value("TimeMediaDetected").toString()}
+                            .join('\n');
         disk.size = block.value("Size").toLongLong();
         disk.readOnly = block.value("ReadOnly").toBool();
         disk.hintSystem = block.value("HintSystem").toBool();
