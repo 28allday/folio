@@ -61,12 +61,8 @@ Done, tested, and verified offscreen:
 
 ### 1. File operations (makes it usable as a daily driver)
 
-- Copy, cut, paste through the Wayland clipboard as `text/uri-list` plus `x-special/gnome-copied-files`, so pasting between Folio and other apps works both ways.
-- Rename in place (F2), new folder (Ctrl+Shift+N), trash (Delete) per the freedesktop Trash spec, restore and empty in Trash, permanent delete only from Trash and only after asking.
-- An operation queue in C++ on a worker thread: progress in the status bar, cancel, and a conflict prompt (replace, keep both, skip, apply to all).
+- An operation queue in C++ on a worker thread: progress in the window, cancel, and a conflict prompt (replace, keep both, skip, apply to all).
 - Undo and redo (Ctrl+Z / Ctrl+Shift+Z) for rename, move, copy, trash and new folder.
-- Drag and drop within Folio and with other apps (`text/uri-list`), move by default on the same filesystem, copy across.
-- Open with…: list apps from the MIME database's desktop entries, remember nothing beyond what `xdg-mime` already stores.
 
 ### 2. Finding things
 
@@ -113,8 +109,6 @@ Done, tested, and verified offscreen:
 
 ## Open questions
 
-- **Name.** "Folio" is a working name.
 - **File chooser.** Open/save dialogs in other apps come from `xdg-desktop-portal-gtk`, not Nautilus, so they keep working. Should Folio later provide the portal's FileChooser so dialogs look and behave like Folio?
 - **Nautilus as an option.** Offer `omarchy-install-nautilus` for people who want it back (with LocalSearch masked)?
-- **Trash across drives.** The spec's per-volume `.Trash-$uid` directories: support from phase 1, or home trash only at first?
 - **Thumbnail sizes on HiDPI.** Request `x-large` (512) on scaled outputs, or keep `large` and accept softer tiles?
