@@ -95,8 +95,8 @@ Rectangle {
             leftPadding: LayoutMirroring.enabled ? scope.implicitWidth + 24 : 12
             rightPadding: LayoutMirroring.enabled ? 12 : scope.implicitWidth + 24
             // Where it searches, at the end of the field. Unlike a
-            // placeholder, it stays while typing. The tailnet has nothing
-            // below it.
+            // placeholder, it stays while typing. The tailnet and plugins'
+            // views have nothing below them.
             Text {
                 id: scope
                 // Recents, Trash and Tailnet are named in C++, which
@@ -108,7 +108,7 @@ Rectangle {
                 anchors.right: parent.right
                 anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
-                text: backend.path === "tailnet:" ? qsTr("Search %1").arg(here) : qsTr("Search %1 and below").arg(here)
+                text: backend.path === "tailnet:" || backend.path.startsWith("plugin:") ? qsTr("Search %1").arg(here) : qsTr("Search %1 and below").arg(here)
                 color: theme.secondaryForeground
                 font.pixelSize: 12
             }

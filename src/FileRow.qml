@@ -38,7 +38,7 @@ Item {
     readonly property bool showSize: detailed && width >= 380
 
     readonly property string glyph: row.isDir ? "folder"
-                                  : row.kind === "peer" ? "peer"
+                                  : row.kind === "item" ? row.icon
                                   : row.kind === "image" ? "pictures"
                                   : row.kind === "video" ? "videos"
                                   : row.kind === "audio" ? "music"
@@ -123,7 +123,7 @@ Item {
             visible: row.showSize
             Layout.preferredWidth: 96
             horizontalAlignment: Text.AlignRight
-            text: row.kind === "peer" ? row.extension : row.isDir ? Format.count(row.itemCount) : Format.size(row.size)
+            text: row.kind === "item" ? row.extension : row.isDir ? Format.count(row.itemCount) : Format.size(row.size)
             color: theme.secondaryForeground
             font.pixelSize: 12
         }
@@ -167,7 +167,7 @@ Item {
     Drag.hotSpot.x: LayoutMirroring.enabled ? row.width : 0
     DragHandler {
         target: null
-        enabled: row.kind !== "peer"
+        enabled: row.kind !== "item"
         // Dragging a selected item takes the whole selection along. The list
         // is built as the drag starts, not again on every change of selection.
         onActiveChanged: {
