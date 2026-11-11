@@ -10,8 +10,10 @@
 
 namespace {
 
-// Header and directory bytes read per file in total.
+// Header and directory bytes read per file in total, and the reads they take: each one is its own system call, and a
+// round trip on a network mount, so many tiny reads cost far more than their bytes.
 constexpr quint64 kHeaderBudget = 1048576;
+constexpr int kMaxReads = 4096;
 // Frame-header bytes read per file across all candidates; then validation stops.
 constexpr qint64 kSofBudget = 1048576;
 // One candidate's frame-header walk never reads past this.
@@ -29,6 +31,8 @@ constexpr quint64 kEntryLength = 12;
 constexpr quint64 kMaxValue = 65536;
 // SubIFD fan-out is capped, so one count cannot queue unbounded work.
 constexpr quint32 kMaxPointers = 64;
+// No camera's preview holds more pixels than this; a frame header that claims more would cost a vast decode for nothing.
+constexpr quint64 kMaxPixels = 250000000;
 // The largest embedded JPEG read into memory; a real one is a few MiB.
 constexpr quint64 kMaxJpeg = 64 * 1048576;
 // SOI plus one frame header: anything shorter is no picture.
@@ -75,10 +79,12 @@ struct Source {
     QByteArray slice;
     quint64 size;
     quint64 left;
+    int reads = kMaxReads;
 
     bool get(quint64 offset, quint64 length, QByteArray &out) {
-        if (length > left || offset > size || length > size - offset)
+        if (reads == 0 || length > left || offset > size || length > size - offset)
             return false;
+        --reads;
         left -= length;
         if (!file)
             out = slice.mid(qsizetype(offset), qsizetype(length));
@@ -131,13 +137,33 @@ struct Walker {
     }
 
     // An IFD is count(2), then 12-byte entries tag(2) type(2) count(4) value-or-offset(4), then the next IFD(4).
+    bool directory(bool le, quint64 at, quint16 &count, QByteArray &entries) {
+        QByteArray b;
+        if (!src.get(at, 2, b))
+            return false;
+        count = rd16(b.constData(), le);
+        // A 0xFFFF count is the hostile case: this directory is skipped, never read or looped.
+        return count <= kMaxEntries && src.get(at + 2, count * kEntryLength, entries);
+    }
+
+    // The Orientation one directory names itself, its next and child directories left unread.
+    std::optional<quint64> turnAt(bool le, quint64 at) {
+        quint16 count = 0;
+        QByteArray entries;
+        if (!directory(le, at, count, entries))
+            return {};
+        for (int i = 0; i < count; ++i) {
+            const char *e = entries.constData() + i * kEntryLength;
+            if (rd16(e, le) == kOrientation)
+                return one(le, rd16(e + 2, le), rd32(e + 4, le), e + 8);
+        }
+        return {};
+    }
+
     void walk(bool le, int depth, quint64 at) {
         QByteArray b, entries;
-        if (depth > kMaxDepth || seen.size() >= kMaxIfds || seen.contains(at) || !src.get(at, 2, b))
-            return;
-        const quint16 count = rd16(b.constData(), le);
-        // A 0xFFFF count is the hostile case: this directory is skipped, never read or looped.
-        if (count > kMaxEntries || !src.get(at + 2, count * kEntryLength, entries))
+        quint16 count = 0;
+        if (depth > kMaxDepth || seen.size() >= kMaxIfds || seen.contains(at) || !directory(le, at, count, entries))
             return;
         seen.append(at);
         std::optional<quint64> jpegOffset, jpegLength, stripOffset, stripLength, compression, turn;
@@ -226,18 +252,21 @@ bool firstFrame(QFile &file, qint64 &left, quint8 &marker, quint32 &width, quint
 std::optional<quint64> ownOrientation(const QByteArray &jpeg) {
     for (qsizetype at = 2; at + 4 <= jpeg.size() && quint8(jpeg[at]) == kMarker;) {
         const quint8 marker = quint8(jpeg[at + 1]);
+        // Any number of 0xFF fill bytes may stand ahead of a marker.
+        if (marker == kMarker) {
+            ++at;
+            continue;
+        }
         const qsizetype length = qFromBigEndian<quint16>(jpeg.constData() + at + 2);
         if (marker == kSos || marker == kEoi || isFrame(marker) || length < 2 || at + 2 + length > jpeg.size())
             return {};
         if (marker == kApp1 && length >= 8 && jpeg.mid(at + 4, 6) == QByteArray("Exif\0\0", 6)) {
             const QByteArray tiff = jpeg.mid(at + 10, length - 8);
             Source slice{nullptr, tiff, quint64(tiff.size()), quint64(tiff.size())};
-            Walker walker(slice);
             bool le = true;
             quint64 ifd = 0;
-            if (tiffHeader(slice, 0, le, ifd))
-                walker.walk(le, 0, ifd);
-            return walker.orientation;
+            // Only IFD0 describes the picture; the IFD1 it leads to is the Exif thumbnail's.
+            return tiffHeader(slice, 0, le, ifd) ? Walker(slice).turnAt(le, ifd) : std::nullopt;
         }
         at += 2 + length;
     }
@@ -265,7 +294,7 @@ QVector<Preview> ranked(QFile &file, const QVector<Candidate> &candidates) {
         quint32 width = 0, height = 0;
         const bool found = span >= kMinJpeg && file.seek(qint64(offset)) && firstFrame(file, left, marker, width, height);
         sofLeft -= span - left;
-        if (found && marker <= kLastHuffmanFrame)
+        if (found && marker <= kLastHuffmanFrame && quint64(width) * height <= kMaxPixels)
             previews.append({offset, length, quint64(width) * height, candidates[i].turn});
     }
     std::stable_sort(previews.begin(), previews.end(), [](const Preview &a, const Preview &b) {
@@ -278,8 +307,11 @@ QVector<Preview> ranked(QFile &file, const QVector<Candidate> &candidates) {
 QImage decoded(QFile &file, const Preview &preview, quint64 turn, int pixels) {
     if (!file.seek(qint64(preview.offset)))
         return {};
-    QByteArray jpeg = file.read(qint64(preview.length));
-    if (quint64(jpeg.size()) != preview.length)
+    // Room for the Exif segment is kept, so putting it in moves the bytes in place instead of copying them all.
+    QByteArray jpeg;
+    jpeg.reserve(qsizetype(preview.length + sizeof kExifOrientation));
+    jpeg.resize(qsizetype(preview.length));
+    if (file.read(jpeg.data(), jpeg.size()) != jpeg.size())
         return {};
     if (turn >= kFirstTurn && turn <= kLastTurn && !ownOrientation(jpeg.left(kJpegPrefix))) {
         QByteArray segment(reinterpret_cast<const char *>(kExifOrientation), sizeof kExifOrientation);

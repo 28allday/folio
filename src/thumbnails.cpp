@@ -162,7 +162,9 @@ Ran run(QProcess &process, const QString &program, const QStringList &args, int 
     return process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0 ? Ran::Finished : Ran::Failed;
 }
 
-// Each optional package's thumbnailers and the MimeType= lines they ship, as "video/mp4;video/webm;".
+// Each optional package's thumbnailers and the MimeType= lines they ship, as "video/mp4;video/webm;". Copied from the
+// .thumbnailer files of Arch's ffmpegthumbnailer 2.3.1 (the video one only: the audio one draws just cover art, which
+// most files lack), glycin 2.2.6, papers 51.1 and libgsf's gsf-office; refresh them from there when a package adds types.
 struct PackageTypes {
     const char *package;
     const char *types;
@@ -245,7 +247,7 @@ Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbna
     }
     QMimeDatabase mimes;
     for (const QString &directory : directories) {
-        // A spec may name a type by an alias, as glycin names DDS pictures image/x-dds.
+        // A .thumbnailer file may name a type by an alias, as glycin names DDS pictures image/x-dds.
         QHash<QString, QString> named, aliased;
         QDirIterator it(directory, {"*.thumbnailer"}, QDir::Files);
         while (it.hasNext()) {
@@ -277,10 +279,24 @@ Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbna
                     aliased.insert(type, exec);
             }
         }
-        // Within one directory the spec that names a type itself wins over one that names an alias of it.
+        // Within one directory the file that names a type itself wins over one that names an alias of it.
         m_thumbnailers.insert(aliased);
         m_thumbnailers.insert(named);
     }
+    // An older Folio's failure markers (fail/folio, or a fail/folio-<n> with a lower number) are never read again, so
+    // they are cleared away, on a worker since there may be thousands. A newer Folio's are left for it, so an installed
+    // Folio and a newer build side by side don't clear each other's on every start. A symlink is never followed: removing
+    // through one would delete files outside the cache.
+    QThreadPool::globalInstance()->start([fail = m_cache + "/fail"] {
+        const int current = failures.section('-', -1).toInt();
+        for (const QString &name :
+             QDir(fail).entryList({"folio", "folio-*"}, QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks)) {
+            bool numbered = true;
+            const int version = name == "folio" ? 0 : name.mid(6).toInt(&numbered);
+            if (numbered && version < current)
+                QDir(fail + "/" + name).removeRecursively();
+        }
+    });
 }
 
 QString Thumbnails::missingPackage(const QString &mime) const {
