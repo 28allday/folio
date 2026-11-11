@@ -5493,17 +5493,24 @@ private slots:
     void thumbnailsClearAwayAnOlderFoliosFailures()
     {
         QTemporaryDir dir;
-        const QStringList kept = {Thumbnails::failures, "fail/gnome-thumbnail-factory"}, gone = {"fail/folio", "fail/folio-1"};
+        // A newer Folio's markers are its own to keep, as are another program's.
+        const QString newer = "fail/folio-" + QString::number(Thumbnails::failures.section('-', -1).toInt() + 1);
+        const QStringList kept = {Thumbnails::failures, newer, "fail/gnome-thumbnail-factory"}, gone = {"fail/folio", "fail/folio-1"};
         for (const QString &folder : kept + gone) {
             QVERIFY(QDir().mkpath(dir.filePath("cache/" + folder)));
             write(dir.filePath("cache/" + folder + "/marker.png"), "marker");
         }
+        // An old marker folder that links out of the cache is never followed.
+        QVERIFY(QDir().mkpath(dir.filePath("photos")));
+        write(dir.filePath("photos/beach.jpg"), "picture");
+        QVERIFY(QFile::link(dir.filePath("photos"), dir.filePath("cache/fail/folio-0")));
         const Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("none")});
         QThreadPool::globalInstance()->waitForDone();
         for (const QString &folder : kept)
             QVERIFY(QFile::exists(dir.filePath("cache/" + folder + "/marker.png")));
         for (const QString &folder : gone)
             QVERIFY(!QFileInfo::exists(dir.filePath("cache/" + folder)));
+        QVERIFY(QFile::exists(dir.filePath("photos/beach.jpg")));
     }
 
     void thumbnailsLetAThumbnailerInstalledLaterDraw()

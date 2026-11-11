@@ -197,12 +197,19 @@ Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbna
         m_thumbnailers.insert(aliased);
         m_thumbnailers.insert(named);
     }
-    // Another Folio's failure markers (fail/folio, or a fail/folio-<n> with another number) are never read here, so they
-    // are cleared away, on a worker since there may be thousands.
+    // An older Folio's failure markers (fail/folio, or a fail/folio-<n> with a lower number) are never read again, so
+    // they are cleared away, on a worker since there may be thousands. A newer Folio's are left for it, so an installed
+    // Folio and a newer build side by side don't clear each other's on every start. A symlink is never followed: removing
+    // through one would delete files outside the cache.
     QThreadPool::globalInstance()->start([fail = m_cache + "/fail"] {
-        for (const QString &name : QDir(fail).entryList({"folio", "folio-*"}, QDir::Dirs | QDir::NoDotAndDotDot))
-            if ("fail/" + name != failures)
+        const int current = failures.section('-', -1).toInt();
+        for (const QString &name :
+             QDir(fail).entryList({"folio", "folio-*"}, QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks)) {
+            bool numbered = true;
+            const int version = name == "folio" ? 0 : name.mid(6).toInt(&numbered);
+            if (numbered && version < current)
                 QDir(fail + "/" + name).removeRecursively();
+        }
     });
 }
 
