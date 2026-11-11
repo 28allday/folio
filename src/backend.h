@@ -129,7 +129,7 @@ private:
     QVariantMap m_details;
     // Whose details they are (the path and its type, as a file can be
     // replaced by a folder of the same name), and the newest describe(),
-    // which a reading has to match to be shown.
+    // which a reading has to match to be shown, or even to start.
     QString m_described;
-    quint64 m_describing = 0;
+    std::shared_ptr<std::atomic<quint64>> m_describing = std::make_shared<std::atomic<quint64>>(0);
 };

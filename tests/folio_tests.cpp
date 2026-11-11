@@ -1994,6 +1994,73 @@ private slots:
         QTRY_COMPARE(previewer.viewer(), QString("other"));
     }
 
+    void previewerShowsOnlyWhatLaysOutQuickly()
+    {
+        // The preview lays out all it's given on its UI thread, about a
+        // third of a millisecond per KB: a long log is cut to its opening
+        // part, at the end of a line.
+        QTemporaryDir dir;
+        QByteArray log;
+        for (int i = 0; log.size() < 300 * 1024; ++i)
+            log += "line " + QByteArray::number(i) + " of the log\n";
+        write(dir.filePath("big.log"), log);
+        const QString opening = Previewer::readText(dir.filePath("big.log"));
+        QVERIFY(opening.size() <= 128 * 1024);
+        QVERIFY(opening.size() > 100 * 1024);
+        QVERIFY(opening.endsWith("of the log\n"));
+
+        // Markdown tables cost far more: 16 KB of one kept the preview
+        // frozen for 150 ms, and a few MB for many seconds. The text stops
+        // at the row where its tables pass 600 cells; prose, and a lone
+        // line of | that isn't a table, are left alone.
+        QByteArray table = "# Rows\n\n| a | b | c |\n|---|---|---|\n";
+        for (int i = 0; i < 5000; ++i)
+            table += "| " + QByteArray::number(i) + " | x | y |\n";
+        write(dir.filePath("rows.md"), table);
+        Previewer previewer;
+        previewer.start(dir.filePath("rows.md"), false, "name");
+        QTRY_VERIFY(!previewer.text().isEmpty());
+        QCOMPARE(previewer.viewer(), QString("markdown"));
+        QVERIFY(previewer.text().startsWith("# Rows\n\n| a | b | c |\n|---|---|---|\n| 0 | x | y |\n"));
+        QVERIFY(previewer.text().count('|') <= 600);
+        QVERIFY(previewer.text().count('|') > 500);
+        QVERIFY(previewer.text().endsWith(" | x | y |\n"));
+        const QString prose = QString("Words, words.\n").repeated(2000);
+        QCOMPARE(Previewer::markdownOpening(prose), prose);
+        const QString pipes = QString("|").repeated(2000) + "\nafter\n";
+        QCOMPARE(Previewer::markdownOpening(pipes), QString("|").repeated(2000) + "\n");
+
+        // A code example full of | isn't a table: what follows it stays.
+        QString code = "# Usage\n\n```\n";
+        for (int i = 0; i < 400; ++i)
+            code += "a | b | c\n";
+        code += "```\n\nThe end.\n";
+        QCOMPARE(Previewer::markdownOpening(code, 600), code);
+
+        // Four spaces before ``` make indented code, not a fence, and ~~~
+        // doesn't close a ``` fence: the table after either still counts.
+        QString rows;
+        for (int i = 0; i < 400; ++i)
+            rows += "| a | b |\n";
+        for (const QString &example : {QString("    ```\n\n"), QString("```\n~~~\n```\n\n")})
+            QVERIFY(Previewer::markdownOpening(example + rows, 600).count('|') <= 600);
+
+        // A single line of three-byte characters is cut between characters,
+        // never inside one.
+        QTemporaryDir unicode;
+        write(unicode.filePath("one-line.txt"), QString(50000, QChar(0x20AC)).toUtf8());
+        const QString read = Previewer::readText(unicode.filePath("one-line.txt"), 131072);
+        QVERIFY(!read.contains(QChar::ReplacementCharacter));
+        QCOMPARE(read.size(), 131072 / 3);
+
+        // A longer fence holds shorter ones as code, and only its own length
+        // closes it: the table after it still counts.
+        QString longFence = "````\n```\nnot a close\n````\n\n";
+        for (int i = 0; i < 400; ++i)
+            longFence += "| a | b | c |\n";
+        QVERIFY(Previewer::markdownOpening(longFence, 600).count('|') <= 600 + 4);
+    }
+
     void previewerStepsThroughTheFolder()
     {
         QTemporaryDir dir;
