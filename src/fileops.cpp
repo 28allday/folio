@@ -620,6 +620,12 @@ static bool clashing(const QString &path, const QString &there) {
     return taken(there) && !sameItem(path, there) && !inside(path, there);
 }
 
+// Whether `path` is already in `folder`, wherever links lead, so a drop
+// into a link to the folder it's in is no move either.
+static bool alreadyIn(const QString &path, const QString &folder) {
+    return QFileInfo(QFileInfo(path).absolutePath()).canonicalFilePath() == QFileInfo(folder).canonicalFilePath();
+}
+
 QStringList FileOps::clashes(const QStringList &paths, const QString &folder) {
     QStringList clash;
     const QString target = QDir::cleanPath(folder);
@@ -738,7 +744,7 @@ bool FileOps::canDrop(const QList<QUrl> &urls, const QString &folder) const {
         if (path == target || inside(target, path))
             return false;
         // Already there: nothing would happen.
-        if (QFileInfo(path).absolutePath() != target)
+        if (!alreadyIn(path, target))
             any = true;
     }
     return any;

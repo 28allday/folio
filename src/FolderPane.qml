@@ -375,24 +375,14 @@ FocusScope {
                 item.focusView()
             }
 
-            // Files dropped on empty space land in this folder; folders
-            // inside take drops on themselves first.
-            DropArea {
-                id: viewDrop
+            // Files dropped on empty space land in this folder. The columns
+            // take drops on each column themselves, for the folder it shows.
+            FolderDrop {
                 anchors.fill: parent
                 z: -1
-                keys: ["text/uri-list"]
-                onEntered: (drag) => { drag.accepted = fileOps.canDrop(drag.urls, backend.path) }
-                onDropped: (drop) => { fileOps.dropInto(drop.urls, backend.path); drop.accept(Qt.MoveAction) }
-                Rectangle {
-                    anchors.fill: parent
-                    anchors.margins: 2
-                    visible: viewDrop.containsDrag
-                    color: Qt.alpha(theme.accent, 0.05)
-                    border.width: 2
-                    border.color: theme.accent
-                    radius: Math.min(6, theme.radius)
-                }
+                enabled: pane.viewMode !== "columns"
+                folder: backend.path
+                items: view.item
             }
         }
         Component { id: gridView; FolderGrid { zoom: pane.zoom; onZoomRequested: (step) => pane.zoomBy(step) } }
