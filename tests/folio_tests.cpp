@@ -1763,18 +1763,25 @@ private slots:
     void themeAsksForRoundingOnlyWhileActive()
     {
         // The fake hyprctl lives outside the theme folder: Theme watches that
-        // folder, and a change there re-reads the rounding whatever the state.
-        QTemporaryDir themeDir, dir;
-        const QString response = dir.filePath("response.json"), command = dir.filePath("hyprctl");
+        // folder and its parent, and a change there re-reads the rounding
+        // whatever the state. Both sit in a private parent, so other programs'
+        // temporary files can't count as a change.
+        QTemporaryDir root;
+        QVERIFY(QDir(root.path()).mkpath("theme") && QDir(root.path()).mkpath("bin"));
+        const QString themeDir = root.filePath("theme");
+        const QString response = root.filePath("bin/response.json"), command = root.filePath("bin/hyprctl");
         write(command, "#!/bin/sh\ncat '" + response.toUtf8() + "'\n");
         QVERIFY(QFile::setPermissions(command, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
         write(response, "{\"int\":3}");
 
-        Theme theme(themeDir.path(), nullptr, command);
+        Theme theme(themeDir, nullptr, command);
         QTRY_COMPARE(theme.radius(), 3);
         // Away from Folio, a change goes unnoticed for longer than the poll,
         // and it's picked up once Folio is back.
         emit qGuiApp->applicationStateChanged(Qt::ApplicationInactive);
+        // A read already under way may still finish (it's killed within
+        // 500ms), so the change comes after it.
+        QTest::qWait(600);
         write(response, "{\"int\":6}");
         QTest::qWait(1500);
         QCOMPARE(theme.radius(), 3);
