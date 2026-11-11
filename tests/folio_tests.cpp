@@ -945,14 +945,16 @@ private slots:
     void themeDerivesALighterBackgroundWhenItMatches()
     {
         QTemporaryDir dir;
-        write(dir.filePath("colors.toml"), "background = \"#101315\"\nforeground = \"#e0e0e0\"\nlighter_background = \"#101315\"\n");
-        Theme same(dir.path(), nullptr, "/nonexistent-hyprctl");
+        QDir(dir.path()).mkpath("theme");
+        write(dir.filePath("theme/colors.toml"), "background = \"#101315\"\nforeground = \"#e0e0e0\"\nlighter_background = \"#101315\"\n");
+        Theme same(dir.path());
+        QCOMPARE(same.background(), QColor("#101315"));
         QVERIFY(same.lighterBackground() != same.background());
         QVERIFY(same.lighterBackground().lightnessF() > same.background().lightnessF());
 
-        write(dir.filePath("colors.toml"), "background = \"#101315\"\nforeground = \"#e0e0e0\"\nlighter_background = \"#232329\"\n");
-        Theme distinct(dir.path(), nullptr, "/nonexistent-hyprctl");
-        QCOMPARE(distinct.lighterBackground(), QColor("#232329"));
+        write(dir.filePath("theme/colors.toml"), "background = \"#101315\"\nforeground = \"#e0e0e0\"\nlighter_background = \"#2a2e36\"\n");
+        Theme distinct(dir.path());
+        QCOMPARE(distinct.lighterBackground(), QColor("#2a2e36"));
     }
 
     void themeFollowsHyprlandRounding()
@@ -961,10 +963,10 @@ private slots:
         const QString response = dir.filePath("response.json"), command = dir.filePath("hyprctl");
         write(command, "#!/bin/sh\ncat '" + response.toUtf8() + "'\n");
         QVERIFY(QFile::setPermissions(command, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
-        write(response, "{\"int\":0}");
+        write(response, "{\"int\":4}");
 
         Theme theme(dir.path(), nullptr, command);
-        QCOMPARE(theme.radius(), 0);
+        QTRY_COMPARE(theme.radius(), 4);
         write(response, "{\"int\":6}");
         QTRY_COMPARE(theme.radius(), 6);
     }
