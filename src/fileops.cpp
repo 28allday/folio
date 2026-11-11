@@ -10,6 +10,7 @@
 #include <QProcess>
 #include <QStorageInfo>
 #include <QStandardPaths>
+#include <QTemporaryDir>
 #include <QUrl>
 #include <QtConcurrent>
 #include <algorithm>
@@ -319,7 +320,7 @@ QString FileOps::archiveName(const QStringList &paths, const QString &folder) {
 
 void FileOps::compress(const QStringList &selected) {
     const QStringList paths = outermost(selected);
-    if (paths.isEmpty())
+    if (paths.isEmpty() || !m_busy.isEmpty())
         return;
     // Search results and Recents can span folders, so the archive goes in
     // the deepest folder holding them all, with their paths from there.
@@ -331,20 +332,40 @@ void FileOps::compress(const QStringList &selected) {
     for (const QString &path : paths)
         while (!holds(folder, path))
             folder = QFileInfo(folder).absolutePath();
+    // bsdtar writes into a hidden folder of its own beside the archive, so a
+    // half-written archive stays out of sight, and another compression into
+    // this folder (from another window, or another Folio) can't write into
+    // the same file or remove it when that one fails. The folder goes away
+    // with what's left in it once bsdtar is done.
+    auto temporary = std::make_shared<QTemporaryDir>(QDir(folder).filePath(".compressing-XXXXXX"));
+    if (!temporary->isValid()) {
+        emit failed(tr("Couldn't compress: %1").arg(temporary->errorString()));
+        return;
+    }
     const QString archive = archiveName(paths, folder);
-    QStringList args{"-a", "-cf", QDir(folder).filePath(archive), "-C", folder, "--"};
+    QStringList args{"-a", "-cf", temporary->filePath(archive), "-C", folder, "--"};
     for (const QString &path : paths)
         args << QDir(folder).relativeFilePath(path);
     runTool("bsdtar", args, tr("Compressing into %1…").arg(archive),
             tr("Compressing needs bsdtar, from the libarchive package."),
-            [this, folder, archive](QProcess *process, int code) {
+            [this, paths, folder, temporary, archive](QProcess *process, int code) {
                 if (code != 0) {
-                    // Leave nothing half-written behind.
-                    QFile::remove(QDir(folder).filePath(archive));
                     emit failed(tr("Couldn't compress: %1").arg(QString::fromUtf8(process->readAllStandardError()).trimmed()));
                     return;
                 }
-                emit done(folder, archive);
+                // Only a finished archive is named, with a name that's free
+                // now. A rename never overwrites, so if another took that
+                // name first, it takes the next.
+                QFile made(temporary->filePath(archive));
+                QString name = archiveName(paths, folder);
+                while (!made.rename(QDir(folder).filePath(name))) {
+                    if (!QFileInfo::exists(QDir(folder).filePath(name))) {
+                        emit failed(tr("Couldn't compress: %1").arg(made.errorString()));
+                        return;
+                    }
+                    name = archiveName(paths, folder);
+                }
+                emit done(folder, name);
             });
 }
 

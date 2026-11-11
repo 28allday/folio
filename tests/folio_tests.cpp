@@ -479,6 +479,37 @@ private slots:
         QCOMPARE(compress({"a/inner/x.txt", "a/inner"}), QStringList({dir.filePath("a"), "inner.zip", "inner/", "inner/x.txt"}));
     }
 
+    void fileOpsCompressNeverOverwritesAnArchive()
+    {
+        // Two windows compressing into one folder at once each get an
+        // archive of their own, and one that fails takes only its own with
+        // it, leaving nothing half-written behind.
+        if (QStandardPaths::findExecutable("bsdtar").isEmpty())
+            QSKIP("Compressing needs bsdtar.");
+        QTemporaryDir dir;
+        for (const char *name : {"a.txt", "b.txt", "c.txt"})
+            write(dir.filePath(name), name);
+        FileOps one, two, three;
+        QSignalSpy doneOne(&one, &FileOps::done), doneTwo(&two, &FileOps::done), failed(&three, &FileOps::failed);
+        one.compress({dir.filePath("a.txt"), dir.filePath("b.txt")});
+        two.compress({dir.filePath("b.txt"), dir.filePath("c.txt")});
+        three.compress({dir.filePath("a.txt"), dir.filePath("gone.txt")});
+        QTRY_VERIFY(doneOne.count() == 1 && doneTwo.count() == 1 && failed.count() == 1);
+        const auto members = [&](const QSignalSpy &done) {
+            QProcess list;
+            list.start("bsdtar", {"-tf", dir.filePath(done.first().at(1).toString())});
+            list.waitForFinished();
+            return QString::fromUtf8(list.readAllStandardOutput()).split('\n', Qt::SkipEmptyParts);
+        };
+        QCOMPARE(members(doneOne), QStringList({"a.txt", "b.txt"}));
+        QCOMPARE(members(doneTwo), QStringList({"b.txt", "c.txt"}));
+        QStringList names{doneOne.first().at(1).toString(), doneTwo.first().at(1).toString()};
+        names.sort();
+        QCOMPARE(names, QStringList({"Archive (copy).zip", "Archive.zip"}));
+        QCOMPARE(QDir(dir.path()).entryList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden, QDir::Name),
+                 QStringList({"Archive (copy).zip", "Archive.zip", "a.txt", "b.txt", "c.txt"}));
+    }
+
     void fileOpsTakeAFolderOnceWithWhatsInIt()
     {
         // Search results can list a folder and what's in it. The folder
