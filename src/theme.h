@@ -51,7 +51,7 @@ public:
     QColor magenta() const { return color("magenta"); }
     QColor cyan() const { return color("cyan"); }
     QColor orange() const { return color("orange"); }
-    QVariantMap tones() const;
+    QVariantMap tones() const { return m_tones; }
     bool light() const { return m_light; }
     int radius() const { return m_radius; }
 
@@ -62,10 +62,13 @@ private:
     QColor color(const QString &key) const;
     void reload();
     void refreshRounding();
+    // Worked out once for each palette, since every mark reads them.
+    QVariantMap makeTones() const;
 
     QString m_directory;
     QHash<QString, QColor> m_colors;
     bool m_light = false;
+    QVariantMap m_tones;
     QFileSystemWatcher m_watcher;
     QTimer m_debounce;
     QString m_hyprctl;

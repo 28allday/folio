@@ -565,9 +565,10 @@ with what the command prints:
 
 **`items`** marks the folder's files and folders, by name. A file's tile in
 the grid gets a round badge with the `badge` letter in a corner (shown as it
-is); a folder's tile, and every row in the list and columns, gets a dot
-instead. `label` names the mark in words, for its tooltip and for screen
-readers; it's translated. `tone` is its color, one of:
+is); a folder's tile, every row in the list and columns, and a mark with no
+`badge` anywhere, gets a dot instead. `label` names the mark in words and is
+translated; it's what gives the mark a tooltip and a name for screen
+readers, so a mark without one has neither. `tone` is its color, one of:
 
 | Tone | Color |
 | --- | --- |
@@ -578,7 +579,9 @@ readers; it's translated. `tone` is its color, one of:
 
 Folio draws each in the theme's hue at a lightness of its own, so they read
 on light and dark themes alike and tell apart by lightness, not only by
-hue. A name that isn't in the folder marks nothing. When two plugins mark
+hue. A name that isn't in the folder marks nothing. In the columns layout,
+only the column of the folder shown is marked, not those of the folders
+above it or of the folder previewed beside it. When two plugins mark
 the same name, the one whose id sorts first is shown.
 
 **`chip`** says something about the folder as a whole, in a small chip
@@ -594,11 +597,13 @@ plugins give a chip, the one whose id sorts first is shown.
 [Actions](#actions)). Leave it out and every action is.
 
 Folio runs the command each time the folder is read: going there, F5, and
-when its files change. What it said last stays up meanwhile, so going back
+when its files change, and again when its window is switched back to, for
+what was done elsewhere (a commit in a terminal) that changed no file in
+the folder; the details the plugin gave are asked for again then too. What it said last stays up meanwhile, so going back
 to a folder shows its marks at once, and they change when the new answer is
 in. One run at a time per folder: asked again while it runs, it runs once
 more when it's done. A folder left before the command's turn comes isn't
-asked about. The command runs in the background, never holding up the
+asked about, and one left while it runs has it stopped. The command runs in the background, never holding up the
 window, and has 2 seconds; one that fails, takes longer or prints something
 else marks nothing and offers no actions, and Folio writes why to its
 standard error, once each time the plugin goes from working to failing.
@@ -631,6 +636,15 @@ an object from the English text to its translation. Folio uses the catalog
 for the manifest's labels and titles and the text its commands print, as
 marked above, falling back from `pt-BR` to `pt` to the English. Names, ids,
 values and anything to copy are never looked up.
+
+A template whose first value is a number, like `["%1 changed", 3]`, can be
+translated with plural forms, keyed by CLDR category as in Folio's own
+catalogs; the one for that number is used, and `other` when the language's
+form for it is missing:
+
+```json
+{"%1 changed": {"one": "%1 zmieniony", "few": "%1 zmienione", "many": "%1 zmienionych", "other": "%1 zmienionego"}}
+```
 
 An `i18n/en.json` listing every English text the plugin shows, each as
 itself, gives translators the whole of it to work from; the plugins that

@@ -59,7 +59,14 @@ ApplicationWindow {
 
     // The process works in the folder the window used last shows, in the
     // pane used last, for Omarchy's terminal key to open there.
-    onActiveChanged: if (active && activePane) activePane.paneBackend.keepWorkingDirectory()
+    // Back from elsewhere (a commit in a terminal), the plugins' marks and
+    // what they say in details are asked for again too.
+    onActiveChanged: {
+        if (active && activePane)
+            activePane.paneBackend.keepWorkingDirectory()
+        if (active)
+            plugins.recheck()
+    }
     onActivePaneChanged: if (active && activePane) activePane.paneBackend.keepWorkingDirectory()
 
     // Remembers the view between launches (~/.config/folio/folio.conf).

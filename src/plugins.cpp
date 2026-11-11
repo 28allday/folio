@@ -407,7 +407,7 @@ std::optional<QJsonObject> Plugins::parseMarks(const QByteArray &json) {
 }
 
 Plugins::Run Plugins::execute(const Manifest &plugin, const QStringList &command, const QProcessEnvironment &environment,
-                              int timeout, const std::atomic<bool> *stop) {
+                              int timeout, const std::atomic<bool> *stop, const std::function<bool()> &wanted) {
     Run run;
     QProcess process;
     if (!prepare(process, plugin, command, environment))
@@ -469,7 +469,7 @@ Plugins::Run Plugins::execute(const Manifest &plugin, const QStringList &command
     QTimer check;
     QObject::connect(&check, &QTimer::timeout, &loop, [&] {
         run.timedOut = run.timedOut || (timeout >= 0 && clock.elapsed() > timeout);
-        if (run.timedOut || (stop && *stop))
+        if (run.timedOut || (stop && *stop) || (wanted && !wanted()))
             end();
     });
     check.start(50);
@@ -485,8 +485,15 @@ Plugins::Run Plugins::execute(const Manifest &plugin, const QStringList &command
 }
 
 QString Plugins::text(const Manifest &plugin, const QJsonValue &value) {
-    auto translated = [&](const QString &english) {
-        const QJsonValue t = plugin.strings.value(english).second;
+    // A translation can have plural forms, {"one": …, "other": …}, the one
+    // for a template's first value, a count, as Folio's own strings do.
+    auto translated = [&](const QString &english, const QJsonValue &count = {}) {
+        const auto [code, t] = plugin.strings.value(english);
+        if (t.isObject() && count.isDouble()) {
+            const QJsonObject forms = t.toObject();
+            const QString form = forms.value(Translator::pluralCategory(code, count.toInteger())).toString();
+            return form.isEmpty() ? forms.value("other").toString(english) : form;
+        }
         return t.isString() ? t.toString() : english;
     };
     if (value.isString())
@@ -495,7 +502,7 @@ QString Plugins::text(const Manifest &plugin, const QJsonValue &value) {
     if (parts.isEmpty() || !parts.first().isString())
         return {};
     // Filled in one pass, so a value holding "%1" stays as it is.
-    const QString pattern = translated(parts.first().toString());
+    const QString pattern = translated(parts.first().toString(), parts.at(1));
     static const QRegularExpression place("%(\\d+)");
     QString filled;
     qsizetype at = 0;
@@ -609,6 +616,15 @@ void Plugins::apply(const QList<Manifest> &manifests) {
     rebuild();
     // Read anew, the plugins' details commands and catalogs may be others.
     emit detailsChanged();
+    emit marksStale();
+}
+
+void Plugins::recheck() {
+    for (const Manifest &m : std::as_const(m_manifests))
+        if (!m.marks.isEmpty())
+            forgetDetails(m.id);
+    emit detailsChanged();
+    emit marksStale();
 }
 
 const Plugins::Manifest *Plugins::manifest(const QString &plugin) const {
@@ -787,9 +803,8 @@ bool Plugins::offers(const Manifest &plugin, const Action &action, const QString
         const QString folder = QFileInfo(path).path();
         if (!fits(plugin.marksUnder, {}, folder + "/", {}))
             return true;
-        const auto said = m_folderMarks.constFind(marksKey(plugin.id, folder));
-        return said != m_folderMarks.cend()
-               && (!said->contains("actions") || said->value("actions").toArray().contains(action.id));
+        const QJsonObject *said = m_folderMarks.object(marksKey(plugin.id, folder));
+        return said && (!said->contains("actions") || said->value("actions").toArray().contains(action.id));
     });
 }
 
@@ -970,8 +985,8 @@ void Plugins::forgetDetails(const QString &plugin) {
 QVariantMap Plugins::folderMarks(const QString &folder) const {
     QVariantMap items, chip;
     for (const Manifest &m : m_manifests) {
-        const auto said = m_folderMarks.constFind(marksKey(m.id, folder));
-        if (said == m_folderMarks.cend())
+        const QJsonObject *said = m_folderMarks.object(marksKey(m.id, folder));
+        if (!said)
             continue;
         const QJsonObject marks = said->value("items").toObject();
         for (auto it = marks.begin(); it != marks.end(); ++it) {
@@ -1032,10 +1047,7 @@ void Plugins::askMarks(const Manifest &plugin, const QString &folder, const QStr
                 complain(id, "its marks command " + whyNot(run));
                 m_failingMarks.insert(id);
             }
-            // Enough for the folders gone through lately.
-            if (m_folderMarks.size() >= 200 && !m_folderMarks.contains(key))
-                m_folderMarks.clear();
-            m_folderMarks.insert(key, marks.value_or(QJsonObject{{"actions", QJsonArray()}}));
+            m_folderMarks.insert(key, new QJsonObject(marks.value_or(QJsonObject{{"actions", QJsonArray()}})));
         }
         // Asked again while it ran, it runs once more, for what changed
         // meanwhile; those waiting hear of both answers.
@@ -1052,7 +1064,11 @@ void Plugins::askMarks(const Manifest &plugin, const QString &folder, const QStr
                                                    stop = m_stop]() -> std::optional<Marked> {
         if (!wanted())
             return {};
-        const Run run = execute(plugin, command, environment, detailsTimeout, stop.get());
+        // Its folder left while it runs (clicking through a big
+        // repository's folders), it's stopped, and says nothing.
+        const Run run = execute(plugin, command, environment, detailsTimeout, stop.get(), wanted);
+        if (!wanted())
+            return {};
         return Marked{run, run.ok() ? parseMarks(run.out) : std::nullopt};
     }));
 }

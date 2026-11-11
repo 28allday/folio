@@ -4708,6 +4708,20 @@ private slots:
         QTest::qWait(1500);
         QCOMPARE(asked().count(repo + "/sub"), 2);
 
+        // One whose folder is left while it runs is stopped, and keeps
+        // what was said before.
+        const QVariantMap sub = plugins.folderMarks(repo + "/sub");
+        std::atomic<bool> there{true};
+        QElapsedTimer clock;
+        clock.start();
+        plugins.markFolder(repo + "/sub", [&there] { return there.load(); }, [&] { ++answered; });
+        QTRY_COMPARE(asked().count(repo + "/sub"), 3);
+        const int before3 = answered;
+        there = false;
+        QTRY_COMPARE(answered, before3 + 1);
+        QVERIFY(clock.elapsed() < 900);
+        QCOMPARE(plugins.folderMarks(repo + "/sub"), sub);
+
         // Only for the folders it's for; and one left before its turn isn't
         // run.
         const int before = asked().size();
@@ -4848,6 +4862,14 @@ private slots:
         QCOMPARE(Plugins::value(plugin, QJsonValue("plain")), QString("plain"));
         QCOMPARE(Plugins::value(plugin, QJsonValue(12)), QString("12"));
         QCOMPARE(Plugins::value(plugin, QJsonArray{"%1 of %2", 1, 2}), QString("1 of 2"));
+        // A translation with plural forms takes the one for its count.
+        Plugins::Manifest polish;
+        polish.strings.insert("%1 changed", {"pl", QJsonObject{{"one", "%1 zmieniony"}, {"few", "%1 zmienione"},
+                                                               {"other", "%1 zmienionego"}}});
+        QCOMPARE(Plugins::text(polish, QJsonArray{"%1 changed", 1}), QString("1 zmieniony"));
+        QCOMPARE(Plugins::text(polish, QJsonArray{"%1 changed", 3}), QString("3 zmienione"));
+        QCOMPARE(Plugins::text(polish, QJsonArray{"%1 changed", 5}), QString("5 zmienionego"));
+        QCOMPARE(Plugins::text(polish, QJsonArray{"%1 changed", "x"}), QString("x changed"));
         QCOMPARE(Plugins::value(plugin, QJsonObject{{"date", "nonsense"}}), QString());
         QCOMPARE(Plugins::value(plugin, QJsonObject{{"date", QDateTime::currentDateTime().addSecs(-7200).toString(Qt::ISODate)}}),
                  QString("2 hours ago"));
@@ -4927,6 +4949,50 @@ private slots:
         QCOMPARE(backend.chip().value("text").toString(), QString("main"));
     }
 
+    void backendAsksMarksAgainWhenPluginsAreReadOrRechecked()
+    {
+        QTemporaryDir folder, home;
+        QDir(home.path()).mkpath("repo");
+        write(home.filePath("repo/a.txt"), "x");
+        Plugins plugins("en", {folder.path()}, home.filePath("folio.conf"));
+        QSignalSpy read(&plugins, &Plugins::detailsChanged);
+        QVERIFY(read.wait(5000));
+        Backend backend(home.path());
+        backend.setPlugins(&plugins);
+        backend.navigate(home.filePath("repo"));
+        QTRY_COMPARE(backend.folder()->path(), home.filePath("repo"));
+        QTest::qWait(200);
+
+        // A marks plugin read after the folder (F5) marks it at once. Its
+        // marks come slower than its details, whose button for an action
+        // the marks offer shows once they're in.
+        writePlugin(folder.path(), "vcs", R"({"folio": 1, "marks": {"command": ["./marks"]}, "details": {"command": ["./describe"]},
+            "actions": [{"id": "open", "label": "Open on Hub", "command": ["true"]}]})",
+                    {{"marks", "#!/bin/sh\necho x >> asked\nsleep 0.5\n"
+                               "echo '{\"chip\": {\"text\": \"main\"}, \"actions\": [\"open\"]}'\n"},
+                     {"describe", "#!/bin/sh\necho '{\"title\": \"Hub\", \"rows\": [[\"Branch\", \"main\"]], \"actions\": [\"open\"]}'\n"}});
+        plugins.refresh();
+        const QString a = home.filePath("repo/a.txt");
+        backend.describe({{"path", a}, {"kind", "other"}, {"mime", "text/plain"},
+                          {"modified", QFileInfo(a).lastModified()}});
+        auto buttons = [&] {
+            const QVariantList sections = backend.details().value("plugins").toList();
+            return sections.isEmpty() ? -1 : sections.at(0).toMap().value("actions").toList().size();
+        };
+        QTRY_COMPARE(buttons(), 0);
+        QTRY_COMPARE(backend.chip().value("text").toString(), QString("main"));
+        QTRY_COMPARE(buttons(), 1);
+
+        // Coming back to the window, it's asked again.
+        auto asked = [&] {
+            QFile file(folder.filePath("vcs/asked"));
+            return file.open(QIODevice::ReadOnly) ? file.readAll().count('x') : 0;
+        };
+        const int before = asked();
+        plugins.recheck();
+        QTRY_COMPARE(asked(), before + 1);
+    }
+
     void themeTonesTellApartByLightness()
     {
         // Each tone reads on the background as small text does, and they
@@ -4939,7 +5005,10 @@ private slots:
             return (std::max(l(a), l(b)) + .05) / (std::min(l(a), l(b)) + .05);
         };
         for (const char *colors : {"background = \"#16161a\"\nforeground = \"#c8c8d0\"\norange = \"#ff9e64\"\nblue = \"#7aa2f7\"\nred = \"#f7768e\"\n",
-                                   "mode = \"light\"\nbackground = \"#fffcf0\"\nforeground = \"#100f0f\"\norange = \"#ff9e64\"\nblue = \"#7aa2f7\"\nred = \"#f7768e\"\n"}) {
+                                   "mode = \"light\"\nbackground = \"#fffcf0\"\nforeground = \"#100f0f\"\norange = \"#ff9e64\"\nblue = \"#7aa2f7\"\nred = \"#f7768e\"\n",
+                                   // A mid-dark one and an off-white one too (Nord, Catppuccin Latte).
+                                   "background = \"#2e3440\"\nforeground = \"#d8dee9\"\norange = \"#d08770\"\nblue = \"#81a1c1\"\nred = \"#bf616a\"\n",
+                                   "mode = \"light\"\nbackground = \"#eff1f5\"\nforeground = \"#4c4f69\"\norange = \"#fe640b\"\nblue = \"#1e66f5\"\nred = \"#d20f39\"\n"}) {
             QTemporaryDir dir;
             QDir(dir.path()).mkpath("theme");
             write(dir.filePath("theme/colors.toml"), colors);
@@ -4953,7 +5022,7 @@ private slots:
             QVERIFY(contrast(modified, conflict) > 1.4);
             QVERIFY(contrast(added, conflict) > 2);
             // The hue stays the theme's.
-            QVERIFY(qAbs(modified.hslHue() - QColor("#ff9e64").hslHue()) <= 2);
+            QVERIFY(qAbs(modified.hslHue() - QColor(QString(colors).section("orange = \"", 1).left(7)).hslHue()) <= 2);
             QCOMPARE(tones.value("changed"), tones.value("modified"));
             QCOMPARE(tones.value("untracked").value<QColor>(), theme.secondaryForeground());
         }
@@ -5172,6 +5241,15 @@ private slots:
         QCOMPARE(marks(repo + "/sub").value("items").toObject(),
                  QJsonObject({{"deep", QJsonObject{{"tone", "changed"}, {"label", "Changes inside"}}}}));
         QCOMPARE(marks(repo + "/.git"), QJsonObject({{"actions", QJsonArray()}}));
+        // In a folder nothing in which is tracked, each of its files and
+        // folders isn't, but not what's ignored; deeper down too.
+        QDir().mkpath(repo + "/newdir/inner");
+        write(repo + "/newdir/inner/q.txt", "loose\n");
+        write(repo + "/newdir/skip.log", "loose\n");
+        const QJsonObject untracked{{"tone", "untracked"}, {"badge", "?"}, {"label", "Not tracked"}};
+        QCOMPARE(marks(repo + "/newdir").value("items").toObject(), QJsonObject({{"inner", untracked}, {"z.txt", untracked}}));
+        QCOMPARE(marks(repo + "/newdir/inner").value("items").toObject(), QJsonObject({{"q.txt", untracked}}));
+        QCOMPARE(marks(repo + "/newdir").value("chip").toObject().value("text").toString(), QString("main"));
 
         // A detached HEAD goes by its commit; elsewhere than GitHub, the
         // chip does nothing and there are no GitHub actions.
@@ -5237,9 +5315,28 @@ private slots:
         QCOMPARE(rows("newdir").value(0), QString("Status: Not tracked [untracked]"));
         // An ignored file says nothing of how it stands.
         QCOMPARE(rows("ignored.log").value(0), QString("Branch: main ↑2 ↓1"));
+        // Inside a folder nothing in which is tracked, nothing is; a folder
+        // that's ignored says nothing of how it stands.
+        QDir().mkpath(repo + "/newdir/inner");
+        write(repo + "/newdir/inner/q.txt", "loose\n");
+        QCOMPARE(rows("newdir/inner").value(0), QString("Status: Not tracked [untracked]"));
+        QCOMPARE(rows("newdir/z.txt").value(0), QString("Status: Not tracked [untracked]"));
+        QDir().mkpath(repo + "/cache.log");
+        write(repo + "/cache.log/x", "x\n");
+        QCOMPARE(rows("cache.log").value(0), QString("Branch: main ↑2 ↓1"));
         // Outside a repository, nothing.
         write(dir.filePath("loose.txt"), "x");
         QVERIFY(details(dir.filePath("loose.txt")).isEmpty());
+
+        // A name is only that file, not a pattern matching others (a.txt).
+        write(repo + "/a[.]txt", "x\n");
+        QCOMPARE(gitIn(repo, {"add", "a[.]txt"}), 0);
+        QCOMPARE(rows("a[.]txt").value(0), QString("Status: New [added]"));
+        // Changed in the index but back as it was in the working tree,
+        // it's still modified, without counts.
+        QCOMPARE(gitIn(repo, {"add", "sub/deep/c.txt"}), 0);
+        write(repo + "/sub/deep/c.txt", "one\n");
+        QCOMPARE(rows("sub/deep/c.txt").value(0), QString("Status: Modified [modified]"));
     }
 
     void gitPluginLinksToGitHub()

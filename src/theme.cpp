@@ -9,6 +9,7 @@
 #include <QJsonObject>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <algorithm>
 #include <cmath>
 
 namespace {
@@ -164,13 +165,14 @@ QColor Theme::secondaryForeground() const {
     return mix(background(), foreground(), 0.68);
 }
 
-QVariantMap Theme::tones() const {
-    // Each is the theme's own hue at a luminance of its own, so that they
-    // tell apart by lightness too, not only by hue, and each reads on the
-    // theme's background as small text does: light on a dark theme, dark
-    // on a light one. What isn't tracked is quiet.
-    auto at = [this](const QColor &hue, double onDark, double onLight) {
-        const double target = light() ? onLight : onDark;
+QVariantMap Theme::makeTones() const {
+    // Each is the theme's own hue at a contrast of its own with the
+    // background, so that they tell apart by lightness too, not only by
+    // hue, and each reads on it as small text does: lighter on a dark
+    // theme, darker on a light one. What isn't tracked is quiet.
+    const double ground = luminance(background());
+    auto at = [&](const QColor &hue, double contrast) {
+        const double target = std::clamp(light() ? (ground + .05) / contrast - .05 : (ground + .05) * contrast - .05, 0.0, 1.0);
         // HSL lightness raises luminance steadily, so it's searched for.
         double low = 0, high = 1;
         QColor color = hue;
@@ -181,9 +183,9 @@ QVariantMap Theme::tones() const {
         }
         return color;
     };
-    const QColor modified = at(orange(), .40, .095);
-    return {{"modified", modified}, {"changed", modified}, {"added", at(blue(), .62, .045)},
-            {"conflict", at(red(), .22, .17)}, {"untracked", secondaryForeground()}};
+    const QColor modified = at(orange(), 7);
+    return {{"modified", modified}, {"changed", modified}, {"added", at(blue(), 10.5)},
+            {"conflict", at(red(), 4.6)}, {"untracked", secondaryForeground()}};
 }
 
 void Theme::reload() {
@@ -206,9 +208,10 @@ void Theme::reload() {
             m_watcher.addPath(path);
 
     const Palette palette = readPalette(m_directory + "/theme/colors.toml");
-    if (palette.colors != m_colors || palette.light != m_light) {
+    if (palette.colors != m_colors || palette.light != m_light || m_tones.isEmpty()) {
         m_colors = palette.colors;
         m_light = palette.light;
+        m_tones = makeTones();
         emit changed();
     }
 }

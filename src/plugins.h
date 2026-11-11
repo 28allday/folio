@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QCache>
 #include <QDateTime>
 #include <QHash>
 #include <QJsonArray>
@@ -167,6 +168,11 @@ public:
     // turn comes once `wanted` (asked off the UI thread) says the folder
     // has been left isn't run.
     void markFolder(const QString &folder, const std::function<bool()> &wanted, const std::function<void()> &done);
+    // Coming back to Folio, files may stand otherwise for what was done
+    // elsewhere (a commit in a terminal, which changes no file a folder
+    // watch sees): marks are asked for again, and what the marks plugins
+    // said in details is forgotten.
+    Q_INVOKABLE void recheck();
 
     // The item a plugin:<id>/<item> path names, if its plugin lists it.
     std::optional<Item> item(const QString &itemPath) const;
@@ -192,9 +198,10 @@ public:
     // A marks command's output, or nothing when it isn't one.
     static std::optional<QJsonObject> parseMarks(const QByteArray &json);
     // Runs a command of the plugin's, with `timeout` milliseconds (or none
-    // when negative), stopping early once `stop` is set.
+    // when negative), stopping early once `stop` is set or `wanted` (if
+    // any) says it no longer is.
     static Run execute(const Manifest &plugin, const QStringList &command, const QProcessEnvironment &environment,
-                       int timeout, const std::atomic<bool> *stop = nullptr);
+                       int timeout, const std::atomic<bool> *stop = nullptr, const std::function<bool()> &wanted = {});
     // A plugin's text in Folio's language: a string, or [template, values...].
     // A value {"date": ISO 8601} is said as how long ago it was.
     static QString text(const Manifest &plugin, const QJsonValue &value);
@@ -226,6 +233,9 @@ signals:
     // or a plugin's poll saying something new), so the details pane asks
     // again.
     void detailsChanged();
+    // Folders' marks should be asked for again (the plugins read anew, or
+    // recheck()).
+    void marksStale();
 
 private:
     void reload(bool pollAll);
@@ -282,7 +292,9 @@ private:
         std::function<bool()> wanted;
         QList<std::function<void()>> done;
     };
-    QHash<QString, QJsonObject> m_folderMarks;
+    // Enough for the folders gone through lately; those shown are read
+    // often, so they're the last to go.
+    mutable QCache<QString, QJsonObject> m_folderMarks{200};
     QHash<QString, Marking> m_marking;
     QSet<QString> m_failingMarks;
     QHash<QString, QTimer *> m_timers;

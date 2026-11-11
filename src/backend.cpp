@@ -259,6 +259,9 @@ void Backend::setPlugins(Plugins *plugins) {
         showMarks();
     });
     connect(&m_folder, &FolderModel::loaded, this, &Backend::askMarks);
+    // The plugins read (they may be read after the folder), or files
+    // changed elsewhere.
+    connect(plugins, &Plugins::marksStale, this, &Backend::askMarks);
 }
 
 void Backend::showMarks() {
@@ -281,8 +284,11 @@ void Backend::askMarks() {
     m_plugins->markFolder(
         folder, [latest = m_marking, generation] { return *latest == generation; },
         [self, folder] {
-            if (self && self->path() == folder)
+            if (self && self->path() == folder) {
                 self->showMarks();
+                // What the details offer follows the folder's marks too.
+                self->showPluginRows(true);
+            }
         });
 }
 
