@@ -17,24 +17,25 @@ Folio replaces it with an app built the way Hype, Monologue, Omacut and Signed a
 - **Careful with data.** Never destroy without a way back: delete means trash, every file operation can be undone, conflicts are asked about, never silently overwritten.
 - **Say what's wrong.** A failed mount, a missing thumbnailer or a permission error shows in the window.
 
-## Where it stands (0.1.0, scaffold)
+## Where it stands
 
-Done, tested (19 Qt Test cases), and verified offscreen:
+Done, tested, and verified offscreen:
 
-- Folder model listing off the UI thread, folders first, natural sort, name or newest-first, hidden files toggle, live reload on change.
+- Folder model listing off the UI thread, folders first, natural sort, hidden files toggle, live reload on change.
 - Grid tiles show size (or item count) and date under the name; no status bar.
 - Folder tiles as plain cards, selection shown as color on the item itself; file tiles with real thumbnails (in-process for common images, installed thumbnailers for video, PDF, HEIC, office files), drawn stand-ins otherwise.
 - Shared thumbnail cache per the spec, with failure markers so broken files aren't retried.
 - Sidebar sections Views (Recents from GTK's recently-used.xbel, Trash with Restore, Delete Permanently and Empty Trash per the freedesktop spec, details showing origin and deletion date); Tab moves the keyboard between sidebar and files.
-- Right-click menus everywhere (Open, Open With, Preview, Rename, Duplicate, Copy, Cut, Paste, Copy Path, Compress, Share via LocalSend or Taildrop, Pin, Terminal, Delete to trash); clipboard interoperable with GNOME/KDE apps; pastes never overwrite.
+- Right-click menus everywhere (Open, Open With, Preview, Rename, Duplicate, Copy, Cut, Paste, Copy Path, Compress, Share via a Dropbox link, LocalSend or Taildrop, Pin, Terminal, Delete to trash); clipboard interoperable with GNOME/KDE apps; pastes never overwrite.
 - Sort by name, kind, newest, oldest or size.
 - Split view (Ctrl+Alt+N, Ctrl+W closes): two folder panes side by side, each with its own path, history and selection; sidebar and details follow the active pane. New windows (Ctrl+N) open in the running process.
 - Multi-select: Shift+click/arrows for ranges, Alt+click to add or remove, rubber band on empty space, Ctrl+A; file actions and drags act on the selection.
 - Path entry (Ctrl+L): ~ and relative paths, a file selects itself in its folder, Tab completes folder names.
+- `/` searches this folder and every folder below it by name as you type: a live breadth-first walk, nearest first, that stays on the folder's drive and doesn't follow symlinked folders.
 - Three views, remembered between launches: grid (Ctrl+1), list with name, size and date (Ctrl+2; no headings; the date then the size step aside when narrow), and Finder-style columns (Ctrl+3).
 - Preview pane: large preview, the system's type name, size, modified, dimensions, opening lines of text files, Open.
 - Sidebar: a Home section (its label goes home) listing every folder in home (XDG folders and Dropbox with their own glyphs, `omarchy` shown as Omarchy); Pinned folders (Ctrl+D or drag onto the sidebar) stored as GTK bookmarks; Dropbox (with `dropbox-cli` sync status), Trash, physical drives (removable and extra internal disks, not the system's own), online tailnet machines from `tailscale status --json`.
-- Tailnet machines open over SFTP through GIO, landing in the matching home folder; GVfs's questions (host key on first connection, password) are asked in the window.
+- Tailnet machines open over SFTP through GIO, landing in the matching home folder; their host keys are accepted without asking (Tailscale already checked the peer), and a password, when keys aren't set up, is asked in the window.
 - Mouse back/forward buttons move through history (in the preview: previous/next file).
 - Space opens a large preview in its own process (`folio preview`), like Sushi: pictures at full size with zoom, animated GIF/WebP, video and audio playing (Qt Multimedia's FFmpeg backend), PDFs scrolling (Qt PDF), text and rendered Markdown, folders with their pictures, and the largest cached thumbnail for anything else. Arrows step through the folder and the grid follows; a crash in the preview is reported in the Folio window. Ctrl+I toggles the details pane.
 - `org.freedesktop.FileManager1` for "Show in folder"; `folio <file>` opens its folder with the file selected.
