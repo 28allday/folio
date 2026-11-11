@@ -248,9 +248,8 @@ void Backend::mount(const QString &url, const QString &name, bool verified) {
     m_mountBare = QUrl(url).path().isEmpty() || QUrl(url).path() == "/";
     m_mountName = name;
     // Mounted already (by Folio or another app): straight there.
-    const QString mounted = Mounter::folderFor(url);
-    if (!mounted.isEmpty() && QFileInfo(mounted).isDir()) {
-        const QString folder = QDir::cleanPath(mounted + QUrl(url).path());
+    const QString folder = Mounter::destinationFor(url);
+    if (!folder.isEmpty() && QFileInfo(folder).isDir()) {
         const QString remoteHome = folder + QDir::homePath();
         navigate(m_mountBare && QFileInfo(remoteHome).isDir() ? remoteHome : folder);
         return;

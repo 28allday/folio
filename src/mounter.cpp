@@ -1,5 +1,6 @@
 #include "mounter.h"
 
+#include <QDir>
 #include <QPointer>
 #include <QUrl>
 #include <unistd.h>
@@ -64,7 +65,7 @@ struct MounterCallbacks {
                 // Where GVfs put it, for the address it was asked for: only
                 // SFTP's folder can be worked out ahead of time.
                 if (local.startsWith(Mounter::root() + "/"))
-                    Mounter::known()[self->m_url] = local.section('/', 0, 5);
+                    Mounter::known()[self->m_url] = local;
                 self->finish();
                 if (local.isEmpty())
                     emit self->failed(QObject::tr("GVfs gave no local folder for the mount"));
@@ -104,10 +105,17 @@ QHash<QString, QString> &Mounter::known() {
 QString Mounter::folderFor(const QString &url) {
     const QUrl parsed(url);
     if (parsed.scheme() != "sftp" || parsed.host().isEmpty())
-        return known().value(url);
+        return known().value(url).section('/', 0, 5);
     // GVfs keeps a mount's parts sorted by key: host, port, user.
     return root() + "/sftp:host=" + parsed.host() + (parsed.port() < 0 ? QString() : ",port=" + QString::number(parsed.port()))
            + (parsed.userName().isEmpty() ? QString() : ",user=" + parsed.userName());
+}
+
+QString Mounter::destinationFor(const QString &url) {
+    if (known().contains(url))
+        return known().value(url);
+    const QString mount = folderFor(url);
+    return mount.isEmpty() ? QString() : QDir::cleanPath(mount + QUrl(url).path());
 }
 
 void Mounter::mount(const QString &uri, bool verified) {

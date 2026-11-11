@@ -1899,7 +1899,16 @@ private slots:
         const QString folder = Mounter::root() + "/smb-share:server=nas,share=media";
         Mounter::known()["smb://nas/media"] = folder;
         QCOMPARE(Mounter::folderFor("smb://nas/media"), folder);
+        QCOMPARE(Mounter::destinationFor("smb://nas/media"), folder);
+        // A folder inside a share opens there, and its row lights up on
+        // the share's.
+        Mounter::known()["smb://nas/media/films"] = folder + "/films";
+        QCOMPARE(Mounter::destinationFor("smb://nas/media/films"), folder + "/films");
+        QCOMPARE(Mounter::folderFor("smb://nas/media/films"), folder);
         Mounter::known().remove("smb://nas/media");
+        Mounter::known().remove("smb://nas/media/films");
+        QVERIFY(Mounter::destinationFor("smb://nas/media").isEmpty());
+        QCOMPARE(Mounter::destinationFor("sftp://studio/srv/www"), Mounter::root() + "/sftp:host=studio/srv/www");
         QCOMPARE(Mounter::folderFor("sftp://me@studio:2222/"), Mounter::root() + "/sftp:host=studio,port=2222,user=me");
     }
 

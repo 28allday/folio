@@ -31,11 +31,14 @@ public:
     // Mounts the location; `mounted` carries its local GVfs path.
     void mount(const QString &uri, bool verified);
 
-    // Where GVfs keeps its mounts, and where it puts the one for `url`, for
-    // SFTP, whose folder is named by the URL alone; empty for the rest.
+    // Where GVfs keeps its mounts, and the mount `url` is in (its root,
+    // where its row is lit): worked out for SFTP, whose mount is named by
+    // the URL alone, and known for the rest once mounted; empty otherwise.
     static QString root();
     static QString folderFor(const QString &url);
-    // Each address mounted this session and the folder GVfs gave it.
+    // The folder `url` itself opens, inside its mount; empty when unknown.
+    static QString destinationFor(const QString &url);
+    // Each address mounted this session and the folder GVfs opened for it.
     static QHash<QString, QString> &known();
 
     // The user's answer to a password request; remembered for this session
