@@ -140,6 +140,15 @@ bool FileOps::copyRecursively(const QString &from, const QString &to, QString *e
     return true;
 }
 
+// Whether `folder` is the folder at `path` or inside it, wherever links lead,
+// so a link to a folder inside it counts. A link at `path` itself isn't a
+// folder here, since it's copied as a link.
+static bool inside(const QString &folder, const QString &path) {
+    const QFileInfo item(path);
+    const QString self = item.canonicalFilePath(), target = QFileInfo(folder).canonicalFilePath();
+    return item.isDir() && !item.isSymLink() && (target == self || target.startsWith(self + '/'));
+}
+
 QStringList FileOps::transfer(const QStringList &paths, const QString &folder, bool move, QString *error) {
     QStringList made;
     const QString target = QDir::cleanPath(folder);
@@ -152,7 +161,7 @@ QStringList FileOps::transfer(const QStringList &paths, const QString &folder, b
         // Moving something into the folder it's already in does nothing.
         if (move && QDir::cleanPath(info.absolutePath()) == target)
             continue;
-        if (info.isDir() && (target == QDir::cleanPath(path) || target.startsWith(QDir::cleanPath(path) + "/"))) {
+        if (inside(target, path)) {
             *error = QObject::tr("Can't put %1 inside itself.").arg(info.fileName());
             break;
         }
@@ -208,7 +217,7 @@ bool FileOps::canDrop(const QList<QUrl> &urls, const QString &folder) const {
             continue;
         const QString path = QDir::cleanPath(url.toLocalFile());
         // Not onto itself or inside itself.
-        if (path == target || target.startsWith(path + "/"))
+        if (path == target || inside(target, path))
             return false;
         // Already there: nothing would happen.
         if (QFileInfo(path).absolutePath() != target)

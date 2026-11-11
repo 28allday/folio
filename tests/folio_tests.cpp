@@ -305,6 +305,13 @@ private slots:
         FileOps::transfer({to.filePath("album")}, to.filePath("album/inner"), true, &error);
         QVERIFY(!error.isEmpty());
         QVERIFY(QFile::exists(to.filePath("album/inner/a.jpg")));
+        // Nor through a link to a folder inside it, which would copy it into
+        // its own copy until the drive was full.
+        QVERIFY(QFile::link(to.filePath("album/inner"), from.filePath("inner")));
+        error.clear();
+        FileOps::transfer({to.filePath("album")}, from.filePath("inner"), false, &error);
+        QCOMPARE(error, QString("Can't put album inside itself."));
+        QVERIFY(!QFile::exists(to.filePath("album/inner/album")));
     }
 
     void fileOpsCopyLinksAsWritten()
@@ -422,6 +429,10 @@ private slots:
         QVERIFY(!ops.canDrop(urls("album"), dir.filePath("album")));
         QVERIFY(!ops.canDrop(urls("album"), dir.filePath("album/inner")));
         QVERIFY(!ops.canDrop(urls("album"), dir.filePath("a.txt")));
+        QVERIFY(QFile::link(dir.filePath("album/inner"), dir.filePath("shortcut")));
+        QVERIFY(!ops.canDrop(urls("album"), dir.filePath("shortcut")));
+        // A link is moved as a link, so it can go into the folder it leads to.
+        QVERIFY(ops.canDrop(urls("shortcut"), dir.filePath("album/inner")));
         // Moving something into the folder it's in leaves it alone rather
         // than making a "(copy)" of it.
         QString error;
