@@ -172,9 +172,10 @@ Rectangle {
         // Shows the current view; clicking moves to the next one.
         IconButton {
             glyph: bar.viewMode
-            text: bar.viewMode === "grid" ? qsTr("Grid (Ctrl+1); click for list")
-                : bar.viewMode === "list" ? qsTr("List (Ctrl+2); click for columns")
-                : qsTr("Columns (Ctrl+3); click for grid")
+            // Names what a click does, like the buttons beside it.
+            text: bar.viewMode === "grid" ? qsTr("Show as list (Ctrl+2)")
+                : bar.viewMode === "list" ? qsTr("Show as columns (Ctrl+3)")
+                : qsTr("Show as grid (Ctrl+1)")
             onClicked: bar.cycleView()
         }
         IconButton {
