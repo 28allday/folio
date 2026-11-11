@@ -98,10 +98,16 @@ bool tiffHeader(Source &src, quint64 at, bool &le, quint64 &ifd) {
     return rd16(b.constData() + 2, le) == kTiffMagic;
 }
 
+// A JPEG a directory names, with the turn that directory gives its picture, if any.
+struct Candidate {
+    quint64 offset = 0, length = 0;
+    std::optional<quint64> turn;
+};
+
 struct Walker {
     explicit Walker(Source &source) : src(source) {}
     Source &src;
-    QVector<QPair<quint64, quint64>> candidates;
+    QVector<Candidate> candidates;
     // Each directory is read once, so a cycle neither loops nor uses up the limit.
     QVector<quint64> seen;
     std::optional<quint64> orientation;
@@ -134,13 +140,13 @@ struct Walker {
         if (count > kMaxEntries || !src.get(at + 2, count * kEntryLength, entries))
             return;
         seen.append(at);
-        std::optional<quint64> jpegOffset, jpegLength, stripOffset, stripLength, compression;
+        std::optional<quint64> jpegOffset, jpegLength, stripOffset, stripLength, compression, turn;
         QVector<quint64> children;
         for (int i = 0; i < count; ++i) {
             const char *e = entries.constData() + i * kEntryLength;
             const quint16 tag = rd16(e, le), type = rd16(e + 2, le);
             const quint32 n = rd32(e + 4, le);
-            if (tag == kOrientation && !orientation) orientation = one(le, type, n, e + 8);
+            if (tag == kOrientation) turn = one(le, type, n, e + 8);
             else if (tag == kJpegOffset) jpegOffset = one(le, type, n, e + 8);
             else if (tag == kJpegLength) jpegLength = one(le, type, n, e + 8);
             // Many strips are raw sensor data, never one preview.
@@ -152,12 +158,14 @@ struct Walker {
                 for (quint32 k = 0; k < qMin(n, kMaxPointers); ++k)
                     children.append(type == kShort ? rd16(b.constData() + k * 2, le) : rd32(b.constData() + k * 4, le));
         }
+        // The first directory to name a turn speaks for the file, as IFD0 does in a camera's own.
+        if (!orientation) orientation = turn;
         if (jpegOffset && jpegLength && *jpegLength > 0)
-            candidates.append({*jpegOffset, *jpegLength});
+            candidates.append({*jpegOffset, *jpegLength, turn});
         // Any lone JPEG-compressed strip is a preview (a CR2 keeps its big one in IFD0); the frame rule keeps raw data out.
         if (stripOffset && stripLength && compression && (*compression == kOldJpeg || *compression == kJpeg)
             && *stripLength > 0)
-            candidates.append({*stripOffset, *stripLength});
+            candidates.append({*stripOffset, *stripLength, turn});
         for (const quint64 child : children)
             walk(le, depth + 1, child);
         // A next pointer that cannot be read ends the chain and keeps what it collected.
@@ -238,14 +246,15 @@ std::optional<quint64> ownOrientation(const QByteArray &jpeg) {
 
 struct Preview {
     quint64 offset = 0, length = 0, pixels = 0;
+    std::optional<quint64> turn;
 };
 
 // Most pixels first, the longer of two equals ahead; only Huffman frames (SOF0 to SOF2) count, SOF3 is raw data.
-QVector<Preview> ranked(QFile &file, const QVector<QPair<quint64, quint64>> &candidates) {
+QVector<Preview> ranked(QFile &file, const QVector<Candidate> &candidates) {
     qint64 sofLeft = kSofBudget;
     QVector<Preview> previews;
     for (int i = 0; i < qMin(int(candidates.size()), kMaxCandidates); ++i) {
-        const quint64 offset = candidates[i].first, length = candidates[i].second;
+        const quint64 offset = candidates[i].offset, length = candidates[i].length;
         // A span running past the end of the file is a cut file, not a preview.
         if (length < quint64(kMinJpeg) || sofLeft == 0 || offset > quint64(file.size())
             || length > quint64(file.size()) - offset)
@@ -257,7 +266,7 @@ QVector<Preview> ranked(QFile &file, const QVector<QPair<quint64, quint64>> &can
         const bool found = span >= kMinJpeg && file.seek(qint64(offset)) && firstFrame(file, left, marker, width, height);
         sofLeft -= span - left;
         if (found && marker <= kLastHuffmanFrame)
-            previews.append({offset, length, quint64(width) * height});
+            previews.append({offset, length, quint64(width) * height, candidates[i].turn});
     }
     std::stable_sort(previews.begin(), previews.end(), [](const Preview &a, const Preview &b) {
         return a.pixels != b.pixels ? a.pixels > b.pixels : a.length > b.length;
@@ -265,7 +274,7 @@ QVector<Preview> ranked(QFile &file, const QVector<QPair<quint64, quint64>> &can
     return previews;
 }
 
-// One preview read and scaled to fit `pixels`, turned by the directory's `turn` when it names none of its own.
+// One preview read and scaled to fit `pixels`, turned by `turn` when it names no orientation of its own.
 QImage decoded(QFile &file, const Preview &preview, quint64 turn, int pixels) {
     if (!file.seek(qint64(preview.offset)))
         return {};
@@ -314,7 +323,8 @@ QImage RawEmbed::thumbnail(const QString &path, int pixels) {
         if (preview.length > left)
             continue;
         left -= preview.length;
-        const QImage image = decoded(file, preview, walker.orientation.value_or(0), pixels);
+        // A directory's own turn rules its picture; one that names none takes the file's.
+        const QImage image = decoded(file, preview, preview.turn.value_or(walker.orientation.value_or(0)), pixels);
         if (!image.isNull())
             return image;
     }

@@ -5280,6 +5280,27 @@ private slots:
         QCOMPARE(rawThumbnail(rawWithJpeg(jpeg(400, 300), kQuarterTurn)), QSize(300, 400));
         QCOMPARE(rawThumbnail(rawWithJpeg(jpeg(400, 300, kUpright), kQuarterTurn)), QSize(400, 300));
         QCOMPARE(rawThumbnail(rawWithJpeg(jpeg(400, 300, kQuarterTurn), kUpright)), QSize(300, 400));
+
+        // A later directory that names a turn of its own rules its picture; one that names none takes IFD0's.
+        const QByteArray picture = jpeg(400, 300);
+        const auto turned = [&](quint32 first, const Entries &own) {
+            Raw raw(true);
+            const quint32 at = raw.add(picture);
+            raw.setFirst(raw.ifd({{kOrientation, kShort, 1, first}}, raw.ifd(pair(at, picture.size()) + own)));
+            return rawThumbnail(raw.bytes);
+        };
+        QCOMPARE(turned(kUpright, {{kOrientation, kShort, 1, kQuarterTurn}}), QSize(300, 400));
+        QCOMPARE(turned(kQuarterTurn, {{kOrientation, kShort, 1, kUpright}}), QSize(400, 300));
+        QCOMPARE(turned(kQuarterTurn, {}), QSize(300, 400));
+
+        // Of two directories that name a turn the first speaks for the file, so a third that names none takes that one.
+        Raw three(true);
+        const QByteArray small = jpeg(160, 120);
+        const quint32 bigAt = three.add(picture), smallAt = three.add(small);
+        three.setFirst(three.ifd({{kOrientation, kShort, 1, kQuarterTurn}},
+                                 three.ifd(pair(smallAt, small.size()) + Entries{{kOrientation, kShort, 1, kUpright}},
+                                           three.ifd(pair(bigAt, picture.size())))));
+        QCOMPARE(rawThumbnail(three.bytes), QSize(300, 400));
     }
 
     void thumbnailsPickTheLargestEmbeddedJpeg()
