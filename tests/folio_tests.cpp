@@ -3211,7 +3211,13 @@ private slots:
         QSignalSpy failed(&ops, &FileOps::failed);
         ops.format(sanDisk().identity, "Holiday Photos", "vfat");
         ops.format(sanDisk().identity, "Photos", "zfs");
-        QCOMPARE(failed.count(), 2);
+        // Nor one that fits only counted in characters, or has what FAT
+        // can't keep, which udisks would find only once it's erased.
+        ops.format(sanDisk().identity, QString(9, QChar(0xe6)), "ext4");
+        ops.format(sanDisk().identity, "BACKUP:2026", "vfat");
+        ops.format(sanDisk().identity, QString("Caf") + QChar(0xe9), "vfat");
+        QCOMPARE(failed.count(), 5);
+        QCOMPARE(failed.at(3).at(0).toString(), QString("FAT32 can't have : in a drive's name."));
         QVERIFY(fake->calls.isEmpty());
     }
 

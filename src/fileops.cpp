@@ -2119,8 +2119,18 @@ void FileOps::format(const QString &id, const QString &label, const QString &typ
         emit failed(tr("Folio can't make that kind of drive."));
         return;
     }
-    if (name.size() > fs->labelLimit) {
+    // Checked before anything's erased, as udisks only checks once it is:
+    // ext4 counts a name in bytes, and FAT keeps plain ASCII without what
+    // DOS kept for paths.
+    if ((type == "ext4" ? name.toUtf8().size() : name.size()) > fs->labelLimit) {
         emit failed(tr("%1 keeps at most %2 characters of a drive's name.").arg(QString::fromLatin1(fs->name)).arg(fs->labelLimit));
+        return;
+    }
+    const auto odd = std::find_if(name.begin(), name.end(), [](QChar c) {
+        return c.unicode() < 32 || c.unicode() > 126 || QStringView(u"\"*/:<>?\\|").contains(c);
+    });
+    if (type == "vfat" && odd != name.end()) {
+        emit failed(tr("FAT32 can't have %1 in a drive's name.").arg(*odd));
         return;
     }
     // Asked before anything's erased: without its mkfs, the drive would be

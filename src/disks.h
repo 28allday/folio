@@ -108,7 +108,8 @@ public:
 
     // What a drive can be formatted as, in the order offered: udisks' name
     // for it, how a person knows it, what it's good for, the longest label
-    // its mkfs keeps (in UTF-16 characters), and its GPT partition type.
+    // its mkfs keeps (in UTF-16 characters, ext4's in UTF-8 bytes), and its
+    // GPT partition type.
     struct FileSystem {
         const char *type;
         const char *name;
