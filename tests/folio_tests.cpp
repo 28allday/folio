@@ -89,6 +89,7 @@ public:
 
     QList<Disk> list() override { return disks; }
     QString unmount(const QString &filesystem) override { return made("unmount " + filesystem, "unmount"); }
+    QString lock(const QString &encrypted) override { return made("lock " + encrypted, "lock"); }
     QString makeTable(const Disk &disk) override { return made("makeTable " + disk.block, "makeTable"); }
     QString addPartition(const Disk &disk, const QString &type, const QString &label, QString *partition) override {
         *partition = disk.block + "1";
@@ -2950,6 +2951,7 @@ private slots:
         QVERIFY(system.mounts.contains("/"));
         QVERIFY(system.mounts.contains("/boot"));
         QVERIFY(Disks::holdsSystem(system));
+        QCOMPARE(system.unlocked, QStringList{at + "nvme0n1p2"});
         const Disk &stick = disks.at(1);
         QCOMPARE(stick.device, QString("/dev/sda"));
         QCOMPARE(stick.label, QString("OMARCHY_202611"));
@@ -2959,6 +2961,7 @@ private slots:
         QCOMPARE(stick.bus, QString("usb"));
         QVERIFY(stick.removable && stick.canPowerOff && stick.ejectable && !stick.optical && !stick.readOnly);
         QVERIFY(!Disks::holdsSystem(stick));
+        QVERIFY(stick.unlocked.isEmpty());
     }
 
     void disksSwappedForACopyArentTheSameDisk()
@@ -3313,6 +3316,26 @@ private slots:
         QSignalSpy formatted(&formatting, &FileOps::notice);
         formatting.format(sanDisk().identity, "Photos");
         QTRY_COMPARE(formatted.count(), 1);
+    }
+
+    void burningLocksWhatsUnlockedOnTheDrive()
+    {
+        // An encrypted stick's volume, unlocked, holds the disk even once
+        // its filesystem is unmounted.
+        QTemporaryDir dir;
+        const QString image = dir.filePath("ubuntu.iso");
+        writeImageFile(image, 1 << 20);
+        Disk stick = sanDisk();
+        stick.filesystems = {"/org/freedesktop/UDisks2/block_devices/dm_2d1"};
+        stick.unlocked = {stick.block + "1"};
+        auto fake = fakeDisks({stick});
+        fake->device = dir.filePath("sdb");
+        FileOps ops;
+        QSignalSpy notice(&ops, &FileOps::notice);
+        ops.burn(image, stick.identity);
+        QTRY_COMPARE(notice.count(), 1);
+        QCOMPARE(fake->calls, (QStringList{"unmount " + stick.filesystems.first(), "lock " + stick.block + "1",
+                                           "open " + stick.block, "eject " + stick.block}));
     }
 
     void burningWritesTheImageThenEjects()

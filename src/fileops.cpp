@@ -2245,6 +2245,10 @@ void FileOps::burn(const QString &image, const QString &id) {
             for (const QString &filesystem : disk.filesystems)
                 if (result.error = disks->unmount(filesystem); !result.error.isEmpty())
                     return result;
+            // An unlocked volume keeps the disk from being opened whole.
+            for (const QString &encrypted : disk.unlocked)
+                if (result.error = disks->lock(encrypted); !result.error.isEmpty())
+                    return result;
             // Cancelled while it was let go of, nothing's erased yet.
             if (job.cancelled)
                 return result;

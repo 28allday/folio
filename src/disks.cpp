@@ -88,6 +88,10 @@ public:
         return reply.errorName() == "org.freedesktop.UDisks2.Error.NotMounted" ? QString() : failure(reply);
     }
 
+    QString lock(const QString &encrypted) override {
+        return failure(call(encrypted, prefix + "Encrypted", "Lock", {QVariantMap()}));
+    }
+
     QString makeTable(const Disk &disk) override {
         // Tearing down also locks anything unlocked on it, which unmounting
         // alone leaves open.
@@ -280,14 +284,17 @@ QList<Disk> Disks::parse(const Objects &objects) {
         disks.insert(disk.block, disk);
     }
 
-    // What's on each disk: its filesystems, wherever they're mounted, the
-    // first label among them, and whether it's part of something bigger.
+    // What's on each disk: its filesystems, wherever they're mounted, what's
+    // unlocked on it, the first label among them, and whether it's part of
+    // something bigger.
     for (auto it = objects.begin(); it != objects.end(); ++it) {
         auto disk = disks.find(diskOf(it.key()));
         if (disk == disks.end())
             continue;
         const QVariantMap block = it.value().value("Block");
         disk->identity += '\n' + block.value("IdUUID").toString();
+        if (const QString backing = block.value("CryptoBackingDevice").toString(); !backing.isEmpty() && backing != "/")
+            disk->unlocked << backing;
         // LVM2 and RAID members are "raid" to udisks.
         if (block.value("IdUsage").toString() == "raid"
             || it.value().value("Swapspace").value("Active").toBool())

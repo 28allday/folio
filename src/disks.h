@@ -42,6 +42,9 @@ struct Disk {
     // which have to let go before the disk can be written.
     QStringList mounts;
     QStringList filesystems;
+    // Encrypted volumes on it that are unlocked, which hold it until
+    // they're locked again.
+    QStringList unlocked;
 };
 
 // Folio's way to udisks2: listing disks and the few changes it makes to
@@ -62,6 +65,7 @@ public:
 
     virtual QList<Disk> list() = 0;
     virtual QString unmount(const QString &filesystem) = 0;
+    virtual QString lock(const QString &encrypted) = 0;
     // A new, empty GPT partition table over the whole disk.
     virtual QString makeTable(const Disk &disk) = 0;
     // One partition filling the table, formatted `type` (a FileSystem's)
