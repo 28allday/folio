@@ -57,6 +57,14 @@ static void setUp(QGuiApplication &app) {
 // the large look at one file, stepping through its folder. Its own process,
 // so a file that crashes a decoder only closes this window.
 static int preview(QGuiApplication &app) {
+    // Qt's FFmpeg backend first tries every kind of video hardware it knows
+    // (VDPAU, CUDA, VA-API, Vulkan), which takes seconds before the first
+    // frame. A preview is a quick look, so it decodes in software and starts
+    // at once, unless the user picked the hardware themselves. Set before
+    // the multimedia plugin loads, when the window does.
+    for (const char *name : {"QT_FFMPEG_DECODING_HW_DEVICE_TYPES", "QT_FFMPEG_ENCODING_HW_DEVICE_TYPES"})
+        if (!qEnvironmentVariableIsSet(name))
+            qputenv(name, "none");
     QStringList args = app.arguments().mid(2);
     bool showHidden = false;
     bool follow = false;
