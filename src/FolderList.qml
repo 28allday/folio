@@ -38,7 +38,7 @@ ListView {
     clip: true
     focus: true
     keyNavigationEnabled: true
-    interactive: false
+    acceptedButtons: Qt.NoButton
     boundsBehavior: Flickable.StopAtBounds
     highlightFollowsCurrentItem: false
     model: backend.folder

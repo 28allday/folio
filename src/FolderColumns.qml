@@ -57,7 +57,7 @@ Item {
         id: flick
         anchors.fill: parent
         clip: true
-        interactive: false
+        acceptedButtons: Qt.NoButton
         contentWidth: row.width
         contentHeight: height
         boundsBehavior: Flickable.StopAtBounds
@@ -83,7 +83,7 @@ Item {
                         width: view.columnWidth
                         height: parent.height
                         clip: true
-                        interactive: false
+                        acceptedButtons: Qt.NoButton
                         boundsBehavior: Flickable.StopAtBounds
                         ScrollBar.vertical: FolioScrollBar { }
                         model: FolderModel {
@@ -125,7 +125,7 @@ Item {
                 clip: true
                 focus: true
                 keyNavigationEnabled: true
-                interactive: false
+                acceptedButtons: Qt.NoButton
                 boundsBehavior: Flickable.StopAtBounds
                 highlightFollowsCurrentItem: false
                 model: backend.folder
@@ -167,7 +167,7 @@ Item {
                 height: row.height
                 visible: view.selected.isDir === true
                 clip: true
-                interactive: false
+                acceptedButtons: Qt.NoButton
                 boundsBehavior: Flickable.StopAtBounds
                 ScrollBar.vertical: FolioScrollBar { }
                 TapHandler {

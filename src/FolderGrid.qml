@@ -41,8 +41,9 @@ GridView {
     focus: true
     keyNavigationEnabled: true
     // Pressing and dragging picks up a file (to pin it, or drop it in another
-    // app) rather than flicking; the wheel and touchpad still scroll.
-    interactive: false
+    // app) or draws a band, rather than flicking; the wheel and touchpad
+    // still scroll, which turning the view's interactive off would stop too.
+    acceptedButtons: Qt.NoButton
     boundsBehavior: Flickable.StopAtBounds
     model: backend.folder
     readonly property int columns: Math.max(1, Math.floor(width / 168))
