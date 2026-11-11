@@ -1694,6 +1694,37 @@ private slots:
         QCOMPARE(ops.undoName(), QString("Undo Rename"));
     }
 
+    void undoRefusesAnotherItemPutWhereItsWas()
+    {
+        // Renamed, then moved away by another app, an item can have another
+        // take its name; undo leaves that one be rather than renaming it.
+        QTemporaryDir dir, away;
+        FileOps::forgetHistory();
+        write(dir.filePath("a.txt"), "mine");
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        QCOMPARE(ops.rename(dir.filePath("a.txt"), "b.txt"), QString());
+        QVERIFY(QFile::rename(dir.filePath("b.txt"), away.filePath("b.txt")));
+        write(dir.filePath("b.txt"), "theirs");
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(failed.last().first().toString(), QString("Can't undo that: b.txt isn't where it was left."));
+        QCOMPARE(contents(dir.filePath("b.txt")), QByteArray("theirs"));
+        QVERIFY(!QFileInfo::exists(dir.filePath("a.txt")));
+
+        // Back where it was left, it's undone, and redone.
+        QVERIFY(QFile::remove(dir.filePath("b.txt")));
+        QVERIFY(QFile::rename(away.filePath("b.txt"), dir.filePath("b.txt")));
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(dir.filePath("a.txt")), QByteArray("mine"));
+        ops.redo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(dir.filePath("b.txt")), QByteArray("mine"));
+        QCOMPARE(failed.count(), 1);
+    }
+
     void undoRefusesATrashedItemThatsSinceAnother()
     {
         // Deleted from the trash for good, an item's name there can go to

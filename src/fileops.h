@@ -51,6 +51,11 @@ public:
     struct Step {
         bool trash = false;
         QString path, other;
+        // Which item it is, where the step leaves it: its drive, inode and
+        // type, so undo never takes another put there since for it. Zero
+        // when it isn't known.
+        quint64 device = 0, inode = 0;
+        uint type = 0;
     };
     // What undo names: the kind of change, and the item or how many.
     enum Kind { Renaming, Moving, Copying, Duplicating, MakingFolder, Compressing, Extracting, Trashing };

@@ -365,6 +365,36 @@ static bool put(const QString &from, const QString &to, bool move, QString *erro
     return true;
 }
 
+// Where a step's item is now, and where flipping it takes it (empty for
+// into the trash, where it goes under a name found then).
+static std::pair<QString, QString> ends(const FileOps::Step &step) {
+    if (!step.trash)
+        return {step.path, step.other};
+    if (step.other.isEmpty())
+        return {step.path, {}};
+    return {step.other, step.path};
+}
+
+// The step, knowing which item is where it leaves it, so undo can tell it
+// from another put there since. Nothing's known when nothing's there.
+static FileOps::Step identified(FileOps::Step step) {
+    struct stat info;
+    const bool there = ::lstat(QFile::encodeName(ends(step).first).constData(), &info) == 0;
+    step.device = there ? info.st_dev : 0;
+    step.inode = there ? info.st_ino : 0;
+    step.type = there ? info.st_mode & S_IFMT : 0;
+    return step;
+}
+
+// Whether the item at `path` is the one `step` left there, as far as it's
+// known.
+static bool sameAsLeft(const FileOps::Step &step, const QString &path) {
+    struct stat info;
+    return step.inode == 0
+           || (::lstat(QFile::encodeName(path).constData(), &info) == 0 && info.st_dev == step.device
+               && info.st_ino == step.inode && (info.st_mode & S_IFMT) == step.type);
+}
+
 // Notes what putting `from` at `to` changed, for undo: a move that finished
 // can be moved back, and a copy that made something (even one that stopped
 // partway) can go to the trash. What was at `to` already, and stayed when
@@ -374,9 +404,9 @@ static void note(QList<FileOps::Step> *steps, const QString &from, const QString
     if (!steps)
         return;
     if (move && finished)
-        *steps << FileOps::Step{false, to, from};
+        *steps << identified({false, to, from});
     else if (!move && made)
-        *steps << FileOps::Step{true, to, {}};
+        *steps << identified({true, to, {}});
 }
 
 // Puts `from` at `to`, first sending what's there to the trash when
@@ -395,7 +425,7 @@ static bool putReplacing(const QString &from, const QString &to, bool move, bool
         }
         // In the trash, but not found there, it can't be brought back by undo.
         if (!trashed.isEmpty() && steps)
-            *steps << FileOps::Step{true, to, trashed};
+            *steps << identified({true, to, trashed});
     }
     bool arrived = false;
     const bool finished = put(from, to, move, error, job, &arrived);
@@ -830,7 +860,7 @@ void FileOps::compress(const QStringList &selected) {
                 }
                 name = archiveName(paths, folder);
             }
-            remember({Compressing, name, 1, {Step{true, QDir(folder).filePath(name), {}}}});
+            remember({Compressing, name, 1, {identified({true, QDir(folder).filePath(name), {}})}});
             emit done(folder, name);
         });
     if (!process)
@@ -1006,8 +1036,10 @@ void FileOps::extract(const QStringList &archives) {
                 // where it is now: undo sends it to the trash, as it does a
                 // copy.
                 for (Step &step : steps)
-                    if (!step.trash)
-                        step = Step{true, step.path, {}};
+                    if (!step.trash) {
+                        step.trash = true;
+                        step.other.clear();
+                    }
                 for (const auto &folder : hidden)
                     folder->remove();
                 if (!steps.isEmpty())
@@ -1087,7 +1119,7 @@ void FileOps::trash(const QStringList &paths) {
                 QString why;
                 // In the trash, but not found there, it can't be undone.
                 if (const QString trashed = trashOne(path, &why); !trashed.isEmpty())
-                    result.steps << Step{true, path, trashed};
+                    result.steps << identified({true, path, trashed});
                 else if (!why.isEmpty())
                     result.failures << tr("%1 (%2)").arg(QFileInfo(path).fileName(), why);
                 ++job.done;
@@ -1437,7 +1469,7 @@ QString FileOps::rename(const QString &path, const QString &name) {
     if (!QFile::rename(path, destination))
         return QFileInfo::exists(destination) ? tr("%1 already exists here.").arg(clean)
                                               : tr("Couldn't rename %1.").arg(info.fileName());
-    remember({Renaming, info.fileName(), 1, {Step{false, destination, path}}});
+    remember({Renaming, info.fileName(), 1, {identified({false, destination, path})}});
     emit done(info.absolutePath(), clean);
     return {};
 }
@@ -1454,7 +1486,7 @@ void FileOps::newFolder(const QString &folder) {
         emit failed(tr("Couldn't create a folder here."));
         return;
     }
-    remember({MakingFolder, name, 1, {Step{true, QDir(folder).filePath(name), {}}}});
+    remember({MakingFolder, name, 1, {identified({true, QDir(folder).filePath(name), {}})}});
     emit done(folder, name);
 }
 
@@ -1520,16 +1552,6 @@ static QString didMessage(const FileOps::Change &change, bool undoing) {
     return {};
 }
 
-// Where a step's item is now, and where flipping it takes it (empty for
-// into the trash, where it goes under a name found then).
-static std::pair<QString, QString> ends(const FileOps::Step &step) {
-    if (!step.trash)
-        return {step.path, step.other};
-    if (step.other.isEmpty())
-        return {step.path, {}};
-    return {step.other, step.path};
-}
-
 // Whether everything is where `steps` left it, so flipping them (the last
 // first) does what it says: each item where it was put, and nothing in the
 // place it goes back to. A sentence saying what's changed when not.
@@ -1546,7 +1568,9 @@ static QString unchanged(const QList<FileOps::Step> &steps, bool undoing) {
         // says it came from here: once it was deleted for good, the name
         // there can have gone to another.
         const bool trashed = step->trash && !step->other.isEmpty();
-        if (!there(now) || (trashed && FileOps::originalPath(now) != step->path)) {
+        // Nor is anything else put where it was.
+        if (!there(now) || (trashed && FileOps::originalPath(now) != step->path)
+            || (!after.contains(now) && !sameAsLeft(*step, now))) {
             const QString name = QFileInfo(step->path).fileName();
             return undoing ? FileOps::tr("Can't undo that: %1 isn't where it was left.").arg(name)
                            : FileOps::tr("Can't redo that: %1 isn't where it was left.").arg(name);
@@ -1573,6 +1597,7 @@ static bool flip(FileOps::Step &step, QString *error, FileOps::Job *job) {
         if (!put(step.path, step.other, true, error, job))
             return false;
         std::swap(step.path, step.other);
+        step = identified(step);
         return true;
     }
     if (step.other.isEmpty()) {
@@ -1580,6 +1605,7 @@ static bool flip(FileOps::Step &step, QString *error, FileOps::Job *job) {
         step.other = FileOps::trashOne(step.path, &why);
         if (step.other.isEmpty())
             *error = FileOps::tr("Couldn't move %1 to the trash: %2").arg(QFileInfo(step.path).fileName(), why);
+        step = identified(step);
         return !step.other.isEmpty();
     }
     const QString back = FileOps::restoreOne(step.other, error, job);
@@ -1587,6 +1613,7 @@ static bool flip(FileOps::Step &step, QString *error, FileOps::Job *job) {
         return false;
     step.path = back;
     step.other.clear();
+    step = identified(step);
     return true;
 }
 
