@@ -26,7 +26,7 @@ TextField {
 
     Text {
         x: field.leftPadding
-        width: field.availableWidth
+        width: field.width - field.leftPadding - field.rightPadding
         anchors.verticalCenter: parent.verticalCenter
         visible: field.length === 0 && field.preeditText.length === 0
         text: field.placeholderText
