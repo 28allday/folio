@@ -4,6 +4,7 @@
 #include <functional>
 #include <QDateTime>
 #include <QFileSystemWatcher>
+#include <QLocale>
 #include <QStringList>
 #include <QTimer>
 #include <QVariantList>
@@ -103,9 +104,12 @@ public:
     Q_INVOKABLE QStringList selectedPaths() const;
 
     // Synchronous building blocks, used by the background passes and tests.
-    // A listing stops, empty, as soon as `stop` returns true.
+    // A listing stops, empty, as soon as `stop` returns true. Names sort
+    // by `locale`'s alphabet; a background pass passes the one it was
+    // started with, because the default locale may only be read on the
+    // thread that sets it.
     static QVector<Entry> list(const QString &path, bool showHidden, const QString &sort, QString *error,
-                               const std::function<bool()> &stop = {});
+                               const std::function<bool()> &stop = {}, const QLocale &locale = QLocale());
     static Entry entryFor(const QFileInfo &info, const QMimeDatabase &mimes);
     // An entry as QML reads it, by the names of its fields.
     static QVariantMap toMap(const Entry &entry);
@@ -115,7 +119,7 @@ public:
     // no use for its pictures or their order.
     static int itemCount(const QString &folder, bool showHidden);
     static QStringList sortModes();
-    static void sortEntries(QVector<Entry> &entries, const QString &sort);
+    static void sortEntries(QVector<Entry> &entries, const QString &sort, const QLocale &locale = QLocale());
     // The Recents view: a path that isn't a folder, listing recently used files.
     static QString recentPath() { return QStringLiteral("recent:"); }
     static QString recentFile();
@@ -126,8 +130,9 @@ public:
     // followed by its host, named by its host name.
     static QString tailnetPath() { return QStringLiteral("tailnet:"); }
     // The machines among `peers` whose names contain `query` (ignoring
-    // case), or all of them, by name.
-    static QVector<Entry> listPeers(const QVariantList &peers, const QString &query = {});
+    // case), or all of them, by name in `locale`'s alphabet.
+    static QVector<Entry> listPeers(const QVariantList &peers, const QString &query = {},
+                                    const QLocale &locale = QLocale());
     // Recents and the tailnet: lists of their own, not folders.
     static bool isView(const QString &path) { return path == recentPath() || path == tailnetPath(); }
     static QString kindForMime(const QString &mime);
@@ -135,7 +140,8 @@ public:
     // named by its path from `root`. Stops at `limit` matches, at other
     // filesystems and at symlinks, and as soon as `stop` returns true.
     static QVector<Entry> search(const QString &root, const QString &query, bool showHidden, const QString &sort,
-                                 const std::function<bool()> &stop = {}, int limit = 1000);
+                                 const std::function<bool()> &stop = {}, int limit = 1000,
+                                 const QLocale &locale = QLocale());
 
 signals:
     void pathChanged();

@@ -92,7 +92,7 @@ FocusScope {
         const name = paths[0].slice(paths[0].lastIndexOf("/") + 1)
         confirm.ask(qsTr("Delete for good?"),
                     paths.length === 1 ? qsTr("%1 will be deleted permanently. This can't be undone.").arg(name)
-                                       : qsTr("%n items will be deleted permanently. This can't be undone.", "", paths.length),
+                                       : qsTr("%Ln items will be deleted permanently. This can't be undone.", "", paths.length),
                     qsTr("Delete"), () => fileOps.deleteForever(paths))
     }
     function emptyTrash() {
@@ -100,7 +100,7 @@ FocusScope {
         if (count === 0)
             return
         confirm.ask(qsTr("Empty the trash?"),
-                    qsTr("%n items will be deleted permanently. This can't be undone.", "", count),
+                    qsTr("%Ln items will be deleted permanently. This can't be undone.", "", count),
                     qsTr("Empty Trash"), () => fileOps.emptyTrash())
     }
 
@@ -209,7 +209,7 @@ FocusScope {
 
     Connections {
         target: view.item
-        function onContextMenu(item, folder) { fileMenu.show(item, folder) }
+        function onContextMenu(item, folder, at) { fileMenu.show(item, folder, null, at) }
         function onCursorLetGo() { pane.cursorLetGo = true }
         // The cursor's item is remembered as the cursor moves, and once the
         // folder's loaded has placed it. Not when a re-read leaves the cursor
@@ -228,6 +228,13 @@ FocusScope {
     // folder, the new name): right away when the folder already lists it
     // (a long move's folder arrived long before the move was done),
     // otherwise once the folder has re-read.
+    // Names sort by the language's alphabet, so a switch lists the folder
+    // again.
+    Connections {
+        target: translator
+        function onChanged() { backend.folder.reload() }
+    }
+
     Connections {
         target: fileOps
         function onDone(folder, name) {
@@ -389,12 +396,13 @@ FocusScope {
         Component { id: columnsView; FolderColumns { } }
     }
 
-    // Drawn over the window's top bar. It reaches left over the sidebar for
-    // the first pane (so the path starts at the window's edge) and right over
+    // Drawn over the window's top bar. It reaches back over the sidebar for
+    // the first pane (so the path starts at the window's edge) and on over
     // the details column for the last one (so the buttons end at the edge).
+    // Mirrored, the sidebar is on the right and the details on the left.
     PathBar {
         id: pathBar
-        x: -pane.barLeft
+        x: LayoutMirroring.enabled ? -pane.barExtension : -pane.barLeft
         width: pane.barLeft + pane.width + pane.barExtension
         onEditDone: pane.focusView()
         previewVisible: pane.host ? pane.host.previewVisible : true

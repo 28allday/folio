@@ -44,7 +44,7 @@ FolioDialog {
         id: forAll
         visible: dialog.others > 0
         checkable: true
-        text: qsTr("Do this for the other %n clashes", "", dialog.others)
+        text: qsTr("Do this for the other %Ln clashes", "", dialog.others)
         Accessible.name: text
         Keys.onReturnPressed: toggle()
         Keys.onEnterPressed: toggle()

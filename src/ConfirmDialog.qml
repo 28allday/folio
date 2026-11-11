@@ -40,8 +40,11 @@ FolioDialog {
 
     Keys.onEscapePressed: dialog.close()
 
+    // Aligned explicitly, so that it's mirrored: a message that starts with
+    // a file name would otherwise follow the name's script.
     Text {
         Layout.fillWidth: true
+        horizontalAlignment: Text.AlignLeft
         text: dialog.message
         color: theme.foreground
         wrapMode: Text.Wrap

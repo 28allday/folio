@@ -15,7 +15,12 @@ ApplicationWindow {
     minimumWidth: 720
     minimumHeight: 460
     visible: true
-    title: activePane && activePane.paneBackend.title.length > 0 ? activePane.paneBackend.title : "Files"
+    // The backend's title (Home, Trash) is translated in C++, which
+    // retranslating QML doesn't redo, so the language is read here too.
+    title: {
+        translator.language
+        return activePane && activePane.paneBackend.title.length > 0 ? activePane.paneBackend.title : qsTr("Files")
+    }
     color: theme.background
 
     Material.theme: theme.light ? Material.Light : Material.Dark
@@ -23,6 +28,12 @@ ApplicationWindow {
     Material.foreground: theme.foreground
     Material.background: theme.background
     Material.roundedScale: theme.radius
+
+    // Right-to-left languages mirror the window, its menus and tooltips
+    // included: they live in the window's overlay, outside its other items.
+    // The Translator sets the application's layout direction.
+    LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
+    LayoutMirroring.childrenInherit: true
 
     property bool helpVisible: false
     property bool previewVisible: true
@@ -100,12 +111,8 @@ ApplicationWindow {
         }
     }
 
-    // Right-to-left languages mirror the window; the Translator sets the
-    // application's layout direction.
     Item {
         anchors.fill: parent
-        LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
-        LayoutMirroring.childrenInherit: true
 
         // The bar across the top; the panes' path bars draw over it.
         readonly property int barHeight: 60

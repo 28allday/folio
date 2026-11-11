@@ -48,9 +48,11 @@ FolioMenu {
     property bool canBurn: false
     property var burnTargets: []
 
-    // Opens at the pointer, or (from the keyboard, Alt+Return) beside the
-    // item it's about.
-    function show(clicked, where, near) {
+    // Opens at the pointer (`at`, in the window), or (from the keyboard,
+    // Alt+Return) beside the item it's about. Mirrored, it opens leftward,
+    // and beside the item's icon and name at its right end; Menu mirrors
+    // neither by itself.
+    function show(clicked, where, near, at) {
         target = clicked
         folder = where
         // Empty space among machines has nothing to offer.
@@ -67,10 +69,17 @@ FolioMenu {
                 entry.shown = entry.subMenu === shareMenu ? canShare
                             : entry.subMenu === burnMenu ? canBurn : canOpenWith
         }
-        if (near)
-            popup(near, Math.min(near.width / 2, 120), near.height / 2)
-        else
+        // The menu's own `mirrored` is only set once it's open.
+        const rtl = Qt.application.layoutDirection === Qt.RightToLeft
+        if (near) {
+            const x = Math.min(near.width / 2, 120)
+            popup(near, rtl ? near.width - x - width : x, near.height / 2)
+        } else if (at) {
+            const p = parent.mapFromItem(null, at.x, at.y)
+            popup(rtl ? p.x - width : p.x, p.y)
+        } else {
             popup()
+        }
     }
 
     // Names the change it undoes ("Undo Rename"), whichever window made it.
@@ -83,7 +92,7 @@ FolioMenu {
     MenuLine { shown: !fileMenu.forItem && fileOps.undoName.length > 0 }
     FolioMenuItem {
         shown: fileMenu.forItem && fileMenu.trashView
-        text: fileMenu.forSelection ? qsTr("Restore %n Items", "", fileMenu.paths.length) : qsTr("Restore")
+        text: fileMenu.forSelection ? qsTr("Restore %Ln Items", "", fileMenu.paths.length) : qsTr("Restore")
         onTriggered: fileOps.restore(fileMenu.paths)
     }
     FolioMenuItem {
@@ -268,7 +277,7 @@ FolioMenu {
     FolioMenuItem {
         shown: fileMenu.forItem && fileMenu.forFiles
         text: fileMenu.trashView ? qsTr("Delete Permanently…")
-            : fileMenu.forSelection ? qsTr("Delete %n Items", "", fileMenu.paths.length) : qsTr("Delete")
+            : fileMenu.forSelection ? qsTr("Delete %Ln Items", "", fileMenu.paths.length) : qsTr("Delete")
         keys: "Delete"
         onTriggered: fileMenu.trashView ? fileMenu.deleteRequested(fileMenu.paths) : fileOps.trash(fileMenu.paths)
     }

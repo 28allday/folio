@@ -101,6 +101,7 @@ static int preview(QGuiApplication &app) {
 
     QQmlApplicationEngine engine;
     QObject::connect(&translator, &Translator::changed, &engine, &QQmlEngine::retranslate);
+    QObject::connect(&translator, &Translator::changed, &previewer, &Previewer::relist);
     engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
     engine.rootContext()->setContextProperty("translator", &translator);
     engine.rootContext()->setContextProperty("theme", &theme);

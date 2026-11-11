@@ -24,9 +24,9 @@ class Backend : public QObject {
     Q_PROPERTY(QString busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(bool previewing READ previewing NOTIFY previewingChanged)
     // What the details pane shows beyond the listing, for the item last
-    // given to describe(): its type's name, and once they've been read in
-    // the background, a picture's dimensions, a text's opening lines, or a
-    // trashed item's origin and deletion time.
+    // given to describe(), once they've been read in the background: a
+    // picture's dimensions, a text's opening lines, or a trashed item's
+    // origin and deletion time.
     Q_PROPERTY(QVariantMap details READ details NOTIFY detailsChanged)
 
 public:
@@ -60,6 +60,9 @@ public:
     Q_INVOKABLE void expectSelection(const QString &name) { m_pendingSelection = name; }
     QVariantMap details() const { return m_details; }
     Q_INVOKABLE void describe(const QVariantMap &item, bool inTrash = false);
+    // The system's own name for a type ("JPEG image"), in the language of
+    // the moment.
+    Q_INVOKABLE static QString typeName(const QString &mime);
     // The item to select once the folder has loaded (where we came from, or
     // what "Show in folder" asked for); empty means the first item.
     Q_INVOKABLE QString takeSelection();

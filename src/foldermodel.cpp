@@ -49,8 +49,9 @@ static QCache<QString, QVector<FolderModel::Entry>> &recentListings() {
     return cache;
 }
 
+// The language is part of it: names sort by its alphabet.
 QString FolderModel::cacheKey() const {
-    return m_path + '\n' + (m_showHidden ? "h" : "") + '\n' + m_sort;
+    return m_path + '\n' + (m_showHidden ? "h" : "") + '\n' + m_sort + '\n' + QLocale().name();
 }
 
 void FolderModel::remember() {
@@ -232,7 +233,8 @@ static QDir::Filters entryFilters(bool showHidden) {
 }
 
 QVector<FolderModel::Entry> FolderModel::list(const QString &path, bool showHidden, const QString &sort,
-                                              QString *error, const std::function<bool()> &stop) {
+                                              QString *error, const std::function<bool()> &stop,
+                                              const QLocale &locale) {
     if (path == recentPath()) {
         // Recents are always most recently used first; that's what they're for.
         return listRecent(recentFile(), showHidden, 200, stop);
@@ -257,7 +259,7 @@ QVector<FolderModel::Entry> FolderModel::list(const QString &path, bool showHidd
             return {};
         entries.push_back(entryFor(it.nextFileInfo(), mimes));
     }
-    sortEntries(entries, sort);
+    sortEntries(entries, sort, locale);
     return entries;
 }
 
@@ -277,7 +279,7 @@ FolderModel::Entry FolderModel::entryFor(const QFileInfo &info, const QMimeDatab
 
 QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QString &query, bool showHidden,
                                                 const QString &sort, const std::function<bool()> &stop,
-                                                int limit) {
+                                                int limit, const QLocale &locale) {
     QVector<Entry> entries;
     struct stat top;
     if (::stat(QFile::encodeName(root).constData(), &top) != 0)
@@ -311,7 +313,7 @@ QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QStri
                 folders << info.absoluteFilePath();
         }
     }
-    sortEntries(entries, sort);
+    sortEntries(entries, sort, locale);
     return entries;
 }
 
@@ -321,8 +323,8 @@ QStringList FolderModel::sortModes() {
     return {"name", "kind", "modified", "oldest", "size"};
 }
 
-void FolderModel::sortEntries(QVector<Entry> &entries, const QString &sort) {
-    QCollator collator;
+void FolderModel::sortEntries(QVector<Entry> &entries, const QString &sort, const QLocale &locale) {
+    QCollator collator(locale);
     collator.setNumericMode(true);
     collator.setCaseSensitivity(Qt::CaseInsensitive);
     std::stable_sort(entries.begin(), entries.end(), [&](const Entry &a, const Entry &b) {
@@ -389,7 +391,8 @@ QVector<FolderModel::Entry> FolderModel::listRecent(const QString &xbel, bool sh
     return entries;
 }
 
-QVector<FolderModel::Entry> FolderModel::listPeers(const QVariantList &peers, const QString &query) {
+QVector<FolderModel::Entry> FolderModel::listPeers(const QVariantList &peers, const QString &query,
+                                                const QLocale &locale) {
     QVector<Entry> entries;
     for (const QVariant &peer : peers) {
         const QVariantMap map = peer.toMap();
@@ -403,7 +406,7 @@ QVector<FolderModel::Entry> FolderModel::listPeers(const QVariantList &peers, co
         entries.push_back(e);
     }
     // By name in every order: machines have no size, kind or date to sort by.
-    sortEntries(entries, "name");
+    sortEntries(entries, "name", locale);
     return entries;
 }
 
@@ -444,6 +447,7 @@ void FolderModel::reload() {
     const QString sort = m_sort;
     const QString query = m_query;
     const QVariantList peers = m_peers;
+    const QLocale locale;
     *m_latest = generation;
     const auto latest = m_latest;
     auto *watcher = new QFutureWatcher<QPair<QVector<Entry>, QString>>(this);
@@ -475,12 +479,12 @@ void FolderModel::reload() {
             remember();
         countFolders(generation);
     });
-    watcher->setFuture(QtConcurrent::run([path, showHidden, sort, query, peers, latest, generation] {
+    watcher->setFuture(QtConcurrent::run([path, showHidden, sort, query, peers, latest, generation, locale] {
         QString error;
         const auto overtaken = [&] { return *latest != generation; };
-        auto entries = path == tailnetPath() ? listPeers(peers, query)
-                     : query.isEmpty() || path == recentPath() ? list(path, showHidden, sort, &error, overtaken)
-                     : search(path, query, showHidden, sort, overtaken);
+        auto entries = path == tailnetPath() ? listPeers(peers, query, locale)
+                     : query.isEmpty() || path == recentPath() ? list(path, showHidden, sort, &error, overtaken, locale)
+                     : search(path, query, showHidden, sort, overtaken, 1000, locale);
         return qMakePair(entries, error);
     }));
 }

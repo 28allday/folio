@@ -108,9 +108,13 @@ Item {
                 color: row.isDir ? theme.accent : theme.secondaryForeground
             }
         }
+        // The name and the date are aligned explicitly, so that they're
+        // mirrored: left as they are, they'd follow their own script, and a
+        // Latin name would sit at the far end of a right-to-left row.
         Text {
             Layout.fillWidth: true
             Layout.minimumWidth: 120
+            horizontalAlignment: Text.AlignLeft
             text: row.name
             color: row.current ? theme.accent : theme.foreground
             elide: Text.ElideMiddle
@@ -127,6 +131,7 @@ Item {
             visible: row.showDate
             Layout.preferredWidth: 96
             Layout.leftMargin: 12
+            horizontalAlignment: Text.AlignLeft
             text: {
                 translator.language // Re-read when the language (and so the default locale) changes.
                 return Format.when(row.modified)
@@ -135,9 +140,10 @@ Item {
             font.pixelSize: 12
             elide: Text.ElideRight
         }
+        // Points to where the next column opens.
         Glyph {
             visible: row.chevron && row.isDir
-            name: "forward"
+            name: row.LayoutMirroring.enabled ? "back" : "forward"
             size: 12
             color: theme.secondaryForeground
         }
@@ -156,6 +162,9 @@ Item {
     // Like the tiles: dragged, a row is a file for the sidebar or another app.
     Drag.dragType: Drag.Automatic
     Drag.supportedActions: Qt.CopyAction | Qt.LinkAction
+    // The pointer holds the picture by its icon and name, which are at its
+    // right end when mirrored.
+    Drag.hotSpot.x: LayoutMirroring.enabled ? row.width : 0
     DragHandler {
         target: null
         enabled: row.kind !== "peer"

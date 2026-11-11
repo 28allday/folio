@@ -35,8 +35,11 @@ FolioDialog {
     // which only the buttons or Escape give.
     Shortcut { sequence: "Escape"; enabled: prompt.visible; context: Qt.WindowShortcut; onActivated: prompt.mounter.cancel() }
 
+    // Aligned explicitly, so that it's mirrored: GVfs may word it in
+    // another language than Folio's.
     Text {
         Layout.fillWidth: true
+        horizontalAlignment: Text.AlignLeft
         text: prompt.mounter.prompt
         color: theme.foreground
         wrapMode: Text.Wrap

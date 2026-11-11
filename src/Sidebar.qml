@@ -14,7 +14,8 @@ Rectangle {
     clip: true
 
     // Keyboard: Tab moves here from the files and back. ↑ ↓ move between
-    // rows, ⏎ (or →) opens one and hands the keyboard back to the files.
+    // rows, ⏎ (or →, toward the files) opens one and hands the keyboard
+    // back to the files.
     signal finished()
     // The ? in the corner: show or hide the shortcuts.
     signal helpRequested()
@@ -70,7 +71,9 @@ Rectangle {
     Keys.onDownPressed: cursor = Math.min(rows.length - 1, cursor + 1)
     Keys.onReturnPressed: (event) => { if (!openDriveMenu(event)) activate(cursor) }
     Keys.onEnterPressed: (event) => { if (!openDriveMenu(event)) activate(cursor) }
-    Keys.onRightPressed: activate(cursor)
+    // The way to the files: left, when mirrored.
+    Keys.onRightPressed: if (!LayoutMirroring.enabled) activate(cursor)
+    Keys.onLeftPressed: if (LayoutMirroring.enabled) activate(cursor)
     Keys.onEscapePressed: finished()
 
     // Alt+⏎ (or the Menu key) on a drive opens its menu beside it; the
@@ -118,9 +121,12 @@ Rectangle {
 
     function statusText(status) {
         // Up to date is the normal state and says nothing; only syncing or
-        // a stopped Dropbox is worth a word.
+        // a stopped Dropbox is worth a word. The status itself stays
+        // English; only what's shown is translated.
+        //: Dropbox's state, in small letters after the Dropbox row.
         return status === "syncing" ? qsTr("syncing")
-             : status === "stopped" ? qsTr("stopped") : ""
+             //: Dropbox's state, in small letters after the Dropbox row.
+             : status === "stopped" ? qsTr("not running") : ""
     }
 
     component SectionLabel: Text {
@@ -148,11 +154,14 @@ Rectangle {
         // A quiet second line under the name, for what's too long to sit
         // beside it in the narrow sidebar.
         property string detail
+        // Room at the row's far end (its left, when mirrored), for a button
+        // over it. Padding isn't mirrored by itself.
+        property real endPadding: 14
 
         Layout.fillWidth: true
         implicitHeight: detail.length > 0 ? 44 : 34
-        leftPadding: 14
-        rightPadding: 14
+        leftPadding: mirrored ? endPadding : 14
+        rightPadding: mirrored ? 14 : endPadding
         hoverEnabled: true
         focusPolicy: Qt.NoFocus
         Accessible.name: text
@@ -187,14 +196,18 @@ Rectangle {
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 2
+                // Set, so that they're mirrored: left as they are, Latin
+                // text would follow its own script and stay on the left.
                 Text {
                     Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignLeft
                     text: row.text
                     elide: Text.ElideRight
                     color: row.active ? theme.brightForeground : theme.foreground
                 }
                 Text {
                     Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignLeft
                     visible: row.detail.length > 0
                     text: row.detail
                     elide: Text.ElideRight
@@ -281,7 +294,7 @@ Rectangle {
                     active: sidebar.activePath === modelData.path
                     onClicked: sidebar.target.navigate(modelData.path)
                     // The name ends short of the unpin button while it shows.
-                    rightPadding: unpin.visible ? unpin.implicitWidth + 6 : 14
+                    endPadding: unpin.visible ? unpin.implicitWidth + 6 : 14
                     IconButton {
                         id: unpin
                         anchors.right: parent.right
@@ -333,7 +346,7 @@ Rectangle {
                     required property int index
                     dropTrashes: modelData.icon === "trash"
                     onDropHoverChanged: sidebar.dropHovers += dropHover ? 1 : -1
-                    text: modelData.name
+                    text: modelData.icon === "trash" ? qsTr("Trash") : qsTr("Recents")
                     glyph: modelData.icon
                     active: sidebar.activePath === modelData.path
                     onClicked: sidebar.target.navigate(modelData.path)
@@ -401,7 +414,7 @@ Rectangle {
                     glyph: "peer"
                     active: sidebar.onMachine(modelData.host)
                     onClicked: sidebar.target.openPeer(modelData.host)
-                    rightPadding: forget.visible ? forget.implicitWidth + 6 : 14
+                    endPadding: forget.visible ? forget.implicitWidth + 6 : 14
                     IconButton {
                         id: forget
                         anchors.right: parent.right

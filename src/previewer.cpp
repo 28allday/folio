@@ -71,11 +71,17 @@ void Previewer::show(const QString &path) {
     // A file from another folder: show it alone, then fill in its siblings.
     m_entries = {FolderModel::entryFor(QFileInfo(absolute), QMimeDatabase())};
     setIndex(0, false);
+    relist();
+}
 
+void Previewer::relist() {
+    if (m_index < 0 || m_index >= m_entries.size())
+        return;
     const quint64 generation = ++m_generation;
-    const QString folder = QFileInfo(absolute).absolutePath();
+    const QString folder = QFileInfo(m_entries.at(m_index).path).absolutePath();
     const bool showHidden = m_showHidden;
     const QString sort = m_sort;
+    const QLocale locale;
     auto *watcher = new QFutureWatcher<QVector<FolderModel::Entry>>(this);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation] {
         watcher->deleteLater();
@@ -95,8 +101,8 @@ void Previewer::show(const QString &path) {
             }
         }
     });
-    watcher->setFuture(QtConcurrent::run([folder, showHidden, sort] {
-        return FolderModel::list(folder, showHidden, sort, nullptr);
+    watcher->setFuture(QtConcurrent::run([folder, showHidden, sort, locale] {
+        return FolderModel::list(folder, showHidden, sort, nullptr, {}, locale);
     }));
 }
 

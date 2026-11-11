@@ -7,6 +7,7 @@
 #include <QFileInfo>
 #include <QFutureWatcher>
 #include <QGuiApplication>
+#include <QLocale>
 #include <QMimeData>
 #include <QMimeDatabase>
 #include <QProcess>
@@ -190,8 +191,10 @@ QString FileOps::freeName(const QString &folder, const QString &name) {
     const QString base = dot > 0 ? name.left(dot) : name;
     const QString ext = dot > 0 ? name.mid(dot) : QString();
     for (int n = 1;; ++n) {
+        // One arg() for all three: a name holding "%2" would otherwise be
+        // filled in again.
         const QString candidate = n == 1 ? QObject::tr("%1 (copy)%2").arg(base, ext)
-                                         : QObject::tr("%1 (copy %2)%3").arg(base).arg(n).arg(ext);
+                                         : QObject::tr("%1 (copy %2)%3").arg(base, QString::number(n), ext);
         if (!taken(dir.filePath(candidate)))
             return candidate;
     }
@@ -793,7 +796,7 @@ static QString counting(const FileOps::Job &job, const QString &several, const Q
 }
 
 void FileOps::sayStopped(const Job &job) {
-    emit notice(tr("Stopped after %1 of %n items.", "", job.total).arg(job.done.load()));
+    emit notice(tr("Stopped after %L1 of %Ln items.", "", job.total).arg(job.done.load()));
 }
 
 void FileOps::transferInBackground(const QStringList &paths, const QString &folder, Mode mode, bool releaseClipboard) {
@@ -879,10 +882,10 @@ void FileOps::startTransfer(const QStringList &paths, const QString &folder, Mod
                                        : moving    ? tr("Moving %1: %2 of %3…").arg(name, bytes(job.bytes), bytes(size))
                                                    : tr("Copying %1: %2 of %3…").arg(name, bytes(job.bytes), bytes(size)))
                                 : duplicating ? tr("Duplicating %1…").arg(name)
-                                : moving      ? tr("Moving %n items…", "", count)
-                                              : tr("Copying %n items…", "", count);
-            return moving ? counting(job, tr("Moving %1 of %n items…", "", job.total), one)
-                          : counting(job, tr("Copying %1 of %n items…", "", job.total), one);
+                                : moving      ? tr("Moving %Ln items…", "", count)
+                                              : tr("Copying %Ln items…", "", count);
+            return moving ? counting(job, tr("Moving %L1 of %Ln items…", "", job.total), one)
+                          : counting(job, tr("Copying %L1 of %Ln items…", "", job.total), one);
         },
         [paths, folder, mode, choices](Job &job) {
             Outcome result;
@@ -962,7 +965,7 @@ void FileOps::compress(const QStringList &selected) {
             if (!line.startsWith("a "))
                 *errors += line + '\n';
             else if (const auto at = order.constFind(line.mid(2)); at != order.cend() && order.size() > 1)
-                setBusy(tr("Compressing %1 of %n items into %2…", "", order.size()).arg(*at + 1).arg(archive));
+                setBusy(tr("Compressing %L1 of %Ln items into %2…", "", order.size()).arg(*at + 1).arg(archive));
         }
     };
     QProcess *process = runTool(
@@ -1109,9 +1112,9 @@ void FileOps::extract(const QStringList &archives) {
     inBackground(
         [name, count](const Job &job) {
             if (count > 1)
-                return counting(job, tr("Extracting %1 of %n archives…", "", job.total),
-                                tr("Extracting %n archives…", "", count));
-            return job.done > 0 ? tr("Extracting %1: %n items…", "", job.done).arg(name) : tr("Extracting %1…").arg(name);
+                return counting(job, tr("Extracting %L1 of %Ln archives…", "", job.total),
+                                tr("Extracting %Ln archives…", "", count));
+            return job.done > 0 ? tr("Extracting %1: %Ln items…", "", job.done).arg(name) : tr("Extracting %1…").arg(name);
         },
         [archives, into](Job &job) {
             // Several archives count themselves; one counts what's in it.
@@ -1158,7 +1161,7 @@ void FileOps::extract(const QStringList &archives) {
             const auto place = [this, items, from, hidden, name, count](const QHash<QString, Choice> &choices) {
                 inBackground(
                     [name, count](const Job &) {
-                        return count > 1 ? tr("Extracting %n archives…", "", count) : tr("Extracting %1…").arg(name);
+                        return count > 1 ? tr("Extracting %Ln archives…", "", count) : tr("Extracting %1…").arg(name);
                     },
                     [items, choices](Job &job) {
                         Outcome result;
@@ -1257,8 +1260,8 @@ void FileOps::trash(const QStringList &paths) {
     const int count = paths.size();
     inBackground(
         [count](const Job &job) {
-            return counting(job, tr("Moving %1 of %n items to the trash…", "", job.total),
-                            tr("Moving %n items to the trash…", "", count));
+            return counting(job, tr("Moving %L1 of %Ln items to the trash…", "", job.total),
+                            tr("Moving %Ln items to the trash…", "", count));
         },
         [paths](Job &job) {
             Outcome result;
@@ -1276,7 +1279,7 @@ void FileOps::trash(const QStringList &paths) {
             if (!result.steps.isEmpty())
                 remember({Trashing, name, int(result.steps.size()), result.steps});
             if (!result.failures.isEmpty())
-                emit failed(tr("Couldn't move to the trash: %1").arg(result.failures.join(", ")));
+                emit failed(tr("Couldn't move to the trash: %1").arg(QLocale().createSeparatedList(result.failures)));
             else if (job.cancelled)
                 sayStopped(job);
         });
@@ -1511,7 +1514,7 @@ void FileOps::restore(const QStringList &paths) {
     const int count = paths.size();
     inBackground(
         [count](const Job &job) {
-            return counting(job, tr("Restoring %1 of %n items…", "", job.total), tr("Restoring %n items…", "", count));
+            return counting(job, tr("Restoring %L1 of %Ln items…", "", job.total), tr("Restoring %Ln items…", "", count));
         },
         [paths](Job &job) {
             Outcome result;
@@ -1533,7 +1536,7 @@ void FileOps::restore(const QStringList &paths) {
             else if (!result.made.isEmpty()) {
                 const QFileInfo last(result.made.first());
                 emit notice(count == 1 ? tr("Restored %1 to %2.").arg(last.fileName(), last.absolutePath())
-                                       : tr("Restored %n items.", "", count));
+                                       : tr("Restored %Ln items.", "", count));
             }
         });
 }
@@ -1554,7 +1557,7 @@ void FileOps::deleteForever(const QStringList &paths) {
     const int count = paths.size();
     inBackground(
         [count](const Job &job) {
-            return counting(job, tr("Deleting %1 of %n items…", "", job.total), tr("Deleting %n items…", "", count));
+            return counting(job, tr("Deleting %L1 of %Ln items…", "", job.total), tr("Deleting %Ln items…", "", count));
         },
         [paths](Job &job) {
             Outcome result;
@@ -1566,7 +1569,7 @@ void FileOps::deleteForever(const QStringList &paths) {
         },
         [this](const Outcome &result, const Job &job) {
             if (!result.failures.isEmpty())
-                emit failed(tr("Couldn't delete %n items.", "", result.failures.size()));
+                emit failed(tr("Couldn't delete %Ln items.", "", result.failures.size()));
             else if (job.cancelled)
                 sayStopped(job);
         });
@@ -1578,7 +1581,7 @@ void FileOps::emptyTrash() {
     forgetRedos();
     inBackground(
         [](const Job &job) {
-            return counting(job, tr("Emptying the trash: %1 of %n items…", "", job.total), tr("Emptying the trash…"));
+            return counting(job, tr("Emptying the trash: %L1 of %Ln items…", "", job.total), tr("Emptying the trash…"));
         },
         [](Job &job) {
             const QStringList dirs = trashDirs();
@@ -1595,7 +1598,7 @@ void FileOps::emptyTrash() {
             if (job.cancelled)
                 sayStopped(job);
             else
-                emit notice(tr("Emptied the trash: %n items deleted.", "", count));
+                emit notice(tr("Emptied the trash: %Ln items deleted.", "", count));
         });
 }
 
@@ -1622,9 +1625,11 @@ void FileOps::newFolder(const QString &folder) {
         emit failed(tr("Folders can't be made here."));
         return;
     }
-    QString name = tr("New Folder");
+    // Not "New Folder", the menu's command: many languages word a command
+    // as a verb and a name as a noun.
+    QString name = tr("Untitled Folder");
     for (int n = 2; QFileInfo::exists(QDir(folder).filePath(name)); ++n)
-        name = tr("New Folder %1").arg(n);
+        name = tr("Untitled Folder %1").arg(n);
     if (!QDir(folder).mkdir(name)) {
         emit failed(tr("Couldn't create a folder here."));
         return;
@@ -1699,9 +1704,9 @@ static QString didMessage(const FileOps::Change &change, bool undoing) {
     case FileOps::Renaming:
         return undoing ? FileOps::tr("Undid renaming %1.").arg(name) : FileOps::tr("Redid renaming %1.").arg(name);
     case FileOps::Moving:
-        return undoing ? FileOps::tr("Undid moving %n items.", "", n) : FileOps::tr("Redid moving %n items.", "", n);
+        return undoing ? FileOps::tr("Undid moving %Ln items.", "", n) : FileOps::tr("Redid moving %Ln items.", "", n);
     case FileOps::Copying:
-        return undoing ? FileOps::tr("Undid copying %n items.", "", n) : FileOps::tr("Redid copying %n items.", "", n);
+        return undoing ? FileOps::tr("Undid copying %Ln items.", "", n) : FileOps::tr("Redid copying %Ln items.", "", n);
     case FileOps::Duplicating:
         return undoing ? FileOps::tr("Undid duplicating %1.").arg(name) : FileOps::tr("Redid duplicating %1.").arg(name);
     case FileOps::MakingFolder:
@@ -1711,12 +1716,12 @@ static QString didMessage(const FileOps::Change &change, bool undoing) {
                        : FileOps::tr("Redid compressing into %1.").arg(name);
     case FileOps::Extracting:
         if (n > 1)
-            return undoing ? FileOps::tr("Undid extracting %n archives.", "", n)
-                           : FileOps::tr("Redid extracting %n archives.", "", n);
+            return undoing ? FileOps::tr("Undid extracting %Ln archives.", "", n)
+                           : FileOps::tr("Redid extracting %Ln archives.", "", n);
         return undoing ? FileOps::tr("Undid extracting %1.").arg(name) : FileOps::tr("Redid extracting %1.").arg(name);
     case FileOps::Trashing:
-        return undoing ? FileOps::tr("Undid moving %n items to the trash.", "", n)
-                       : FileOps::tr("Redid moving %n items to the trash.", "", n);
+        return undoing ? FileOps::tr("Undid moving %Ln items to the trash.", "", n)
+                       : FileOps::tr("Redid moving %Ln items to the trash.", "", n);
     }
     return {};
 }
@@ -1854,8 +1859,8 @@ void FileOps::step(bool undoing) {
     tellEveryone();
     inBackground(
         [undoing](const Job &job) {
-            return undoing ? counting(job, tr("Undoing %1 of %n items…", "", job.total), tr("Undoing…"))
-                           : counting(job, tr("Redoing %1 of %n items…", "", job.total), tr("Redoing…"));
+            return undoing ? counting(job, tr("Undoing %L1 of %Ln items…", "", job.total), tr("Undoing…"))
+                           : counting(job, tr("Redoing %L1 of %Ln items…", "", job.total), tr("Redoing…"));
         },
         [steps = change.steps](Job &job) mutable {
             Outcome result;
@@ -2109,7 +2114,7 @@ QVariantList FileOps::formatChoices() const {
     for (const Disks::FileSystem &fs : Disks::fileSystems())
         if (disks->canFormat(QString::fromLatin1(fs.type)))
             choices << QVariantMap{{"type", QString::fromLatin1(fs.type)}, {"name", QString::fromLatin1(fs.name)},
-                                   {"detail", tr(fs.detail)}, {"labelLimit", fs.labelLimit}};
+                                   {"detail", QCoreApplication::translate("Disks", fs.detail)}, {"labelLimit", fs.labelLimit}};
     return choices;
 }
 

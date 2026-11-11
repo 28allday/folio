@@ -13,10 +13,12 @@ Rectangle {
 
     property var shortcuts: [
         ["← ↑ → ↓", qsTr("Move the selection")],
-        ["→ / ←", qsTr("In list and columns: into a folder / back out")],
-        ["Shift+click / Shift+arrows", qsTr("Select a range")],
-        ["Alt+click", qsTr("Add or remove one from the selection")],
-        ["Drag on empty space", qsTr("Select with a rectangle (Alt adds)")],
+        [LayoutMirroring.enabled ? "← / →" : "→ / ←", qsTr("In list and columns: into a folder / back out")],
+        // The keys in these few are mixed with words; the key names (Shift,
+        // Alt, ⏎) stay as they are in every language.
+        [qsTr("Shift+click / Shift+arrows"), qsTr("Select a range")],
+        [qsTr("Alt+click"), qsTr("Add or remove one from the selection")],
+        [qsTr("Drag on empty space"), qsTr("Select with a rectangle (Alt adds)")],
         ["Ctrl+A", qsTr("Select everything")],
         ["Tab", qsTr("Move between the sidebar and the panes")],
         ["⏎", qsTr("Open")],
@@ -39,7 +41,7 @@ Rectangle {
         ["Delete", qsTr("Move to the trash")],
         ["Ctrl+Z / Ctrl+Shift+Z", qsTr("Undo / redo the last change to files (or Ctrl+Y)")],
         ["Escape", qsTr("Stop the file work under way")],
-        ["Right-click / Alt+⏎", qsTr("Everything else, for files and for drives in the sidebar")],
+        [qsTr("Right-click / Alt+⏎"), qsTr("Everything else, for files and for drives in the sidebar")],
         ["S / Shift+S", qsTr("Sort: name, kind, newest, oldest, size")],
         ["Ctrl+H", qsTr("Show hidden files")],
         ["F5", qsTr("Reload")],
@@ -90,6 +92,9 @@ Rectangle {
                             required property var modelData
                             required property int index
                             Layout.maximumWidth: index % 2 ? 340 : -1
+                            // Set, so that it's mirrored: left as it is, an
+                            // English description would follow its own script.
+                            horizontalAlignment: Text.AlignLeft
                             text: index % 2 ? modelData : Format.keys(modelData)
                             wrapMode: Text.WordWrap
                             color: index % 2 ? theme.foreground : theme.accent
