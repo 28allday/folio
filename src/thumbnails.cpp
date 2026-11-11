@@ -144,7 +144,7 @@ QString Thumbnails::cachePath(const QString &path, int size) const {
 }
 
 QString Thumbnails::failPath(const QString &path) const {
-    return m_cache + "/fail/folio/" + cacheKey(path);
+    return m_cache + "/" + failures + "/" + cacheKey(path);
 }
 
 QImage Thumbnails::load(const QString &path, const QString &mime, int size) const {

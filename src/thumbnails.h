@@ -24,6 +24,8 @@ public:
     QImage load(const QString &path, const QString &mime, int size) const;
 
     static QString cacheKey(const QString &path);
+    // The spec's fail/<program>-<version>: the number is raised when Folio learns to draw more, so old failures are tried again.
+    static inline const QString failures = QStringLiteral("fail/folio-2");
     static QString bucketFor(int size);
     // A text file's first lines set on a page in the given colors. Made
     // fresh each time rather than cached, since the colors follow the theme.

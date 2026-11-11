@@ -5070,7 +5070,7 @@ private slots:
         for (const QString &uri : {QString("file:///elsewhere/photo.png"), QString()}) {
             const QString file = dir.filePath(uri.isEmpty() ? "unnamed.png" : "named.png");
             QVERIFY(QImage(64, 32, QImage::Format_RGB32).save(file));
-            const QString marker = dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(file));
+            const QString marker = dir.filePath("cache/" + Thumbnails::failures + "/" + Thumbnails::cacheKey(file));
             QVERIFY(QDir().mkpath(QFileInfo(marker).absolutePath()));
             QImage foreign(1, 1, QImage::Format_ARGB32);
             foreign.setText("Thumb::URI", uri);
@@ -5132,7 +5132,33 @@ private slots:
         // A thumbnailer that fails leaves a failure marker, so it isn't retried.
         write(dir.filePath("clip.mp4"), "not a video");
         QVERIFY(thumbnails.load(dir.filePath("clip.mp4"), "video/mp4", 128).isNull());
-        QVERIFY(QFile::exists(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(dir.filePath("clip.mp4")))));
+        QVERIFY(QFile::exists(dir.filePath("cache/" + Thumbnails::failures + "/" + Thumbnails::cacheKey(dir.filePath("clip.mp4")))));
+    }
+
+    void thumbnailsTryAgainWhatAnOlderVersionCouldnt()
+    {
+        QTemporaryDir dir;
+        // The thumbnailer is a script that notes each run beside itself and fails.
+        const QString script = dir.filePath("fail.sh"), runs = script + ".runs";
+        write(script, "echo run >> \"$0.runs\"\nexit 1\n");
+        write(dir.filePath("demo.thumbnailer"),
+              "[Thumbnailer Entry]\nExec=/bin/sh \"" + script.toUtf8() + "\" %i %o %s\nMimeType=video/mp4;\n");
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
+        const QString clip = dir.filePath("clip.mp4");
+        write(clip, "not a video");
+
+        // A marker of this Folio's holds the file back, so the thumbnailer runs once; each run notes four bytes.
+        QVERIFY(thumbnails.load(clip, "video/mp4", 128).isNull());
+        QVERIFY(thumbnails.load(clip, "video/mp4", 128).isNull());
+        const QString marker = dir.filePath("cache/" + Thumbnails::failures + "/" + Thumbnails::cacheKey(clip));
+        QVERIFY(QFile::exists(marker));
+        QCOMPARE(QFileInfo(runs).size(), 4);
+
+        // The same marker where 0.2.0 kept them, in fail/folio, holds nothing back: the file is tried once more.
+        QVERIFY(QDir(dir.filePath("cache")).mkpath("fail/folio"));
+        QVERIFY(QFile::rename(marker, dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(clip))));
+        QVERIFY(thumbnails.load(clip, "video/mp4", 128).isNull());
+        QCOMPARE(QFileInfo(runs).size(), 8);
     }
 
     void thumbnailsRememberOnlyWhatFailed()
@@ -5149,7 +5175,7 @@ private slots:
         // later still gets its turn.
         write(dir.filePath("bundle.zip"), "not a zip");
         QVERIFY(thumbnails.load(dir.filePath("bundle.zip"), "application/zip", 128).isNull());
-        QVERIFY(!QFile::exists(dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(dir.filePath("bundle.zip")))));
+        QVERIFY(!QFile::exists(dir.filePath("cache/" + Thumbnails::failures + "/" + Thumbnails::cacheKey(dir.filePath("bundle.zip")))));
 
         // A folder's peek asks for any picture, and gets the thumbnailer for
         // the one it names.
