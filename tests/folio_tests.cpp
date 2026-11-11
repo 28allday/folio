@@ -1710,6 +1710,11 @@ private slots:
         QVERIFY(ink);
         QVERIFY(qGray(page.pixel(214, 252)) > 240);
 
+        // A FIFO named like text is never opened: reading it would block.
+        const QString fifo = dir.filePath("events.txt");
+        QCOMPARE(mkfifo(QFile::encodeName(fifo).constData(), 0600), 0);
+        QVERIFY(Thumbnails::textPage(fifo, 256, Qt::white, Qt::black).isNull());
+
         // Binary that claims to be text gets the stand-in.
         write(dir.filePath("blob.txt"), QByteArray("abc\0def", 7));
         QVERIFY(Thumbnails::textPage(dir.filePath("blob.txt"), 256, Qt::white, Qt::black).isNull());

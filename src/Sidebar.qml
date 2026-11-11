@@ -167,8 +167,14 @@ Rectangle {
 
     Flickable {
         id: flick
-        anchors.fill: parent
-        contentHeight: column.implicitHeight + 40
+        // Stops above the ? in the corner, so a scrolled row never slides
+        // under it.
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: help.top
+        anchors.bottomMargin: 4
+        contentHeight: column.implicitHeight + 20
         clip: true
         boundsBehavior: Flickable.StopAtBounds
 

@@ -214,6 +214,10 @@ QImage Thumbnails::generate(const QString &path, const QString &mime, int pixels
 }
 
 QImage Thumbnails::textPage(const QString &path, int pixels, const QColor &paper, const QColor &ink) {
+    // Only a regular file: a FIFO or device named like text would block the
+    // read, and the worker with it, until something writes to it.
+    if (!QFileInfo(path).isFile())
+        return {};
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly))
         return {};
