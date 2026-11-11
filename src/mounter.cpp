@@ -29,7 +29,6 @@ struct MounterCallbacks {
             return;
         }
         self->m_prompt = QString::fromUtf8(message).trimmed();
-        self->m_choices.clear();
         for (const char **choice = choices; choice && *choice; ++choice)
             self->m_choices << QString::fromUtf8(*choice);
         self->setAsking(true);

@@ -78,9 +78,6 @@ FocusScope {
     // move, rename, make, pin or preview there, only machines to open.
     readonly property bool inTailnet: backend.path === "tailnet:"
     readonly property bool fileKeys: keys && !inTailnet
-    // A folder to work in: not a view, which lists things from all over,
-    // nor the trash.
-    readonly property bool inFolder: backend.path.startsWith("/") && !inTrash
     Binding { target: backend.folder; property: "peers"; value: places.peers }
     function deleteSelected() {
         const paths = pane.selectedPaths()

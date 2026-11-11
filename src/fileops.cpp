@@ -606,8 +606,6 @@ QStringList FileOps::clashes(const QStringList &paths, const QString &folder) {
         if (clashing(path, QDir(target).filePath(info.fileName())))
             clash << path;
     }
-    // Each is asked about once, however often it was chosen.
-    clash.removeDuplicates();
     return clash;
 }
 

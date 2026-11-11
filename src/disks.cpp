@@ -16,10 +16,6 @@ namespace {
 const QString service = "org.freedesktop.UDisks2";
 const QString prefix = "org.freedesktop.UDisks2.";
 
-// What a GPT partition holding a FAT or exFAT filesystem is marked as, so
-// Windows and macOS mount it too: Microsoft basic data, parted's
-// "msftdata".
-
 // Byte strings from udisks end in a NUL.
 QString fromBytes(const QByteArray &bytes) {
     return QString::fromUtf8(bytes.endsWith('\0') ? bytes.chopped(1) : bytes);
