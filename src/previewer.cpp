@@ -1,6 +1,6 @@
 #include "previewer.h"
 
-#include <QDesktopServices>
+#include "fileops.h"
 #include <QFile>
 #include <QFileInfo>
 #include <QFutureWatcher>
@@ -135,7 +135,10 @@ void Previewer::previous() {
 
 void Previewer::open() {
     if (m_index >= 0)
-        QDesktopServices::openUrl(QUrl::fromLocalFile(m_entries.at(m_index).path));
+        // The same lookup as opening from the folder: the type's default
+        // app, or its parent type's.
+        if (const QString problem = FileOps::openInDefaultApp(m_entries.at(m_index).path); !problem.isEmpty())
+            qWarning("%s", qPrintable(problem));
 }
 
 void Previewer::setIndex(int index, bool report) {

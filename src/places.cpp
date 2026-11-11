@@ -66,11 +66,14 @@ Places::Places(const QString &home, QObject *parent)
     connect(&m_tailscale, &QProcess::finished, this, [this](int code, QProcess::ExitStatus status) {
         const QVariantList peers = code == 0 && status == QProcess::NormalExit
             ? parseTailscale(m_tailscale.readAllStandardOutput()) : QVariantList();
-        if (peers != m_peers) {
-            m_peers = peers;
-            refreshMachines();
+        // The saved machines are read again on every poll too: another Folio
+        // process may have opened or forgotten one.
+        const QVariantList before = m_machines;
+        const bool peersChanged = peers != m_peers;
+        m_peers = peers;
+        refreshMachines();
+        if (peersChanged || m_machines != before)
             emit changed();
-        }
     });
     connect(&m_dropbox, &QProcess::finished, this, [this](int, QProcess::ExitStatus) {
         const QString status = parseDropboxStatus(m_dropbox.readAllStandardOutput());
