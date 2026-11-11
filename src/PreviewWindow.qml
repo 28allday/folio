@@ -15,7 +15,7 @@ ApplicationWindow {
     minimumWidth: 480
     minimumHeight: 360
     visible: true
-    title: previewer.item.name || "Files"
+    title: previewer.item.name || qsTr("Files")
     color: theme.darkBackground
 
     Material.theme: theme.light ? Material.Light : Material.Dark

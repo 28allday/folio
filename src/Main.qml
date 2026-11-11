@@ -15,7 +15,12 @@ ApplicationWindow {
     minimumWidth: 720
     minimumHeight: 460
     visible: true
-    title: activePane && activePane.paneBackend.title.length > 0 ? activePane.paneBackend.title : "Files"
+    // The backend's title (Home, Trash) is translated in C++, which
+    // retranslating QML doesn't redo, so the language is read here too.
+    title: {
+        translator.language
+        return activePane && activePane.paneBackend.title.length > 0 ? activePane.paneBackend.title : qsTr("Files")
+    }
     color: theme.background
 
     Material.theme: theme.light ? Material.Light : Material.Dark

@@ -14,9 +14,11 @@ Rectangle {
     property var shortcuts: [
         ["← ↑ → ↓", qsTr("Move the selection")],
         ["→ / ←", qsTr("In list and columns: into a folder / back out")],
-        ["Shift+click / Shift+arrows", qsTr("Select a range")],
-        ["Alt+click", qsTr("Add or remove one from the selection")],
-        ["Drag on empty space", qsTr("Select with a rectangle (Alt adds)")],
+        // The keys in these few are mixed with words; the key names (Shift,
+        // Alt, ⏎) stay as they are in every language.
+        [qsTr("Shift+click / Shift+arrows"), qsTr("Select a range")],
+        [qsTr("Alt+click"), qsTr("Add or remove one from the selection")],
+        [qsTr("Drag on empty space"), qsTr("Select with a rectangle (Alt adds)")],
         ["Ctrl+A", qsTr("Select everything")],
         ["Tab", qsTr("Move between the sidebar and the panes")],
         ["⏎", qsTr("Open")],
@@ -37,7 +39,7 @@ Rectangle {
         ["Ctrl+Shift+N", qsTr("New folder")],
         ["Ctrl+Alt+N / Ctrl+W", qsTr("Split into two panes / close the right one")],
         ["Delete", qsTr("Move to the trash")],
-        ["Right-click / Alt+⏎", qsTr("Everything else")],
+        [qsTr("Right-click / Alt+⏎"), qsTr("Everything else")],
         ["S / Shift+S", qsTr("Sort: name, kind, newest, oldest, size")],
         ["Ctrl+H", qsTr("Show hidden files")],
         ["F5", qsTr("Reload")],
