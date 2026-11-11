@@ -342,7 +342,8 @@ Rectangle {
             }
 
             // Each drive says how much is free under its name, where there's
-            // room for it, and on hover shows the button that ejects it.
+            // room for it, and while it's hovered or has the keyboard its icon
+            // becomes the button that ejects it.
             // Right-clicked, it has a menu of what else can be done to it.
             SectionLabel { text: qsTr("Devices"); visible: places.devices.length > 0 }
             Repeater {
@@ -357,25 +358,26 @@ Rectangle {
                     keyed: sidebar.activeFocus && sidebar.cursor === sidebar.devicesAt + index
                     onKeyedChanged: if (keyed) sidebar.reveal(this)
                     text: modelData.name
-                    glyph: modelData.icon
+                    glyph: eject.visible ? "" : modelData.icon
                     active: sidebar.activePath === modelData.path
                     onClicked: sidebar.target.navigate(modelData.path)
                     detail: {
                         translator.language // Re-read when the language (and so its digits) changes.
                         return modelData.free < 0 ? "" : Format.free(modelData.free)
                     }
-                    rightPadding: eject.visible ? eject.implicitWidth + 6 : 14
                     TapHandler {
                         acceptedButtons: Qt.RightButton
                         onTapped: driveMenu.show(driveRow.modelData, null)
                     }
                     IconButton {
                         id: eject
-                        anchors.right: parent.right
+                        // Where the drive's own icon is, centered on it.
+                        anchors.left: parent.left
+                        anchors.leftMargin: driveRow.leftPadding + 8 - width / 2
                         anchors.verticalCenter: parent.verticalCenter
                         implicitWidth: 28
                         implicitHeight: 28
-                        visible: driveRow.modelData.release !== "" && (driveRow.hovered || hovered)
+                        visible: driveRow.modelData.release !== "" && (driveRow.hovered || hovered || driveRow.keyed)
                         glyph: "eject"
                         text: driveRow.modelData.release === "eject" ? qsTr("Eject") : qsTr("Unmount")
                         onClicked: places.eject(driveRow.modelData.path)

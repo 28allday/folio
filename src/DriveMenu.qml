@@ -25,7 +25,7 @@ FolioMenu {
     }
 
     FolioMenuItem {
-        text: qsTr("Open")
+        text: qsTr("Mount")
         onTriggered: menu.openRequested(menu.drive.path)
     }
     FolioMenuItem {
