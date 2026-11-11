@@ -27,7 +27,7 @@ optdepends=(
   'localsend: sharing with nearby devices'
   'xdg-terminal-exec: Open Terminal Here'
 )
-makedepends=('gcc' 'make')
+makedepends=('cmake' 'gcc' 'make')
 source=()
 sha256sums=()
 
