@@ -2588,6 +2588,50 @@ private slots:
         QVERIFY(!QFileInfo::exists(from.filePath("box")));
     }
 
+    void undoStoppedAcrossDrivesFollowsWhatItMovesTwice()
+    {
+        // Undone again after a stop, what came back goes out and back in
+        // once more, made again twice in one go: the rename before it
+        // follows it to the last.
+        const auto other = elsewhere();
+        if (!other)
+            QSKIP("Needs a second drive.");
+        QTemporaryDir data, from;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::forgetHistory();
+        QDir(from.path()).mkdir("box");
+        write(from.filePath("box/a.txt"), "a");
+        write(from.filePath("box/z.txt"), "z");
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        QCOMPARE(ops.rename(from.filePath("box/a.txt"), "b.txt"), QString());
+        ops.cut({from.filePath("box")});
+        ops.paste(other->path());
+        QTRY_VERIFY(ops.busy().isEmpty());
+        const QByteArray pipe = QFile::encodeName(other->filePath("box/pipe"));
+        QVERIFY(mkfifo(pipe.constData(), 0600) == 0);
+        ops.undo();
+        int writer = -1;
+        const auto finish = qScopeGuard([&] {
+            if (writer >= 0)
+                close(writer);
+        });
+        QVERIFY(QTest::qWaitFor([&] { return (writer = open(pipe.constData(), O_WRONLY | O_NONBLOCK)) >= 0; }));
+        ops.cancel();
+        QCOMPARE(::write(writer, "x", 1), 1);
+        close(std::exchange(writer, -1));
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(from.filePath("box/b.txt")), QByteArray("a"));
+        QVERIFY(QFile::remove(other->filePath("box/pipe")));
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(from.filePath("box/b.txt")), QByteArray("a"));
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(contents(from.filePath("box/a.txt")), QByteArray("a"));
+    }
+
     void undoAReplacingMoveThatCouldntRemoveItsOriginal()
     {
         // Cut from a folder that can't be changed, the file is copied but

@@ -1661,9 +1661,16 @@ void FileOps::remember(const Change &change) {
 void FileOps::renumber(const Job &job) {
     if (job.renumbered.isEmpty())
         return;
-    QHash<std::pair<quint64, quint64>, std::pair<quint64, quint64>> now;
-    for (const Job::Renumbered &item : job.renumbered)
-        now.insert({item.device, item.inode}, {item.nowDevice, item.nowInode});
+    // An item made again more than once goes from what it was before the
+    // job to what it is last, followed through each change in order.
+    using Id = std::pair<quint64, quint64>;
+    QHash<Id, Id> now, before;
+    for (const Job::Renumbered &item : job.renumbered) {
+        const Id was{item.device, item.inode}, is{item.nowDevice, item.nowInode};
+        const Id first = before.contains(was) ? before.take(was) : was;
+        now.insert(first, is);
+        before.insert(is, first);
+    }
     for (QList<Change> *history : {&s_undo, &s_redo})
         for (Change &change : *history)
             for (Step &step : change.steps)
