@@ -40,7 +40,7 @@ private:
     QHash<QString, QString> m_thumbnailers;
 };
 
-// Serves image://thumb/<size>/<mime>/<path> to QML on a thread pool.
+// Serves image://thumb/<size>/<modified>/<mime>/<path> to QML on a thread pool.
 class ThumbnailProvider : public QQuickAsyncImageProvider {
 public:
     explicit ThumbnailProvider(const Thumbnails *thumbnails);

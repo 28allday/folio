@@ -87,7 +87,7 @@ Item {
                 }
                 asynchronous: true
                 fillMode: Image.PreserveAspectCrop
-                source: row.kind === "image" || row.kind === "video" ? Format.thumb(row.path, row.mime, 128) : ""
+                source: row.kind === "image" || row.kind === "video" ? Format.thumb(row.path, row.mime, 128, row.modified) : ""
                 visible: status === Image.Ready
             }
             Rectangle {

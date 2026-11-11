@@ -41,7 +41,7 @@ Rectangle {
                 anchors.fill: parent
                 asynchronous: true
                 fillMode: Image.PreserveAspectFit
-                source: pane.hasItem && !pane.item.isDir && pane.item.kind !== "text" ? Format.thumb(pane.item.path, pane.item.mime, 512) : ""
+                source: pane.hasItem && !pane.item.isDir && pane.item.kind !== "text" ? Format.thumb(pane.item.path, pane.item.mime, 512, pane.item.modified) : ""
                 visible: status === Image.Ready
             }
 

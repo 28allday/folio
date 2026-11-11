@@ -180,7 +180,7 @@ Item {
                 y: (parent.height - height) / 2
                 asynchronous: true
                 fillMode: parent.crop ? Image.PreserveAspectCrop : Image.Stretch
-                source: tile.kind === "text" ? "" : Format.thumb(tile.path, tile.mime, 256)
+                source: tile.kind === "text" ? "" : Format.thumb(tile.path, tile.mime, 256, tile.modified)
                 visible: status === Image.Ready
                 layer.enabled: tile.iconRadius > 0 && status === Image.Ready
                 layer.effect: MultiEffect {

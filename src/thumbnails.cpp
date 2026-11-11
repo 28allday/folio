@@ -274,14 +274,16 @@ public:
     }
 
     void run() override {
-        // id = <size>/<url-encoded mime>/<url-encoded path>
+        // id = <size>/<modified>/<url-encoded mime>/<url-encoded path>. The
+        // time is only there to tell Qt's own cache apart; load() checks
+        // the file's.
         const QStringList parts = m_id.split('/');
         // A tile scrolled away before its turn came shouldn't keep the pool
         // from the ones on screen.
-        if (!m_cancelled && parts.size() >= 3) {
+        if (!m_cancelled && parts.size() >= 4) {
             const int size = parts.at(0).toInt();
-            const QString mime = QUrl::fromPercentEncoding(parts.at(1).toUtf8());
-            const QString path = QUrl::fromPercentEncoding(parts.mid(2).join('/').toUtf8());
+            const QString mime = QUrl::fromPercentEncoding(parts.at(2).toUtf8());
+            const QString path = QUrl::fromPercentEncoding(parts.mid(3).join('/').toUtf8());
             m_image = m_thumbnails->load(path, mime, qBound(64, size, 1024));
         }
         if (m_image.isNull())

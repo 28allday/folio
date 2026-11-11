@@ -339,7 +339,7 @@ ApplicationWindow {
                 anchors.margins: 32
                 fillMode: Image.PreserveAspectFit
                 asynchronous: true
-                source: win.item.path ? Format.thumb(win.item.path, win.item.mime, 1024) : ""
+                source: win.item.path ? Format.thumb(win.item.path, win.item.mime, 1024, win.item.modified) : ""
                 visible: status === Image.Ready
             }
             ColumnLayout {

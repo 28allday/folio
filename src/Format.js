@@ -39,6 +39,10 @@ function summary(item, type) {
     return (type || item.mime) + " · " + size(item.size)
 }
 
-function thumb(path, mime, px) {
-    return "image://thumb/" + px + "/" + encodeURIComponent(mime) + "/" + encodeURIComponent(path)
+// The file's modified time is part of the URL: Qt keeps the images it has
+// shown by their URL, so a picture saved over would otherwise come back
+// with its old pixels.
+function thumb(path, mime, px, modified) {
+    const changed = modified ? modified.getTime() : 0
+    return "image://thumb/" + px + "/" + changed + "/" + encodeURIComponent(mime) + "/" + encodeURIComponent(path)
 }

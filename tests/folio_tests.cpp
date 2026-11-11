@@ -6,6 +6,8 @@
 #include <QGuiApplication>
 #include <QImage>
 #include <QProcess>
+#include <QQmlComponent>
+#include <QQmlEngine>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -1191,6 +1193,40 @@ private slots:
         QCOMPARE(thumbnails.load(file, "image/png", 256).pixelColor(0, 0), QColor(Qt::blue));
         QCOMPARE(Thumbnails::bucketFor(128), QString("normal"));
         QCOMPARE(Thumbnails::bucketFor(512), QString("x-large"));
+    }
+
+    void thumbnailsFollowAPictureSavedOver()
+    {
+        // Qt keeps the images it has shown by their URL, and a re-read makes
+        // new tiles that ask again, so a picture saved over must ask with a
+        // URL of its own, and the cache must make it anew.
+        QTemporaryDir dir;
+        const QString file = dir.filePath("photo.png");
+        QVERIFY(QImage(64, 32, QImage::Format_RGB32).save(file));
+        const QDateTime then = QFileInfo(file).lastModified();
+
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("none")});
+        QQmlEngine engine;
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent tile(&engine);
+        tile.setData("import QtQuick\nimport \"Format.js\" as Format\n"
+                     "Image { required property string path; required property var modified\n"
+                     "        asynchronous: true; source: Format.thumb(path, \"image/png\", 128, modified) }",
+                     QUrl::fromLocalFile(QFINDTESTDATA("../src/Format.js")));
+        auto shownWidth = [&](const QDateTime &modified) {
+            std::unique_ptr<QObject> image(tile.createWithInitialProperties({{"path", file}, {"modified", modified}}));
+            const bool shown = image && QTest::qWaitFor([&] { return image->property("implicitWidth").toInt() > 0; }, 5000);
+            return shown ? image->property("implicitWidth").toInt() : -1;
+        };
+        QCOMPARE(shownWidth(then), 128);
+
+        QVERIFY(QImage(32, 64, QImage::Format_RGB32).save(file));
+        {
+            QFile saved(file);
+            QVERIFY(saved.open(QIODevice::ReadWrite));
+            QVERIFY(saved.setFileTime(then.addSecs(60), QFileDevice::FileModificationTime));
+        }
+        QCOMPARE(shownWidth(then.addSecs(60)), 64);
     }
 
     void thumbnailsReadInstalledThumbnailers()

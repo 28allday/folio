@@ -62,7 +62,7 @@ Item {
                     visible: status === Image.Ready
                     fillMode: Image.PreserveAspectFit
                     asynchronous: true
-                    source: !media.isVideo && previewer.item.path ? Format.thumb(previewer.item.path, previewer.item.mime, 512) : ""
+                    source: !media.isVideo && previewer.item.path ? Format.thumb(previewer.item.path, previewer.item.mime, 512, previewer.item.modified) : ""
                 }
                 Glyph {
                     Layout.alignment: Qt.AlignHCenter
