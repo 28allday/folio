@@ -258,8 +258,10 @@ private slots:
 
     void fileOpsRenameNeverOverwrites()
     {
-        // Nothing checks for the new name first (on drives that ignore case
-        // it "exists" when only its case changes); the rename itself refuses.
+        // The rename itself refuses to overwrite. Nothing checks for the new
+        // name first, since on drives that ignore case it "exists" when only
+        // its case changes; the tests' drive heeds case, though, so the case
+        // change at the end is an ordinary rename here.
         QTemporaryDir dir;
         write(dir.filePath("IMG.JPG"), "photo");
         write(dir.filePath("notes.txt"), "notes");
