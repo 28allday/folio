@@ -131,13 +131,33 @@ struct Walker {
     }
 
     // An IFD is count(2), then 12-byte entries tag(2) type(2) count(4) value-or-offset(4), then the next IFD(4).
+    bool directory(bool le, quint64 at, quint16 &count, QByteArray &entries) {
+        QByteArray b;
+        if (!src.get(at, 2, b))
+            return false;
+        count = rd16(b.constData(), le);
+        // A 0xFFFF count is the hostile case: this directory is skipped, never read or looped.
+        return count <= kMaxEntries && src.get(at + 2, count * kEntryLength, entries);
+    }
+
+    // The Orientation one directory names itself, its next and child directories left unread.
+    std::optional<quint64> turnAt(bool le, quint64 at) {
+        quint16 count = 0;
+        QByteArray entries;
+        if (!directory(le, at, count, entries))
+            return {};
+        for (int i = 0; i < count; ++i) {
+            const char *e = entries.constData() + i * kEntryLength;
+            if (rd16(e, le) == kOrientation)
+                return one(le, rd16(e + 2, le), rd32(e + 4, le), e + 8);
+        }
+        return {};
+    }
+
     void walk(bool le, int depth, quint64 at) {
         QByteArray b, entries;
-        if (depth > kMaxDepth || seen.size() >= kMaxIfds || seen.contains(at) || !src.get(at, 2, b))
-            return;
-        const quint16 count = rd16(b.constData(), le);
-        // A 0xFFFF count is the hostile case: this directory is skipped, never read or looped.
-        if (count > kMaxEntries || !src.get(at + 2, count * kEntryLength, entries))
+        quint16 count = 0;
+        if (depth > kMaxDepth || seen.size() >= kMaxIfds || seen.contains(at) || !directory(le, at, count, entries))
             return;
         seen.append(at);
         std::optional<quint64> jpegOffset, jpegLength, stripOffset, stripLength, compression, turn;
@@ -226,18 +246,21 @@ bool firstFrame(QFile &file, qint64 &left, quint8 &marker, quint32 &width, quint
 std::optional<quint64> ownOrientation(const QByteArray &jpeg) {
     for (qsizetype at = 2; at + 4 <= jpeg.size() && quint8(jpeg[at]) == kMarker;) {
         const quint8 marker = quint8(jpeg[at + 1]);
+        // Any number of 0xFF fill bytes may stand ahead of a marker.
+        if (marker == kMarker) {
+            ++at;
+            continue;
+        }
         const qsizetype length = qFromBigEndian<quint16>(jpeg.constData() + at + 2);
         if (marker == kSos || marker == kEoi || isFrame(marker) || length < 2 || at + 2 + length > jpeg.size())
             return {};
         if (marker == kApp1 && length >= 8 && jpeg.mid(at + 4, 6) == QByteArray("Exif\0\0", 6)) {
             const QByteArray tiff = jpeg.mid(at + 10, length - 8);
             Source slice{nullptr, tiff, quint64(tiff.size()), quint64(tiff.size())};
-            Walker walker(slice);
             bool le = true;
             quint64 ifd = 0;
-            if (tiffHeader(slice, 0, le, ifd))
-                walker.walk(le, 0, ifd);
-            return walker.orientation;
+            // Only IFD0 describes the picture; the IFD1 it leads to is the Exif thumbnail's.
+            return tiffHeader(slice, 0, le, ifd) ? Walker(slice).turnAt(le, ifd) : std::nullopt;
         }
         at += 2 + length;
     }

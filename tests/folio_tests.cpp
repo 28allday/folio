@@ -5631,6 +5631,18 @@ private slots:
         QCOMPARE(rawThumbnail(three.bytes), QSize(300, 400));
     }
 
+    void thumbnailsReadAnEmbeddedJpegsOwnTurnFromItsFirstDirectory()
+    {
+        // 0xFF fill bytes may stand ahead of any JPEG marker, so the upright the Exif segment after them names still rules.
+        const QByteArray padded = jpeg(400, 300, kUpright).insert(2, QByteArray("\xFF\xFF", 2));
+        QCOMPARE(rawThumbnail(rawWithJpeg(padded, kQuarterTurn)), QSize(400, 300));
+        // IFD1 is the Exif thumbnail's directory: the upright it names says nothing of the picture, so the RAW's turn applies.
+        Raw tiff(true);
+        tiff.setFirst(tiff.ifd({}, tiff.ifd({{kOrientation, kShort, 1, kUpright}})));
+        const QByteArray unnamed = jpeg(400, 300).insert(2, exifSegment(tiff));
+        QCOMPARE(rawThumbnail(rawWithJpeg(unnamed, kQuarterTurn)), QSize(300, 400));
+    }
+
     void thumbnailsPickTheLargestEmbeddedJpeg()
     {
         // Big-endian like a NEF: IFD0 names a small JPEG, its SubIFDs lossless raw data (SOF3) and the preview.
@@ -6357,8 +6369,13 @@ private:
             return {};
         Raw tiff(true);
         tiff.setFirst(tiff.ifd({{kOrientation, kShort, 1, own}}));
+        return own ? data.insert(2, exifSegment(tiff)) : data;
+    }
+    // An Exif segment holding `tiff`: FF E1, its big-endian length, "Exif\0\0" and the TIFF.
+    static QByteArray exifSegment(const Raw &tiff)
+    {
         const QByteArray exif = QByteArray("Exif\0\0", 6) + tiff.bytes;
-        return own ? data.insert(2, QByteArray("\xFF\xE1", 2) + Raw(false).word(2 + exif.size(), 2) + exif) : data;
+        return QByteArray("\xFF\xE1", 2) + Raw(false).word(2 + exif.size(), 2) + exif;
     }
 
     // A little-endian RAW whose IFD0 names one JPEG and an orientation.
