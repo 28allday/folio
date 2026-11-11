@@ -26,7 +26,9 @@ ApplicationWindow {
 
     property bool helpVisible: false
     property bool previewVisible: true
-    property string viewMode: "grid"
+    // Columns on a first launch; after that, whichever view was used last.
+    property string viewMode: "columns"
+    property real zoom: 1
 
     // The pane keys, the sidebar and the details go to.
     property var activePane: leftPane
@@ -38,10 +40,13 @@ ApplicationWindow {
     readonly property bool typing: !!activePane && activePane.typing
     // The rightmost pane's path bar reaches over the details column.
     readonly property int detailsWidth: details.visible ? details.width : 0
+    // Whether the window is wide enough for the details column at all.
+    readonly property bool detailsFit: width >= (split ? 1400 : 960)
 
     // Remembers the view between launches (~/.config/folio/folio.conf).
     Settings {
         property alias viewMode: win.viewMode
+        property alias zoom: win.zoom
     }
 
     // Ctrl+Alt+N: a second pane on the right, starting where the active
@@ -55,6 +60,7 @@ ApplicationWindow {
             rightPane.anchors.fill = splitHost
             rightPane.closable = true
             rightPane.viewMode = activePane.viewMode
+            rightPane.zoom = activePane.zoom
             rightPane.barExtension = Qt.binding(() => win.detailsWidth)
             rightPane.closeRequested.connect(closeSplit)
         }
@@ -113,8 +119,9 @@ ApplicationWindow {
                 id: sidebar
                 target: win.activePane ? win.activePane.paneBackend : backend
                 onFinished: win.activePane.focusView()
+                onHelpRequested: win.helpVisible = !win.helpVisible
                 Layout.topMargin: parent.parent.barHeight
-                Layout.preferredWidth: 236
+                Layout.preferredWidth: 190
                 Layout.fillHeight: true
             }
             Rectangle { Layout.topMargin: parent.parent.barHeight; Layout.fillHeight: true; implicitWidth: 1; color: Qt.alpha(theme.foreground, 0.12) }
@@ -141,7 +148,7 @@ ApplicationWindow {
 
             PreviewPane {
                 id: details
-                visible: win.previewVisible && win.width >= (win.split ? 1400 : 960)
+                visible: win.previewVisible && win.detailsFit
                 Layout.topMargin: parent.parent.barHeight
                 Layout.preferredWidth: 300
                 Layout.fillHeight: true

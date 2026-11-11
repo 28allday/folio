@@ -2,7 +2,6 @@
 #include "fileops.h"
 #include "previewer.h"
 
-#include <QDesktopServices>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
@@ -58,10 +57,23 @@ QString Backend::gvfsRoot() {
     return QStringLiteral("/run/user/%1/gvfs").arg(getuid());
 }
 
+// What a gvfs mount is called on screen: the host or server from its
+// folder's name ("sftp:host=nas,user=me", "smb-share:server=nas,..."), and only the machine's own name for a tailnet
+// address, since every machine on it shares the "tailXXXX.ts.net" part.
+QString Backend::mountLabel(const QString &mountFolder) {
+    QString host = mountFolder;
+    for (const QString &field : mountFolder.section(':', 1).split(','))
+        if (field.startsWith("host=") || field.startsWith("server="))
+            host = field.section('=', 1);
+    return host.endsWith(".ts.net") ? host.section('.', 0, 0) : host;
+}
+
 QString Backend::title() const {
     const QString p = path();
     if (p == FolderModel::recentPath())
         return tr("Recents");
+    if (p == FolderModel::tailnetPath())
+        return tr("Tailnet");
     if (p == trashPath())
         return tr("Trash");
     if (p == m_home)
@@ -69,7 +81,7 @@ QString Backend::title() const {
     if (p == "/")
         return tr("Computer");
     if (QFileInfo(p).absolutePath() == gvfsRoot())
-        return QFileInfo(p).fileName().section('=', 1);
+        return mountLabel(QFileInfo(p).fileName());
     return QFileInfo(p).fileName();
 }
 
@@ -79,6 +91,8 @@ QVariantList Backend::crumbs() const {
     const QString p = path();
     if (p == FolderModel::recentPath())
         return {QVariantMap{{"name", tr("Recents")}, {"path", p}}};
+    if (p == FolderModel::tailnetPath())
+        return {QVariantMap{{"name", tr("Tailnet")}, {"path", p}}};
     // The trash's files folder is an implementation detail; it's "Trash".
     if (p == trashPath())
         return {QVariantMap{{"name", tr("Trash")}, {"path", p}}};
@@ -90,7 +104,7 @@ QVariantList Backend::crumbs() const {
     } else if (p.startsWith(gvfsRoot() + "/")) {
         const QString mount = p.section('/', 0, 5);
         base = mount;
-        label = mount.section('/', -1).section('=', 1);
+        label = mountLabel(mount.section('/', -1));
     }
 
     QVariantList crumbs{QVariantMap{{"name", label}, {"path", base}}};
@@ -108,12 +122,12 @@ void Backend::navigate(const QString &path) {
 }
 
 bool Backend::go(const QString &path, bool record) {
-    const QString clean = path == FolderModel::recentPath() ? path : QDir::cleanPath(path);
+    const QString clean = FolderModel::isView(path) ? path : QDir::cleanPath(path);
     // The trash folder only exists once something has been trashed; the
     // spec lets anyone create it, so Trash always opens.
     if (clean == trashPath())
         QDir().mkpath(clean);
-    if (clean != FolderModel::recentPath() && !QFileInfo(clean).isDir()) {
+    if (!FolderModel::isView(clean) && !QFileInfo(clean).isDir()) {
         setMessage(tr("%1 isn't a folder.").arg(clean));
         return false;
     }
@@ -130,20 +144,26 @@ bool Backend::go(const QString &path, bool record) {
 }
 
 void Backend::open(const QString &path) {
+    // A machine in the tailnet view opens as itself, over SFTP.
+    if (path.startsWith(FolderModel::tailnetPath()) && path != FolderModel::tailnetPath()) {
+        openPeer(path.mid(FolderModel::tailnetPath().size()));
+        return;
+    }
     const QFileInfo info(path);
     if (info.isDir()) {
         navigate(path);
         return;
     }
-    // The desktop's default app for the type, via xdg-open, same as a click
-    // anywhere else in Omarchy.
-    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(path)))
-        setMessage(tr("No app is set up to open %1.").arg(info.fileName()));
+    // The desktop's default app for the type, or for the nearest type it
+    // belongs to.
+    if (const QString problem = FileOps::openInDefaultApp(path); !problem.isEmpty())
+        setMessage(problem);
 }
 
 void Backend::goUp() {
-    // Recents and the trash are places of their own: nothing above them.
-    if (path() == FolderModel::recentPath() || path() == trashPath())
+    // Recents, the tailnet and the trash are places of their own: nothing
+    // above them.
+    if (FolderModel::isView(path()) || path() == trashPath())
         return;
     const QString parent = QFileInfo(path()).absolutePath();
     if (parent == path())
@@ -179,6 +199,10 @@ void Backend::forward() {
 void Backend::openPeer(const QString &host) {
     if (m_mounter.busy())
         return;
+    // Remembered as it's asked for, not once it's mounted: a machine that
+    // didn't open (asleep, or without Tailscale SSH yet) is still the one
+    // to try again, and the sidebar only shows it while it's online.
+    emit peerOpened(host);
     const QString root = gvfsRoot() + "/sftp:host=" + host;
     if (QFileInfo(root).isDir()) {
         const QString remoteHome = root + QDir::homePath();
@@ -278,7 +302,7 @@ QString Backend::typedPath() const {
         return "~/";
     if (p.startsWith(m_home + "/"))
         return "~" + p.mid(m_home.size()) + "/";
-    return p == FolderModel::recentPath() || p == "/" ? p : p + "/";
+    return FolderModel::isView(p) || p == "/" ? p : p + "/";
 }
 
 QString Backend::expandTyped(const QString &text, const QString &home, const QString &current) {
@@ -297,6 +321,11 @@ QString Backend::expandTyped(const QString &text, const QString &home, const QSt
 }
 
 bool Backend::goTyped(const QString &text) {
+    // A view is typed as the path bar shows it, by its own name.
+    if (const QString view = text.trimmed(); FolderModel::isView(view)) {
+        navigate(view);
+        return true;
+    }
     const QString target = QDir::cleanPath(expandTyped(text, m_home, path()));
     const QFileInfo info(target);
     if (info.isDir()) {
@@ -339,7 +368,7 @@ QString Backend::completePath(const QString &text) const {
 }
 
 void Backend::newWindow() {
-    emit newWindowRequested(path() == FolderModel::recentPath() ? m_home : path());
+    emit newWindowRequested(FolderModel::isView(path()) ? m_home : path());
 }
 
 void Backend::togglePreview(const QString &path) {

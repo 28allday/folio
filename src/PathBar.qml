@@ -7,6 +7,7 @@ Rectangle {
     id: bar
 
     property bool previewVisible: true
+    property bool previewFits: true
     property string viewMode: "grid"
     // Ctrl+L: the path as text to edit. Enter goes there, Escape cancels,
     // Tab completes a folder name.
@@ -92,13 +93,15 @@ Rectangle {
             font.pixelSize: 14
             rightPadding: scope.implicitWidth + 24
             // Where it searches, at the end of the field. Unlike a
-            // placeholder, it stays while typing.
+            // placeholder, it stays while typing. The tailnet has nothing
+            // below it.
             Text {
                 id: scope
+                readonly property string here: backend.crumbs.length > 0 ? backend.crumbs[backend.crumbs.length - 1].name : ""
                 anchors.right: parent.right
                 anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
-                text: qsTr("Search %1 and below").arg(backend.crumbs.length > 0 ? backend.crumbs[backend.crumbs.length - 1].name : "")
+                text: backend.path === "tailnet:" ? qsTr("Search %1").arg(here) : qsTr("Search %1 and below").arg(here)
                 color: theme.secondaryForeground
                 font.pixelSize: 12
             }
@@ -170,9 +173,10 @@ Rectangle {
         // Shows the current view; clicking moves to the next one.
         IconButton {
             glyph: bar.viewMode
-            text: bar.viewMode === "grid" ? qsTr("Grid (Ctrl+1); click for list")
-                : bar.viewMode === "list" ? qsTr("List (Ctrl+2); click for columns")
-                : qsTr("Columns (Ctrl+3); click for grid")
+            // Names what a click does, like the buttons beside it.
+            text: bar.viewMode === "grid" ? qsTr("Show as list")
+                : bar.viewMode === "list" ? qsTr("Show as columns")
+                : qsTr("Show as grid")
             onClicked: bar.cycleView()
         }
         IconButton {
@@ -185,21 +189,17 @@ Rectangle {
         }
         SortMenu { id: sortMenu }
         IconButton {
-            glyph: "hidden"
-            text: qsTr("Show hidden files (Ctrl+H)")
-            active: backend.folder.showHidden
-            onClicked: backend.folder.showHidden = !backend.folder.showHidden
-        }
-        IconButton {
             glyph: "preview"
-            text: qsTr("Details (Ctrl+I)")
+            // Only where the window has room to show them.
+            visible: bar.previewFits
+            text: qsTr("Details")
             active: bar.previewVisible
             onClicked: bar.togglePreview()
         }
         IconButton {
             visible: bar.closable
             glyph: "close"
-            text: qsTr("Close this pane (Ctrl+W)")
+            text: qsTr("Close this pane")
             onClicked: bar.closeRequested()
         }
     }

@@ -6,6 +6,7 @@
 #include <QFileSystemWatcher>
 #include <QStringList>
 #include <QTimer>
+#include <QVariantList>
 #include <QSet>
 #include <QVector>
 #include <atomic>
@@ -28,6 +29,9 @@ class FolderModel : public QAbstractListModel {
     Q_PROPERTY(int selectedCount READ selectedCount NOTIFY selectionChanged)
     // Set, the folder lists what matches it here and in every folder below.
     Q_PROPERTY(QString query READ query WRITE setQuery NOTIFY queryChanged)
+    // The online tailnet machines (as Places::parseTailscale gives them),
+    // which the tailnet view lists.
+    Q_PROPERTY(QVariantList peers READ peers WRITE setPeers NOTIFY peersChanged)
 
 public:
     enum Role {
@@ -51,6 +55,7 @@ public:
         QDateTime modified;
         QString kind;
         QString mime;
+        // A file's extension; a tailnet machine's operating system.
         QString extension;
         int itemCount = -1;
         // The first pictures in a folder, for the preview window.
@@ -74,6 +79,8 @@ public:
     void setSortMode(const QString &sort);
     QString query() const { return m_query; }
     void setQuery(const QString &query);
+    QVariantList peers() const { return m_peers; }
+    void setPeers(const QVariantList &peers);
 
     void setPath(const QString &path);
     Q_INVOKABLE void reload();
@@ -114,6 +121,15 @@ public:
     static QString recentFile();
     static QVector<Entry> listRecent(const QString &xbel, bool showHidden, int limit = 200,
                                      const std::function<bool()> &stop = {});
+    // The tailnet view: a path that isn't a folder, listing the machines on
+    // the tailnet. Each is an item of the "peer" kind at the view's path
+    // followed by its host, named by its host name.
+    static QString tailnetPath() { return QStringLiteral("tailnet:"); }
+    // The machines among `peers` whose names contain `query` (ignoring
+    // case), or all of them, by name.
+    static QVector<Entry> listPeers(const QVariantList &peers, const QString &query = {});
+    // Recents and the tailnet: lists of their own, not folders.
+    static bool isView(const QString &path) { return path == recentPath() || path == tailnetPath(); }
     static QString kindForMime(const QString &mime);
     // Everything under `root` whose name contains `query` (ignoring case),
     // named by its path from `root`. Stops at `limit` matches, at other
@@ -129,6 +145,7 @@ signals:
     void showHiddenChanged();
     void sortModeChanged();
     void queryChanged();
+    void peersChanged();
     void selectionChanged();
     void loaded();
 
@@ -151,6 +168,7 @@ private:
     bool m_showHidden = false;
     QString m_sort = "name";
     QString m_query;
+    QVariantList m_peers;
     quint64 m_generation = 0;
     // The newest listing's generation, shared with the background listing,
     // search and folder counts, so work that's been overtaken (more typing,

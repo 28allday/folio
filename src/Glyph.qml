@@ -62,14 +62,15 @@ Item {
         case "trash": return "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"
         case "drive": return box(3, 6, 18, 12, r) + "M7 14h2"
         case "peer": return box(4, 4, 16, 11, r) + "M9 20h6M12 15v5"
+        // Machines joined to one another: the whole tailnet.
+        case "tailnet": return circle(12, 5, 2.5) + circle(5, 18, 2.5) + circle(19, 18, 2.5) + "M10.8 7.2L6.2 15.8M13.2 7.2l4.6 8.6M7.5 18h9"
         case "folder": return folderBox()
         case "back": return "M15 6l-6 6 6 6"
         case "forward": return "M9 6l6 6-6 6"
-        case "grid": return box(4, 4, 7, 7, r / 2) + box(13, 4, 7, 7, r / 2) + box(4, 13, 7, 7, r / 2) + box(13, 13, 7, 7, r / 2)
+        case "grid": return box(4, 4, 6, 6, r / 2) + box(14, 4, 6, 6, r / 2) + box(4, 14, 6, 6, r / 2) + box(14, 14, 6, 6, r / 2)
         case "list": return "M4 6h16M4 12h16M4 18h16"
         case "columns": return box(3, 4, 18, 16, r) + "M9 4v16M15 4v16"
         case "preview": return box(3, 5, 18, 14, r) + "M14 5v14"
-        case "hidden": return "M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" + circle(12, 12, 3)
         // One per sort order: a slim arrow on the left (down for the usual
         // direction, up for oldest first), and what it sorts by on the right,
         // kept apart so both read at toolbar size.

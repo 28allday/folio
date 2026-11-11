@@ -53,15 +53,39 @@ GridView {
     acceptedButtons: Qt.NoButton
     boundsBehavior: Flickable.StopAtBounds
     model: backend.folder
-    readonly property int columns: Math.max(1, Math.floor(width / 168))
+    // Tiles grow with the zoom; the name and details under them don't. A
+    // narrow pane (one side of a split) caps it at a tile its width holds.
+    property real zoom: 1
+    readonly property real tileZoom: Math.max(0.5, Math.min(zoom, (width - 40) / 128))
+    signal zoomRequested(int step)
+    WheelHandler {
+        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+        acceptedModifiers: Qt.ControlModifier
+        // A touchpad sends many small deltas: a step per notch's worth
+        // (120), and nothing for an event that doesn't move up or down.
+        property real pending: 0
+        onWheel: (event) => {
+            // Every whole notch is a step; the rest waits for the next event.
+            pending += event.angleDelta.y
+            while (Math.abs(pending) >= 120) {
+                const step = pending > 0 ? 1 : -1
+                grid.zoomRequested(step)
+                pending -= step * 120
+            }
+        }
+    }
+    // The rows reflow, so bring the cursor's tile back into view.
+    onTileZoomChanged: Qt.callLater(() => { if (currentIndex >= 0) { forceLayout(); positionViewAtIndex(currentIndex, GridView.Contain) } })
+    readonly property int columns: Math.max(1, Math.floor(width / (40 + 128 * tileZoom)))
     cellWidth: Math.floor(width / columns)
-    cellHeight: 192
+    cellHeight: 100 + Math.round(92 * tileZoom)
     highlightFollowsCurrentItem: false
     ScrollBar.vertical: FolioScrollBar { }
 
     delegate: FileTile {
         width: grid.cellWidth
         height: grid.cellHeight
+        zoom: grid.tileZoom
         current: selected
         onClicked: (modifiers) => { selecting.click(index, modifiers); grid.forceActiveFocus() }
         onActivated: backend.open(path)
@@ -70,7 +94,8 @@ GridView {
     Text {
         anchors.centerIn: parent
         visible: grid.count === 0 && !backend.folder.loading && backend.folder.error.length === 0
-        text: backend.folder.query ? qsTr("Nothing matches “%1”").arg(backend.folder.query) : qsTr("This folder is empty")
+        text: backend.folder.query ? qsTr("Nothing matches “%1”").arg(backend.folder.query)
+            : backend.path === "tailnet:" ? qsTr("No machines are online") : qsTr("This folder is empty")
         color: theme.secondaryForeground
     }
 }

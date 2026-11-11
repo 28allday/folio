@@ -22,6 +22,8 @@ Rectangle {
     readonly property bool noting: hasItem && folderPane.inTrash && info.origin === undefined
     readonly property string origin: info.origin || ""
     readonly property bool trashed: hasItem && origin.length > 0
+    // A tailnet machine shows its system and host, and has no date.
+    readonly property bool machine: hasItem && item.kind === "peer"
     function homeless(path) { return path.startsWith(places.home + "/") ? "~" + path.slice(places.home.length) : path }
     // Its type's name, and a picture's size or a text's opening lines once
     // they've been read off the UI thread.
@@ -51,7 +53,7 @@ Rectangle {
                 anchors.fill: parent
                 asynchronous: true
                 fillMode: Image.PreserveAspectFit
-                source: pane.hasItem && !pane.item.isDir && pane.item.kind !== "text" ? Format.thumb(pane.item.path, pane.item.mime, 512, pane.item.modified) : ""
+                source: pane.hasItem && !pane.item.isDir && pane.item.kind !== "text" && !pane.machine ? Format.thumb(pane.item.path, pane.item.mime, 512, pane.item.modified) : ""
                 visible: status === Image.Ready
             }
 
@@ -78,7 +80,7 @@ Rectangle {
             Glyph {
                 anchors.centerIn: parent
                 visible: !big.visible && pane.hasItem && pane.item.kind !== "text"
-                name: pane.hasItem && pane.item.isDir ? "folder" : "file"
+                name: pane.machine ? "peer" : pane.hasItem && pane.item.isDir ? "folder" : "file"
                 size: 72
                 stroke: 1.2
                 color: pane.hasItem && pane.item.isDir ? theme.accent : theme.secondaryForeground
@@ -123,8 +125,19 @@ Rectangle {
                 font.pixelSize: 12
                 elide: Text.ElideMiddle
             }
-            Text { text: pane.trashed || pane.noting ? qsTr("Deleted") : qsTr("Modified"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            Text { visible: pane.machine; text: qsTr("Host"); color: theme.secondaryForeground; font.pixelSize: 12 }
             Text {
+                visible: pane.machine
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignRight
+                text: pane.machine ? pane.item.path.slice("tailnet:".length) : ""
+                color: theme.foreground
+                font.pixelSize: 12
+                elide: Text.ElideMiddle
+            }
+            Text { visible: !pane.machine; text: pane.trashed || pane.noting ? qsTr("Deleted") : qsTr("Modified"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            Text {
+                visible: !pane.machine
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignRight
                 text: {

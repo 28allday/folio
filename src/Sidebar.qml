@@ -8,13 +8,15 @@ Rectangle {
     id: sidebar
 
     color: theme.background
-    // A long tailnet scrolls inside the sidebar instead of spilling over
-    // the status bar below it.
+    // A long sidebar scrolls inside itself instead of spilling over the
+    // status bar below it.
     clip: true
 
     // Keyboard: Tab moves here from the files and back. ↑ ↓ move between
     // rows, ⏎ (or →) opens one and hands the keyboard back to the files.
     signal finished()
+    // The ? in the corner: show or hide the shortcuts.
+    signal helpRequested()
     property int cursor: 0
     // The pane the sidebar acts on: the one used last.
     property var target: backend
@@ -23,17 +25,21 @@ Rectangle {
     // included), so the pin box shows.
     property int dropHovers: 0
     readonly property bool dragging: drop.containsDrag || dropHovers > 0 || pinDrop.containsDrag
-    readonly property var rows: [].concat(places.places, places.pinned, places.views, places.devices, places.peers)
+    // The tailnet's last row opens the view of every machine on it.
+    readonly property var allMachines: places.peers.length > 0 ? [{ path: "tailnet:" }] : []
+    readonly property var rows: [].concat(places.places, places.pinned, places.views, places.devices, places.machines,
+                                          allMachines)
     readonly property int pinnedAt: places.places.length
     readonly property int viewsAt: pinnedAt + places.pinned.length
     readonly property int devicesAt: viewsAt + places.views.length
     readonly property int peersAt: devicesAt + places.devices.length
 
     function focusSidebar() {
-        // Start on the row for where we are, or the top.
+        // Start on the row for where we are (a machine's for anywhere on
+        // it), or the top.
         let at = 0
         for (let i = 0; i < rows.length; ++i)
-            if (rows[i].path === activePath)
+            if (rows[i].host !== undefined ? onMachine(rows[i].host) : rows[i].path === activePath)
                 at = i
         cursor = at
         forceActiveFocus()
@@ -48,6 +54,7 @@ Rectangle {
             sidebar.target.navigate(row.path)
         finished()
     }
+    function onMachine(host) { return sidebar.target.path.indexOf("/sftp:host=" + host) >= 0 }
     function reveal(item) {
         const y = item.mapToItem(column, 0, 0).y
         if (y < flick.contentY)
@@ -67,7 +74,7 @@ Rectangle {
     readonly property string activePath: {
         let best = ""
         const here = sidebar.target.path
-        for (const list of [places.places, places.pinned, places.views, places.devices]) {
+        for (const list of [places.places, places.pinned, places.views, places.devices, allMachines]) {
             for (const p of list) {
                 if (p.path !== "/" && (here === p.path || here.startsWith(p.path + "/")) && p.path.length > best.length)
                     best = p.path
@@ -160,8 +167,14 @@ Rectangle {
 
     Flickable {
         id: flick
-        anchors.fill: parent
-        contentHeight: column.implicitHeight + 40
+        // Stops above the ? in the corner, so a scrolled row never slides
+        // under it.
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: help.top
+        anchors.bottomMargin: 4
+        contentHeight: column.implicitHeight + 20
         clip: true
         boundsBehavior: Flickable.StopAtBounds
 
@@ -218,7 +231,10 @@ Rectangle {
                     glyph: modelData.icon
                     active: sidebar.activePath === modelData.path
                     onClicked: sidebar.target.navigate(modelData.path)
+                    // The name ends short of the unpin button while it shows.
+                    rightPadding: unpin.visible ? unpin.implicitWidth + 6 : 14
                     IconButton {
+                        id: unpin
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
                         implicitWidth: 28
@@ -294,20 +310,89 @@ Rectangle {
                 }
             }
 
+            // The machines opened here lately, while they're online, then
+            // the way to every other one.
             SectionLabel { text: qsTr("Tailnet"); visible: places.peers.length > 0 }
             Repeater {
-                model: places.peers
+                model: places.machines
                 PlaceRow {
+                    id: machineRow
                     required property var modelData
                     required property int index
                     keyed: sidebar.activeFocus && sidebar.cursor === sidebar.peersAt + index
                     onKeyedChanged: if (keyed) sidebar.reveal(this)
                     text: modelData.name
                     glyph: "peer"
-                    active: sidebar.target.path.indexOf("/sftp:host=" + modelData.host) >= 0
+                    active: sidebar.onMachine(modelData.host)
                     onClicked: sidebar.target.openPeer(modelData.host)
+                    rightPadding: forget.visible ? forget.implicitWidth + 6 : 14
+                    IconButton {
+                        id: forget
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        implicitWidth: 28
+                        implicitHeight: 28
+                        visible: machineRow.hovered || hovered
+                        glyph: "close"
+                        text: qsTr("Remove from the sidebar")
+                        onClicked: places.forget(machineRow.modelData.host)
+                    }
                 }
             }
+            PlaceRow {
+                visible: sidebar.allMachines.length > 0
+                keyed: sidebar.activeFocus && sidebar.cursor === sidebar.peersAt + places.machines.length
+                onKeyedChanged: if (keyed) sidebar.reveal(this)
+                // Under Tailnet, "Machines" says all of them, and unlike
+                // "All machines" it fits the narrow sidebar beside the count.
+                text: qsTr("Machines")
+                glyph: "tailnet"
+                active: sidebar.activePath === "tailnet:"
+                // How many are online, quietly, in the language's digits.
+                status: {
+                    translator.language // Re-read when the language (and so its digits) changes.
+                    return places.peers.length.toLocaleString(Qt.locale(), "f", 0)
+                }
+                statusColor: theme.secondaryForeground
+                onClicked: sidebar.target.navigate("tailnet:")
+            }
+        }
+    }
+
+    // A quiet ? in the corner, for finding the shortcuts without knowing
+    // the key that shows them.
+    AbstractButton {
+        id: help
+        anchors.left: parent.left
+        anchors.bottom: parent.bottom
+        anchors.leftMargin: 18
+        anchors.bottomMargin: 12
+        implicitWidth: 24
+        implicitHeight: 24
+        focusPolicy: Qt.NoFocus
+        hoverEnabled: true
+        text: qsTr("Keyboard shortcuts")
+        Accessible.name: text
+        onClicked: sidebar.helpRequested()
+        ToolTip {
+            visible: help.hovered
+            delay: 600
+            text: help.text
+            enter: null
+            exit: null
+        }
+        contentItem: Text {
+            text: "?"
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            font.pixelSize: 13
+            color: help.hovered ? theme.foreground : Qt.alpha(theme.secondaryForeground, 0.6)
+        }
+        background: Rectangle {
+            radius: width / 2
+            color: "transparent"
+            border.width: 1
+            border.color: help.hovered ? theme.foreground : Qt.alpha(theme.secondaryForeground, 0.4)
         }
     }
 }

@@ -66,8 +66,10 @@ bool FolderModel::sameListing(const QVector<Entry> &a, const QVector<Entry> &b) 
     // By path, not name: a folder copied with cp -a or rsync lists the same
     // names, sizes and times as the one it came from.
     for (int i = 0; i < a.size(); ++i)
+        // Name and extension too: a tailnet machine keeps its path (its
+        // host) when its name or OS changes.
         if (a[i].path != b[i].path || a[i].size != b[i].size || a[i].modified != b[i].modified
-            || a[i].isDir != b[i].isDir)
+            || a[i].isDir != b[i].isDir || a[i].name != b[i].name || a[i].extension != b[i].extension)
             return false;
     return true;
 }
@@ -146,8 +148,18 @@ void FolderModel::setQuery(const QString &query) {
     reload();
 }
 
+void FolderModel::setPeers(const QVariantList &peers) {
+    if (peers == m_peers)
+        return;
+    m_peers = peers;
+    emit peersChanged();
+    // The tailnet view follows machines coming online and going away.
+    if (m_path == tailnetPath())
+        reload();
+}
+
 void FolderModel::setPath(const QString &path) {
-    const QString clean = path.isEmpty() || path == recentPath() ? path : QDir::cleanPath(path);
+    const QString clean = path.isEmpty() || isView(path) ? path : QDir::cleanPath(path);
     if (clean == m_path)
         return;
     if (!m_watcher.directories().isEmpty())
@@ -184,7 +196,9 @@ void FolderModel::setPath(const QString &path) {
     } else {
         m_staleClear.start();
     }
-    m_watcher.addPath(m_path == recentPath() ? recentFile() : m_path);
+    // The tailnet has nothing to watch: Places polls it.
+    if (m_path != tailnetPath())
+        m_watcher.addPath(m_path == recentPath() ? recentFile() : m_path);
     reload();
 }
 
@@ -194,8 +208,10 @@ QString FolderModel::kindForMime(const QString &mime) {
     if (mime.startsWith("image/")) return "image";
     if (mime.startsWith("video/")) return "video";
     if (mime.startsWith("audio/")) return "audio";
-    if (mime.startsWith("text/") || mime == "application/json" || mime == "application/x-shellscript"
-        || mime == "application/toml" || mime == "application/xml" || mime == "application/x-yaml")
+    // Anything readable as text (source code, config, JSON, Ruby, ...) is
+    // text, whatever its own type is called.
+    static const QMimeDatabase types;
+    if (mime.startsWith("text/") || types.mimeTypeForName(mime).inherits("text/plain"))
         return "text";
     static const QStringList archives{"application/zip", "application/x-tar", "application/gzip",
                                       "application/x-xz", "application/zstd", "application/x-7z-compressed",
@@ -372,6 +388,24 @@ QVector<FolderModel::Entry> FolderModel::listRecent(const QString &xbel, bool sh
     return entries;
 }
 
+QVector<FolderModel::Entry> FolderModel::listPeers(const QVariantList &peers, const QString &query) {
+    QVector<Entry> entries;
+    for (const QVariant &peer : peers) {
+        const QVariantMap map = peer.toMap();
+        Entry e;
+        e.name = map.value("name").toString();
+        if (!e.name.contains(query, Qt::CaseInsensitive))
+            continue;
+        e.path = tailnetPath() + map.value("host").toString();
+        e.kind = QStringLiteral("peer");
+        e.extension = map.value("os").toString();
+        entries.push_back(e);
+    }
+    // By name in every order: machines have no size, kind or date to sort by.
+    sortEntries(entries, "name");
+    return entries;
+}
+
 QString FolderModel::recentFile() {
     return QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + "/recently-used.xbel";
 }
@@ -408,6 +442,7 @@ void FolderModel::reload() {
     const bool showHidden = m_showHidden;
     const QString sort = m_sort;
     const QString query = m_query;
+    const QVariantList peers = m_peers;
     *m_latest = generation;
     const auto latest = m_latest;
     auto *watcher = new QFutureWatcher<QPair<QVector<Entry>, QString>>(this);
@@ -439,12 +474,12 @@ void FolderModel::reload() {
             remember();
         countFolders(generation);
     });
-    watcher->setFuture(QtConcurrent::run([path, showHidden, sort, query, latest, generation] {
+    watcher->setFuture(QtConcurrent::run([path, showHidden, sort, query, peers, latest, generation] {
         QString error;
         const auto overtaken = [&] { return *latest != generation; };
-        auto entries = query.isEmpty() || path == recentPath()
-            ? list(path, showHidden, sort, &error, overtaken)
-            : search(path, query, showHidden, sort, overtaken);
+        auto entries = path == tailnetPath() ? listPeers(peers, query)
+                     : query.isEmpty() || path == recentPath() ? list(path, showHidden, sort, &error, overtaken)
+                     : search(path, query, showHidden, sort, overtaken);
         return qMakePair(entries, error);
     }));
 }

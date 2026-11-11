@@ -5,8 +5,9 @@ import QtQuick
 // Share (Dropbox link, Taildrop, LocalSend: whichever are available), Pin,
 // Terminal, Delete. On empty space: Paste, New Folder, Copy Path, Terminal,
 // hidden files. In the trash: Restore, Empty Trash and Delete Permanently,
-// without the entries that change files. Entries show their keys, so the
-// menu also teaches the shortcuts.
+// without the entries that change files. On a tailnet machine: Open, and
+// nothing for files. Entries show their keys, so the menu also teaches the
+// shortcuts.
 FolioMenu {
     id: fileMenu
 
@@ -21,12 +22,14 @@ FolioMenu {
     signal pinRequested(string path)
     // In the trash the menu is about getting things back, or letting go.
     readonly property bool trashView: fileOps.inTrash(folder)
+    // The tailnet view lists machines, which only open.
+    readonly property bool forFiles: folder !== "tailnet:"
 
     // Named for…, not on…: QML treats on… names as signal handlers, and an
     // onFolder beside the folder property never updated.
     readonly property bool forItem: !!target && target.path !== undefined
     readonly property bool forFolder: forItem && target.isDir === true
-    readonly property var apps: forItem ? fileOps.appsFor(target.path) : []
+    readonly property var apps: forItem && forFiles ? fileOps.appsFor(target.path) : []
     // Open With only when there's something besides what Open already does.
     readonly property bool canOpenWith: apps.length > 1
     // A selected item in the folder being shown stands for the whole
@@ -40,6 +43,9 @@ FolioMenu {
     function show(clicked, where, near) {
         target = clicked
         folder = where
+        // Empty space among machines has nothing to offer.
+        if (!forItem && !forFiles)
+            return
         // Submenus (Open With, Share) show only when they have entries.
         // Menu makes their entries itself, so they're set here rather than
         // bound where they're declared.
@@ -83,32 +89,32 @@ FolioMenu {
         }
     }
     FolioMenuItem {
-        shown: fileMenu.forItem
+        shown: fileMenu.forItem && fileMenu.forFiles
         text: qsTr("Preview")
         keys: "Space"
         onTriggered: backend.togglePreview(fileMenu.target.path)
     }
-    MenuLine { shown: fileMenu.forItem }
+    MenuLine { shown: fileMenu.forItem && fileMenu.forFiles }
     FolioMenuItem {
-        shown: !fileMenu.trashView && fileMenu.forItem
+        shown: !fileMenu.trashView && fileMenu.forItem && fileMenu.forFiles
         text: qsTr("Rename…")
         keys: "F2"
         onTriggered: fileMenu.renameRequested(fileMenu.target)
     }
     FolioMenuItem {
-        shown: !fileMenu.trashView && fileMenu.forItem
+        shown: !fileMenu.trashView && fileMenu.forItem && fileMenu.forFiles
         text: qsTr("Duplicate")
         keys: "Ctrl+Shift+D"
         onTriggered: fileOps.duplicate(fileMenu.target.path)
     }
     FolioMenuItem {
-        shown: fileMenu.forItem
+        shown: fileMenu.forItem && fileMenu.forFiles
         text: qsTr("Copy")
         keys: "Ctrl+C"
         onTriggered: fileOps.copy(fileMenu.paths)
     }
     FolioMenuItem {
-        shown: !fileMenu.trashView && fileMenu.forItem
+        shown: !fileMenu.trashView && fileMenu.forItem && fileMenu.forFiles
         text: qsTr("Cut")
         keys: "Ctrl+X"
         onTriggered: fileOps.cut(fileMenu.paths)
@@ -121,6 +127,7 @@ FolioMenu {
         onTriggered: fileOps.paste(fileMenu.forItem ? fileMenu.target.path : fileMenu.folder)
     }
     FolioMenuItem {
+        shown: fileMenu.forFiles
         text: qsTr("Copy Path")
         keys: "Ctrl+Shift+C"
         onTriggered: fileOps.yank(fileMenu.forItem ? fileMenu.paths : [fileMenu.folder])
@@ -131,9 +138,9 @@ FolioMenu {
         keys: "Ctrl+Shift+N"
         onTriggered: fileOps.newFolder(fileMenu.folder)
     }
-    MenuLine { }
+    MenuLine { shown: fileMenu.forFiles }
     FolioMenuItem {
-        shown: !fileMenu.trashView && fileMenu.forItem
+        shown: !fileMenu.trashView && fileMenu.forItem && fileMenu.forFiles
         text: qsTr("Compress")
         onTriggered: fileOps.compress(fileMenu.paths)
     }
@@ -143,8 +150,8 @@ FolioMenu {
     // them, there's no Share at all.
     readonly property bool canDropbox: forItem && target.path.startsWith(places.home + "/Dropbox/")
                                        && places.dropboxStatus !== "" && places.dropboxStatus !== "stopped"
-    readonly property bool canTaildrop: forItem && places.peers.length > 0
-    readonly property bool canLocalSend: forItem && fileOps.hasLocalSend()
+    readonly property bool canTaildrop: forItem && forFiles && places.peers.length > 0
+    readonly property bool canLocalSend: forItem && forFiles && fileOps.hasLocalSend()
     readonly property bool canShare: canDropbox || canTaildrop || canLocalSend
 
     // The entries are made only while they apply, rather than hidden:
@@ -194,7 +201,7 @@ FolioMenu {
         onTriggered: fileMenu.pinRequested(fileMenu.target.path)
     }
     FolioMenuItem {
-        shown: !fileMenu.forItem || fileMenu.forFolder
+        shown: fileMenu.forFiles && (!fileMenu.forItem || fileMenu.forFolder)
         text: qsTr("Open Terminal Here")
         onTriggered: fileOps.openTerminal(fileMenu.forItem ? fileMenu.target.path : fileMenu.folder)
     }
@@ -204,10 +211,10 @@ FolioMenu {
         keys: "Ctrl+H"
         onTriggered: backend.folder.showHidden = !backend.folder.showHidden
     }
-    MenuLine { shown: fileMenu.forItem }
+    MenuLine { shown: fileMenu.forItem && fileMenu.forFiles }
     // Delete moves to the trash; Restore in any file manager brings it back.
     FolioMenuItem {
-        shown: fileMenu.forItem
+        shown: fileMenu.forItem && fileMenu.forFiles
         text: fileMenu.trashView ? qsTr("Delete Permanently…")
             : fileMenu.forSelection ? qsTr("Delete %n Items", "", fileMenu.paths.length) : qsTr("Delete")
         keys: "Delete"

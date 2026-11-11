@@ -19,7 +19,7 @@ depends=(
 optdepends=(
   'qt6-webengine: PDF previews (Qt PDF)'
   'ffmpegthumbnailer: video thumbnails'
-  'papers: PDF thumbnails'
+  'poppler: PDF thumbnails'
   'glycin: HEIC, JPEG XL and other image thumbnails'
   'gvfs: browsing tailnet machines over SFTP'
   'tailscale: listing tailnet machines'

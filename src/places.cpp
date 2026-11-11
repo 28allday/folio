@@ -3,9 +3,11 @@
 #include "foldermodel.h"
 
 #include <QCollator>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QSaveFile>
+#include <QSettings>
 #include <QUrl>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -64,10 +66,14 @@ Places::Places(const QString &home, QObject *parent)
     connect(&m_tailscale, &QProcess::finished, this, [this](int code, QProcess::ExitStatus status) {
         const QVariantList peers = code == 0 && status == QProcess::NormalExit
             ? parseTailscale(m_tailscale.readAllStandardOutput()) : QVariantList();
-        if (peers != m_peers) {
-            m_peers = peers;
+        // The saved machines are read again on every poll too: another Folio
+        // process may have opened or forgotten one.
+        const QVariantList before = m_machines;
+        const bool peersChanged = peers != m_peers;
+        m_peers = peers;
+        refreshMachines();
+        if (peersChanged || m_machines != before)
             emit changed();
-        }
     });
     connect(&m_dropbox, &QProcess::finished, this, [this](int, QProcess::ExitStatus) {
         const QString status = parseDropboxStatus(m_dropbox.readAllStandardOutput());
@@ -216,6 +222,81 @@ void Places::unpin(const QString &path) {
     }
 }
 
+QString Places::settingsPath() const {
+    // The window's own settings (the view, the zoom) are in the same file;
+    // tests keep theirs inside their temporary home.
+    return m_realHome ? QSettings().fileName() : m_home + "/.config/folio/folio.conf";
+}
+
+QList<Places::Opened> Places::readOpened() const {
+    QSettings settings(settingsPath(), QSettings::IniFormat);
+    QList<Opened> opened;
+    const int count = settings.beginReadArray("opened-machines");
+    for (int i = 0; i < count; ++i) {
+        settings.setArrayIndex(i);
+        opened << Opened{settings.value("host").toString(), settings.value("when").toString()};
+    }
+    settings.endArray();
+    return opened;
+}
+
+void Places::writeOpened(const QList<Opened> &opened) {
+    QSettings settings(settingsPath(), QSettings::IniFormat);
+    // Rewritten whole, so a shorter list leaves none of the old entries.
+    settings.remove("opened-machines");
+    settings.beginWriteArray("opened-machines", opened.size());
+    for (int i = 0; i < opened.size(); ++i) {
+        settings.setArrayIndex(i);
+        settings.setValue("host", opened[i].host);
+        settings.setValue("when", opened[i].when);
+    }
+    settings.endArray();
+}
+
+QStringList Places::opened() const {
+    QStringList hosts;
+    for (const Opened &o : readOpened())
+        hosts << o.host;
+    return hosts;
+}
+
+void Places::remember(const QString &host) {
+    QList<Opened> opened = readOpened();
+    opened.removeIf([&](const Opened &o) { return o.host == host; });
+    opened.prepend({host, QDateTime::currentDateTime().toString(Qt::ISODate)});
+    // Enough to come back to the machines that went to sleep for a while,
+    // without the settings growing with every machine ever opened.
+    opened = opened.mid(0, 20);
+    writeOpened(opened);
+    refreshMachines();
+    emit changed();
+}
+
+void Places::forget(const QString &host) {
+    QList<Opened> opened = readOpened();
+    if (opened.removeIf([&](const Opened &o) { return o.host == host; }) == 0)
+        return;
+    writeOpened(opened);
+    refreshMachines();
+    emit changed();
+}
+
+QVariantList Places::onlineOf(const QStringList &opened, const QVariantList &peers, int limit) {
+    QVariantList online;
+    for (const QString &host : opened) {
+        for (const QVariant &peer : peers)
+            if (peer.toMap().value("host").toString() == host)
+                online << peer;
+        if (online.size() == limit)
+            break;
+    }
+    return online;
+}
+
+void Places::refreshMachines() {
+    m_machines = onlineOf(opened(), m_peers);
+}
+
 QVariantList Places::physicalDrives(const QList<Mount> &mounts, const QString &systemDevice) {
     // Where the system itself lives; a drive mounted here is the computer,
     // not a device to browse to.
@@ -288,11 +369,12 @@ QVariantList Places::parseTailscale(const QByteArray &json) {
         // Only machines that can hold files and can be reached right now:
         // phones can't be browsed over SFTP, and offline machines would only
         // be dead ends. The 15-second poll brings them back when they wake.
-        const QString os = peer.value("OS").toString();
-        if (name.isEmpty() || host.isEmpty() || (os != "linux" && os != "macOS" && os != "windows")
-            || !peer.value("Online").toBool())
+        // Each keeps its system's name, as its maker writes it.
+        static const QHash<QString, QString> systems{{"linux", "Linux"}, {"macOS", "macOS"}, {"windows", "Windows"}};
+        const QString os = systems.value(peer.value("OS").toString());
+        if (name.isEmpty() || host.isEmpty() || os.isEmpty() || !peer.value("Online").toBool())
             continue;
-        peers << QVariantMap{{"name", name}, {"host", host}};
+        peers << QVariantMap{{"name", name}, {"host", host}, {"os", os}};
     }
     std::sort(peers.begin(), peers.end(), [](const QVariant &a, const QVariant &b) {
         return QString::localeAwareCompare(a.toMap().value("name").toString(), b.toMap().value("name").toString()) < 0;

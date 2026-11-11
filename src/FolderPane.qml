@@ -25,8 +25,17 @@ FocusScope {
     // Each pane has its own view. The window's own pane is the one
     // remembered between launches; the right pane of a split starts with
     // the view of the pane it was split from.
-    property string viewMode: host ? host.viewMode : "grid"
+    property string viewMode: host ? host.viewMode : "columns"
     onViewModeChanged: if (host && !closable) host.viewMode = viewMode
+    // How big the grid's tiles are, in steps (Ctrl+= / Ctrl+- / Ctrl+0, or
+    // Ctrl+scroll), shared and remembered the same way as the view.
+    property real zoom: host ? host.zoom : 1
+    onZoomChanged: if (host && !closable) host.zoom = zoom
+    readonly property var zoomSteps: [0.75, 1, 1.25, 1.5, 2]
+    function zoomBy(step) {
+        const at = zoomSteps.indexOf(zoom)
+        zoom = zoomSteps[Math.max(0, Math.min(zoomSteps.length - 1, (at < 0 ? 1 : at) + step))]
+    }
     function cycleView() {
         viewMode = viewMode === "grid" ? "list" : viewMode === "list" ? "columns" : "grid"
     }
@@ -56,14 +65,20 @@ FocusScope {
     }
     // An open preview stays on the selected item, followed once the
     // folder's loaded has put the cursor back on it: a re-read leaves
-    // another item on the cursor's row for a moment.
+    // another item on the cursor's row for a moment. A tailnet machine
+    // isn't a file: the preview keeps what it showed last.
     onCurrentChanged: Qt.callLater(follow)
-    function follow() { if (backend.previewing && current.path) backend.followSelection(current.path) }
+    function follow() { if (backend.previewing && current.path && current.kind !== "peer") backend.followSelection(current.path) }
 
     // In the trash, Delete means for good (after asking), and there's
     // Restore and Empty Trash. Nothing is renamed or made there: an item
     // without its note (or under another name) can't be restored.
     readonly property bool inTrash: fileOps.inTrash(backend.path)
+    // The tailnet view lists machines, not files: there's nothing to copy,
+    // move, rename, make, pin or preview there, only machines to open.
+    readonly property bool inTailnet: backend.path === "tailnet:"
+    readonly property bool fileKeys: keys && !inTailnet
+    Binding { target: backend.folder; property: "peers"; value: places.peers }
     function deleteSelected() {
         const paths = pane.selectedPaths()
         if (pane.inTrash)
@@ -105,14 +120,14 @@ FocusScope {
             backend.showMessage(problem)
     }
 
-    Shortcut { sequence: "Space"; enabled: pane.keys; onActivated: backend.togglePreview(pane.current.path || "") }
-    Shortcut { sequences: [StandardKey.Copy]; enabled: pane.keys; onActivated: fileOps.copy(pane.selectedPaths()) }
-    Shortcut { sequences: [StandardKey.Cut]; enabled: pane.keys; onActivated: fileOps.cut(pane.selectedPaths()) }
-    Shortcut { sequences: [StandardKey.Paste]; enabled: pane.keys; onActivated: fileOps.paste(backend.path) }
+    Shortcut { sequence: "Space"; enabled: pane.fileKeys; onActivated: backend.togglePreview(pane.current.path || "") }
+    Shortcut { sequences: [StandardKey.Copy]; enabled: pane.fileKeys; onActivated: fileOps.copy(pane.selectedPaths()) }
+    Shortcut { sequences: [StandardKey.Cut]; enabled: pane.fileKeys; onActivated: fileOps.cut(pane.selectedPaths()) }
+    Shortcut { sequences: [StandardKey.Paste]; enabled: pane.fileKeys; onActivated: fileOps.paste(backend.path) }
     // "Yank": the selected path (or the folder's) as text, for a terminal.
-    Shortcut { sequence: "Ctrl+Shift+C"; enabled: pane.keys; onActivated: { const paths = pane.selectedPaths(); fileOps.yank(paths.length > 0 ? paths : [backend.path]) } }
-    Shortcut { sequence: "Delete"; enabled: pane.keys; onActivated: pane.deleteSelected() }
-    Shortcut { sequence: "F2"; enabled: pane.keys && !pane.inTrash; onActivated: if (pane.current.path) rename.open(pane.current) }
+    Shortcut { sequence: "Ctrl+Shift+C"; enabled: pane.fileKeys; onActivated: { const paths = pane.selectedPaths(); fileOps.yank(paths.length > 0 ? paths : [backend.path]) } }
+    Shortcut { sequence: "Delete"; enabled: pane.fileKeys; onActivated: pane.deleteSelected() }
+    Shortcut { sequence: "F2"; enabled: pane.fileKeys && !pane.inTrash; onActivated: if (pane.current.path) rename.open(pane.current) }
     Shortcut { sequences: [StandardKey.SelectAll]; enabled: pane.keys; onActivated: backend.folder.selectAll() }
     // Escape narrows a selection of several back to the cursor, then ends
     // a search.
@@ -136,16 +151,19 @@ FocusScope {
             fileMenu.show(pane.current.path ? pane.current : null, backend.path, anchor)
         }
     }
-    Shortcut { sequence: "Ctrl+Shift+D"; enabled: pane.keys && !pane.inTrash; onActivated: if (pane.current.path) fileOps.duplicate(pane.current.path) }
+    Shortcut { sequence: "Ctrl+Shift+D"; enabled: pane.fileKeys && !pane.inTrash; onActivated: if (pane.current.path) fileOps.duplicate(pane.current.path) }
     Shortcut { sequences: [StandardKey.New]; enabled: pane.keys; onActivated: backend.newWindow() }
-    Shortcut { sequence: "Ctrl+Shift+N"; enabled: pane.keys && !pane.inTrash; onActivated: fileOps.newFolder(backend.path) }
+    Shortcut { sequence: "Ctrl+Shift+N"; enabled: pane.fileKeys && !pane.inTrash; onActivated: fileOps.newFolder(backend.path) }
     Shortcut { sequences: ["Ctrl+L", "Alt+D"]; enabled: pane.keys; onActivated: pathBar.editPath() }
     // Pins the selected folder, or the folder being shown when a file is
     // selected; pressed again, unpins it.
-    Shortcut { sequence: "Ctrl+D"; enabled: pane.active; onActivated: pane.togglePin(pane.current.isDir ? pane.current.path : backend.path) }
+    Shortcut { sequence: "Ctrl+D"; enabled: pane.active && !pane.inTailnet; onActivated: pane.togglePin(pane.current.isDir ? pane.current.path : backend.path) }
     Shortcut { sequence: "Ctrl+1"; enabled: pane.active; onActivated: pane.viewMode = "grid" }
     Shortcut { sequence: "Ctrl+2"; enabled: pane.active; onActivated: pane.viewMode = "list" }
     Shortcut { sequence: "Ctrl+3"; enabled: pane.active; onActivated: pane.viewMode = "columns" }
+    Shortcut { sequences: [StandardKey.ZoomIn, "Ctrl+="]; enabled: pane.active; onActivated: pane.zoomBy(1) }
+    Shortcut { sequences: [StandardKey.ZoomOut]; enabled: pane.active; onActivated: pane.zoomBy(-1) }
+    Shortcut { sequence: "Ctrl+0"; enabled: pane.active; onActivated: pane.zoom = 1 }
     Shortcut { sequences: ["Return", "Enter"]; enabled: pane.keys && pane.activeFocus; onActivated: if (pane.current.path) backend.open(pane.current.path) }
     Shortcut { sequences: ["Backspace", "Alt+Up"]; enabled: pane.keys; onActivated: backend.goUp() }
     Shortcut { sequences: ["Alt+Left", "Back"]; enabled: pane.active; onActivated: backend.back() }
@@ -161,6 +179,7 @@ FocusScope {
         target: backend
         function onSelectRequested(name) { if (view.item) view.item.select(backend.folder.indexOf(name), false) }
         function onActivateRequested() { if (pane.host) { pane.host.raise(); pane.host.requestActivate() } }
+        function onPeerOpened(host) { places.remember(host) }
     }
 
     Connections {
@@ -325,7 +344,7 @@ FocusScope {
                 }
             }
         }
-        Component { id: gridView; FolderGrid { } }
+        Component { id: gridView; FolderGrid { zoom: pane.zoom; onZoomRequested: (step) => pane.zoomBy(step) } }
         Component { id: listView; FolderList { } }
         Component { id: columnsView; FolderColumns { } }
     }
@@ -339,6 +358,7 @@ FocusScope {
         width: pane.barLeft + pane.width + pane.barExtension
         onEditDone: pane.focusView()
         previewVisible: pane.host ? pane.host.previewVisible : true
+        previewFits: pane.host ? pane.host.detailsFit : true
         viewMode: pane.viewMode
         closable: pane.closable
         onTogglePreview: if (pane.host) pane.host.previewVisible = !pane.host.previewVisible

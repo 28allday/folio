@@ -1,6 +1,9 @@
 #include <QClipboard>
 #include <QDir>
 #include <QMimeData>
+#include <QPageSize>
+#include <QPainter>
+#include <QPdfWriter>
 #include <memory>
 #include <QFile>
 #include <QGuiApplication>
@@ -8,6 +11,7 @@
 #include <QProcess>
 #include <QQmlComponent>
 #include <QQmlEngine>
+#include <QSettings>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -50,6 +54,18 @@ static std::unique_ptr<QTemporaryDir> elsewhere()
     if (!dir->isValid() || FileOps::sameDrive(dir->path(), QDir::tempPath()))
         return {};
     return dir;
+}
+
+// `tailscale status --json`, trimmed to what Folio reads, for a made-up
+// tailnet: three desktops online, one offline, and a phone.
+static QByteArray tailnet()
+{
+    return R"({"Peer":{
+        "a":{"HostName":"studio","DNSName":"studio.example.ts.net.","OS":"linux","Online":true},
+        "b":{"HostName":"nas","DNSName":"nas.example.ts.net.","OS":"linux","Online":false},
+        "c":{"HostName":"Conference-Room","DNSName":"conference-room.example.ts.net.","OS":"macOS","Online":true},
+        "d":{"HostName":"phone","DNSName":"phone.example.ts.net.","OS":"android","Online":true},
+        "e":{"HostName":"build","DNSName":"build.example.ts.net.","OS":"windows","Online":true}}})";
 }
 
 class FolioTests : public QObject {
@@ -1158,6 +1174,10 @@ private slots:
         QCOMPARE(FolderModel::kindForMime("video/mp4"), QString("video"));
         QCOMPARE(FolderModel::kindForMime("audio/mp4"), QString("audio"));
         QCOMPARE(FolderModel::kindForMime("application/zip"), QString("archive"));
+        // Whatever reads as text is text: code, config and data formats too.
+        for (const char *mime : {"application/x-ruby", "application/json", "application/x-shellscript",
+                                 "application/toml", "application/x-yaml", "application/javascript"})
+            QCOMPARE(FolderModel::kindForMime(mime), QString("text"));
         QCOMPARE(FolderModel::kindForMime("application/octet-stream"), QString("other"));
     }
 
@@ -1397,6 +1417,148 @@ private slots:
         QCOMPARE(peers.size(), 1);
         QCOMPARE(peers.at(0).toMap().value("name").toString(), QString("studio"));
         QCOMPARE(peers.at(0).toMap().value("host").toString(), QString("studio.example.ts.net"));
+        QCOMPARE(peers.at(0).toMap().value("os").toString(), QString("Linux"));
+    }
+
+    void placesRememberOpenedMachines()
+    {
+        QTemporaryDir home;
+        Places places(home.path());
+        places.remember("studio.example.ts.net");
+        places.remember("nas.example.ts.net");
+        // Most recently opened first; opening one again moves it up.
+        QCOMPARE(places.opened(), QStringList({"nas.example.ts.net", "studio.example.ts.net"}));
+        places.remember("studio.example.ts.net");
+        QCOMPARE(places.opened(), QStringList({"studio.example.ts.net", "nas.example.ts.net"}));
+        // Kept in Folio's settings, with when.
+        QSettings settings(home.filePath(".config/folio/folio.conf"), QSettings::IniFormat);
+        QCOMPARE(settings.beginReadArray("opened-machines"), 2);
+        settings.setArrayIndex(0);
+        QVERIFY(QDateTime::fromString(settings.value("when").toString(), Qt::ISODate).isValid());
+        settings.endArray();
+        QCOMPARE(Places(home.path()).opened().size(), 2);
+
+        places.forget("studio.example.ts.net");
+        QCOMPARE(places.opened(), QStringList({"nas.example.ts.net"}));
+
+        // Only the last 20 are kept.
+        for (int i = 0; i < 25; ++i)
+            places.remember(QString("machine%1.example.ts.net").arg(i));
+        QCOMPARE(places.opened().size(), 20);
+        QCOMPARE(places.opened().first(), QString("machine24.example.ts.net"));
+        QCOMPARE(places.opened().last(), QString("machine5.example.ts.net"));
+    }
+
+    void placesShowOnlyOnlineOpenedMachines()
+    {
+        const QVariantList peers = Places::parseTailscale(tailnet());
+        // The offline nas and the phone aren't shown, however recently opened.
+        const QStringList opened{"nas.example.ts.net", "studio.example.ts.net", "phone.example.ts.net",
+                                 "build.example.ts.net"};
+        const auto shown = Places::onlineOf(opened, peers);
+        QCOMPARE(shown.size(), 2);
+        QCOMPARE(shown.at(0).toMap().value("name").toString(), QString("studio"));
+        QCOMPARE(shown.at(1).toMap().value("name").toString(), QString("build"));
+        QCOMPARE(Places::onlineOf(opened, peers, 1).size(), 1);
+
+        // The sidebar shows a handful at most.
+        QVariantList many;
+        QStringList hosts;
+        for (int i = 0; i < 10; ++i) {
+            const QString host = QString("machine%1.example.ts.net").arg(i);
+            many << QVariantMap{{"name", QString("machine%1").arg(i)}, {"host", host}, {"os", "Linux"}};
+            hosts << host;
+        }
+        QCOMPARE(Places::onlineOf(hosts, many).size(), 6);
+    }
+
+    void tailnetViewListsOnlineDesktopsByName()
+    {
+        const auto entries = FolderModel::listPeers(Places::parseTailscale(tailnet()));
+        QStringList names;
+        for (const auto &e : entries) names << e.name;
+        // Offline machines and phones are left out; the rest go by name,
+        // whatever their case.
+        QCOMPARE(names, QStringList({"build", "Conference-Room", "studio"}));
+        const auto &build = entries.at(0);
+        QCOMPARE(build.kind, QString("peer"));
+        QCOMPARE(build.path, FolderModel::tailnetPath() + "build.example.ts.net");
+        QCOMPARE(build.extension, QString("Windows"));
+        QVERIFY(!build.isDir);
+    }
+
+    void tailnetViewIsAPlaceOfItsOwn()
+    {
+        QTemporaryDir home;
+        Backend backend(home.path());
+        backend.navigate(FolderModel::tailnetPath());
+        QCOMPARE(backend.path(), FolderModel::tailnetPath());
+        QCOMPARE(backend.title(), QString("Tailnet"));
+        QCOMPARE(backend.crumbs().size(), 1);
+        QCOMPARE(backend.crumbs().at(0).toMap().value("name").toString(), QString("Tailnet"));
+        backend.goUp();
+        QCOMPARE(backend.path(), FolderModel::tailnetPath());
+    }
+
+    void typedViewsGoToTheirView()
+    {
+        // The path bar shows a view as its own name, so Return on it, or
+        // the name typed, goes there rather than to a folder it isn't.
+        QTemporaryDir home;
+        Backend backend(home.path());
+        backend.navigate(FolderModel::tailnetPath());
+        QVERIFY(backend.goTyped(backend.typedPath()));
+        QCOMPARE(backend.path(), FolderModel::tailnetPath());
+        QVERIFY(backend.message().isEmpty());
+        QVERIFY(backend.goTyped(" recent: "));
+        QCOMPARE(backend.path(), FolderModel::recentPath());
+    }
+
+    void tailnetViewSearchesMachineNames()
+    {
+        const QVariantList peers = Places::parseTailscale(tailnet());
+        QCOMPARE(FolderModel::listPeers(peers, "STU").size(), 1);
+
+        FolderModel model;
+        QSignalSpy loaded(&model, &FolderModel::loaded);
+        model.setPeers(peers);
+        model.setPath(FolderModel::tailnetPath());
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 3);
+        model.setQuery("o");
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 2);
+        QCOMPARE(model.get(0).value("name").toString(), QString("Conference-Room"));
+        QCOMPARE(model.get(1).value("name").toString(), QString("studio"));
+        // A machine going away leaves the view at the next poll.
+        QVariantList without = peers;
+        without.removeIf([](const QVariant &p) { return p.toMap().value("name") == "studio"; });
+        model.setPeers(without);
+        QVERIFY(loaded.wait(3000));
+        QCOMPARE(model.count(), 1);
+        // A machine renamed keeps its host, and so its path; the view still
+        // shows the new name.
+        QVariantList renamed = without;
+        QVariantMap peer = renamed[0].toMap();
+        const QString host = peer.value("host").toString();
+        peer["name"] = "Boardroom";
+        renamed[0] = peer;
+        model.setQuery("");
+        QVERIFY(loaded.wait(3000));
+        model.setPeers(renamed);
+        QVERIFY(loaded.wait(3000));
+        bool found = false;
+        for (int i = 0; i < model.count(); ++i)
+            found |= model.get(i).value("name").toString() == "Boardroom";
+        QVERIFY2(found, qPrintable(host));
+    }
+
+    void tailnetMountsGoByTheMachinesName()
+    {
+        QCOMPARE(Backend::mountLabel("sftp:host=studio.example.ts.net"), QString("studio"));
+        QCOMPARE(Backend::mountLabel("sftp:host=studio.example.ts.net,user=me"), QString("studio"));
+        QCOMPARE(Backend::mountLabel("sftp:host=files.example.com"), QString("files.example.com"));
+        QCOMPARE(Backend::mountLabel("smb-share:server=nas,share=media"), QString("nas"));
     }
 
     void placesListOnlyPhysicalDrives()
@@ -1531,6 +1693,50 @@ private slots:
         // the one it names.
         write(dir.filePath("photo.heic"), "not a real heic");
         QCOMPARE(thumbnails.load(dir.filePath("photo.heic"), "image/*", 128).size(), QSize(64, 32));
+    }
+
+    void thumbnailsSetTextOnAPage()
+    {
+        QTemporaryDir dir;
+        write(dir.filePath("notes.md"), "# Packing\n\n- passport\n- charger\n");
+        const QImage page = Thumbnails::textPage(dir.filePath("notes.md"), 256, QColor("#fafaf7"), QColor("#303034"));
+        QCOMPARE(page.size(), QSize(218, 256));
+        // Dark ink near the top left, where the first line is; plain paper
+        // at the bottom right.
+        bool ink = false;
+        for (int y = 0; y < 40 && !ink; ++y)
+            for (int x = 0; x < 120 && !ink; ++x)
+                ink = qGray(page.pixel(x, y)) < 128;
+        QVERIFY(ink);
+        QVERIFY(qGray(page.pixel(214, 252)) > 240);
+
+        // A FIFO named like text is never opened: reading it would block.
+        const QString fifo = dir.filePath("events.txt");
+        QCOMPARE(mkfifo(QFile::encodeName(fifo).constData(), 0600), 0);
+        QVERIFY(Thumbnails::textPage(fifo, 256, Qt::white, Qt::black).isNull());
+
+        // Binary that claims to be text gets the stand-in.
+        write(dir.filePath("blob.txt"), QByteArray("abc\0def", 7));
+        QVERIFY(Thumbnails::textPage(dir.filePath("blob.txt"), 256, Qt::white, Qt::black).isNull());
+    }
+
+    void thumbnailsDrawAPdfsFirstPage()
+    {
+        if (QStandardPaths::findExecutable("pdftoppm").isEmpty())
+            QSKIP("pdftoppm (Poppler) isn't installed");
+        QTemporaryDir dir;
+        {
+            QPdfWriter pdf(dir.filePath("itinerary.pdf"));
+            pdf.setPageSize(QPageSize(QPageSize::A4));
+            QPainter painter(&pdf);
+            painter.fillRect(QRect(0, 0, 2000, 2000), Qt::black);
+        }
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
+        const QImage page = thumbnails.load(dir.filePath("itinerary.pdf"), "application/pdf", 256);
+        QCOMPARE(page.height(), 256);
+        QVERIFY(page.width() > 150 && page.width() < 200);
+        QVERIFY(qGray(page.pixel(5, 5)) < 64);
+        QVERIFY(qGray(page.pixel(page.width() - 3, page.height() - 3)) > 200);
     }
 
     void previewerPicksAViewerForEachType()
@@ -1720,18 +1926,25 @@ private slots:
     void themeAsksForRoundingOnlyWhileActive()
     {
         // The fake hyprctl lives outside the theme folder: Theme watches that
-        // folder, and a change there re-reads the rounding whatever the state.
-        QTemporaryDir themeDir, dir;
-        const QString response = dir.filePath("response.json"), command = dir.filePath("hyprctl");
+        // folder and its parent, and a change there re-reads the rounding
+        // whatever the state. Both sit in a private parent, so other programs'
+        // temporary files can't count as a change.
+        QTemporaryDir root;
+        QVERIFY(QDir(root.path()).mkpath("theme") && QDir(root.path()).mkpath("bin"));
+        const QString themeDir = root.filePath("theme");
+        const QString response = root.filePath("bin/response.json"), command = root.filePath("bin/hyprctl");
         write(command, "#!/bin/sh\ncat '" + response.toUtf8() + "'\n");
         QVERIFY(QFile::setPermissions(command, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
         write(response, "{\"int\":3}");
 
-        Theme theme(themeDir.path(), nullptr, command);
+        Theme theme(themeDir, nullptr, command);
         QTRY_COMPARE(theme.radius(), 3);
         // Away from Folio, a change goes unnoticed for longer than the poll,
         // and it's picked up once Folio is back.
         emit qGuiApp->applicationStateChanged(Qt::ApplicationInactive);
+        // A read already under way may still finish (it's killed within
+        // 500ms), so the change comes after it.
+        QTest::qWait(600);
         write(response, "{\"int\":6}");
         QTest::qWait(1500);
         QCOMPARE(theme.radius(), 3);
