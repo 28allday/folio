@@ -216,6 +216,7 @@ QList<Disk> Disks::parse(const Objects &objects) {
         disk.block = it.key();
         disk.drive = drive;
         disk.device = block.value("Device").toString();
+        disk.identity = QStringList{disk.block, about.value("Id").toString(), block.value("Size").toString()}.join('\n');
         disk.size = block.value("Size").toLongLong();
         disk.readOnly = block.value("ReadOnly").toBool();
         disk.hintSystem = block.value("HintSystem").toBool();
@@ -238,6 +239,7 @@ QList<Disk> Disks::parse(const Objects &objects) {
         if (disk == disks.end())
             continue;
         const QVariantMap block = it.value().value("Block");
+        disk->identity += '\n' + block.value("IdUUID").toString();
         if (disk->label.isEmpty() && block.value("IdUsage").toString() == "filesystem")
             disk->label = block.value("IdLabel").toString();
         const QStringList mounts = it.value().value("Filesystem").value("MountPoints").toStringList();

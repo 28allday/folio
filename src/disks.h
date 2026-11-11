@@ -16,6 +16,12 @@ struct Disk {
     QString block;
     QString drive;
     QString device;
+    // Who it is, not only where: its object path, its drive's Id (maker,
+    // model and serial), its size and what's on it. A stick pulled out and
+    // another put in takes the same object path, and a card swapped in a
+    // reader the same drive, so a disk chosen in a menu is only changed
+    // while this still matches.
+    QString identity;
     QString vendor, model, label;
     qint64 size = 0;
     QString bus;

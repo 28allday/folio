@@ -1783,18 +1783,26 @@ QProcess *FileOps::runTool(const QString &program, const QStringList &args, cons
     return process;
 }
 
-// The disk udisks lists under `id` now, if it's still there.
-static std::optional<Disk> diskWithId(Disks &disks, const QString &id) {
+// The disk udisks lists as `identity` now, if it's still there and still
+// the same disk.
+static std::optional<Disk> diskWithId(Disks &disks, const QString &identity) {
     for (const Disk &disk : disks.list())
-        if (disk.block == id)
+        if (disk.identity == identity)
             return disk;
     return std::nullopt;
+}
+
+// Whether `disk` is still the one udisks lists, checked again after any
+// wait (a password asked for) and before it's changed: a disk swapped
+// meanwhile takes the same object path.
+static QString unchanged(Disks &disks, const Disk &disk) {
+    return diskWithId(disks, disk.identity) ? QString() : FileOps::tr("The drive was changed or removed.");
 }
 
 QVariantMap FileOps::driveAt(const QString &root) const {
     for (const Disk &disk : Disks::instance()->list())
         if (disk.mounts.contains(root) && !Disks::holdsSystem(disk))
-            return {{"id", disk.block}, {"title", Disks::title(disk)}, {"label", disk.label}};
+            return {{"id", disk.identity}, {"title", Disks::title(disk)}, {"label", disk.label}};
     return {};
 }
 
@@ -1825,6 +1833,8 @@ void FileOps::format(const QString &id, const QString &label) {
             // Cancelled while it was let go of, nothing's erased yet. Once
             // udisks is formatting, it can't be stopped.
             if (job.cancelled)
+                return result;
+            if (result.error = unchanged(*disks, disk); !result.error.isEmpty())
                 return result;
             QString partition;
             if (result.error = disks->makeTable(disk); !result.error.isEmpty())
@@ -1868,7 +1878,7 @@ QVariantList FileOps::burnTargets(const QString &image) const {
         if (fit == Disks::Unfit)
             continue;
         const QString title = Disks::title(disk);
-        targets << QVariantMap{{"id", disk.block},
+        targets << QVariantMap{{"id", disk.identity},
                                {"title", title},
                                {"text", fit == Disks::Fits ? title : tr("%1 (too small)").arg(title)},
                                {"enabled", fit == Disks::Fits}};
@@ -1904,7 +1914,10 @@ void FileOps::burn(const QString &image, const QString &id) {
             int fd = -1;
             if (result.error = disks->open(disk, &fd); !result.error.isEmpty())
                 return result;
-            result.error = writeImage(image, fd, &job);
+            // Opening it may have waited on a password, long enough to
+            // swap one stick for another.
+            if (result.error = unchanged(*disks, disk); result.error.isEmpty())
+                result.error = writeImage(image, fd, &job);
             ::close(fd);
             // Only a whole image is let go of; a partial one stays, to be
             // burned again.

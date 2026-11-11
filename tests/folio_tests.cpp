@@ -5,6 +5,7 @@
 #include <QPainter>
 #include <QPdfWriter>
 #include <memory>
+#include <functional>
 #include <thread>
 #include <QFile>
 #include <QGuiApplication>
@@ -81,6 +82,9 @@ public:
     QString device;
     // A descriptor to hand out instead of opening `device`.
     int fd = -1;
+    // Runs as each call is made (with its method), to change the world
+    // under it: a stick swapped while polkit asks, say.
+    std::function<void(const QString &)> during;
 
     QList<Disk> list() override { return disks; }
     QString unmount(const QString &filesystem) override { return made("unmount " + filesystem, "unmount"); }
@@ -101,6 +105,8 @@ public:
 private:
     QString made(const QString &call, const QString &method) {
         calls << call;
+        if (during)
+            during(method);
         return refuse.value(method);
     }
 };
@@ -112,6 +118,7 @@ static Disk sanDisk()
     disk.block = "/org/freedesktop/UDisks2/block_devices/sdb";
     disk.drive = "/org/freedesktop/UDisks2/drives/SanDisk_Ultra";
     disk.device = "/dev/sdb";
+    disk.identity = disk.block + " SanDisk-Ultra-4C530001";
     disk.vendor = "SanDisk";
     disk.model = "Ultra";
     disk.label = "STICK";
@@ -120,6 +127,16 @@ static Disk sanDisk()
     disk.removable = disk.canPowerOff = disk.ejectable = true;
     disk.mounts = {"/run/media/me/STICK"};
     disk.filesystems = {"/org/freedesktop/UDisks2/block_devices/sdb1"};
+    return disk;
+}
+
+// Another stick, in the same place the SanDisk one was.
+static Disk otherStick()
+{
+    Disk disk = sanDisk();
+    disk.identity = disk.block + " Kingston-DataTraveler-0019E06B";
+    disk.vendor = "Kingston";
+    disk.model = "DataTraveler";
     return disk;
 }
 
@@ -2517,7 +2534,7 @@ private slots:
         auto fake = fakeDisks();
         FileOps ops;
         QSignalSpy failed(&ops, &FileOps::failed);
-        ops.format(sanDisk().block, "Holiday Photos");
+        ops.format(sanDisk().identity, "Holiday Photos");
         QCOMPARE(failed.count(), 1);
         QCOMPARE(failed.at(0).at(0).toString(), QString("A drive's name can have at most 11 characters."));
         QVERIFY(fake->calls.isEmpty());
@@ -2531,7 +2548,7 @@ private slots:
         QSignalSpy notice(&ops, &FileOps::notice), releasing(&ops, &FileOps::releasing), changed(&ops, &FileOps::drivesChanged);
         QStringList busy;
         connect(&ops, &FileOps::busyChanged, this, [&] { busy << ops.busy(); });
-        ops.format(sanDisk().block, " Photos ");
+        ops.format(sanDisk().identity, " Photos ");
         QTRY_COMPARE(notice.count(), 1);
         QCOMPARE(notice.at(0).at(0).toString(), QString("Formatted SanDisk Ultra."));
         QCOMPARE(releasing.count(), 1);
@@ -2549,7 +2566,7 @@ private slots:
         fake->refuse["makeTable"] = "Permission was refused.";
         FileOps ops;
         QSignalSpy failed(&ops, &FileOps::failed);
-        ops.format(sanDisk().block, "Photos");
+        ops.format(sanDisk().identity, "Photos");
         QTRY_COMPARE(failed.count(), 1);
         QCOMPARE(failed.at(0).at(0).toString(), QString("Couldn't format SanDisk Ultra. Permission was refused."));
         const QString sdb = sanDisk().block;
@@ -2558,7 +2575,7 @@ private slots:
         // A disk gone from udisks' list isn't touched.
         fake->calls.clear();
         fake->disks.clear();
-        ops.format(sdb, "Photos");
+        ops.format(sanDisk().identity, "Photos");
         QCOMPARE(failed.count(), 2);
         QCOMPARE(failed.at(1).at(0).toString(), QString("That drive is gone."));
         QVERIFY(fake->calls.isEmpty());
@@ -2572,7 +2589,7 @@ private slots:
         fakeDisks({sanDisk(), system});
         FileOps ops;
         const QVariantMap stick = ops.driveAt("/run/media/me/STICK");
-        QCOMPARE(stick.value("id").toString(), sanDisk().block);
+        QCOMPARE(stick.value("id").toString(), sanDisk().identity);
         QCOMPARE(stick.value("title").toString(), QString("SanDisk Ultra · 32 GB"));
         QCOMPARE(stick.value("label").toString(), QString("STICK"));
         // Nothing on the system's own disk can be formatted from here.
@@ -2630,7 +2647,7 @@ private slots:
         QSignalSpy notice(&ops, &FileOps::notice), failed(&ops, &FileOps::failed);
         QStringList busy;
         connect(&ops, &FileOps::busyChanged, this, [&] { busy << ops.busy(); });
-        ops.burn(image, sanDisk().block);
+        ops.burn(image, sanDisk().identity);
         QTRY_COMPARE(notice.count(), 1);
         QCOMPARE(failed.count(), 0);
         QCOMPARE(notice.at(0).at(0).toString(), QString("Burned ubuntu.iso to SanDisk Ultra. It's safe to remove now."));
@@ -2670,12 +2687,12 @@ private slots:
         });
         FileOps ops;
         QSignalSpy notice(&ops, &FileOps::notice), failed(&ops, &FileOps::failed);
-        ops.burn(image, sanDisk().block);
+        ops.burn(image, sanDisk().identity);
         QTRY_VERIFY(gotFirst);
         // While it's stuck, it says how far it's got, and nothing else
         // runs beside it.
         QTRY_COMPARE(ops.busy(), QString("Burning ubuntu.iso to SanDisk Ultra: 4.2 MB of 13 MB…"));
-        ops.format(sanDisk().block, "Photos");
+        ops.format(sanDisk().identity, "Photos");
         QCOMPARE(failed.count(), 1);
         QCOMPARE(failed.at(0).at(0).toString(), QString("Try again once the work under way is done."));
         ops.cancel();
@@ -2700,7 +2717,7 @@ private slots:
         fake->refuse["open"] = "Permission was refused.";
         FileOps ops;
         QSignalSpy failed(&ops, &FileOps::failed), notice(&ops, &FileOps::notice);
-        ops.burn(image, sanDisk().block);
+        ops.burn(image, sanDisk().identity);
         QTRY_COMPARE(failed.count(), 1);
         QCOMPARE(failed.at(0).at(0).toString(), QString("Couldn't burn ubuntu.iso to SanDisk Ultra. Permission was refused."));
         const QString sdb = sanDisk().block;
@@ -2718,7 +2735,7 @@ private slots:
         auto fake = fakeDisks({});
         FileOps ops;
         QSignalSpy failed(&ops, &FileOps::failed);
-        ops.burn(image, sanDisk().block);
+        ops.burn(image, sanDisk().identity);
         QCOMPARE(failed.count(), 1);
         QCOMPARE(failed.at(0).at(0).toString(), QString("ubuntu.iso can't be burned onto that drive."));
         QVERIFY(fake->calls.isEmpty());
@@ -2729,11 +2746,80 @@ private slots:
         QVERIFY(gone.open(QIODevice::WriteOnly));
         gone.close();
         fake->fd = ::open(QFile::encodeName(gone.fileName()).constData(), O_RDONLY | O_CLOEXEC);
-        ops.burn(image, sanDisk().block);
+        ops.burn(image, sanDisk().identity);
         QTRY_COMPARE(failed.count(), 2);
         QVERIFY(failed.at(1).at(0).toString().startsWith("Couldn't burn ubuntu.iso to SanDisk Ultra. The drive stopped taking data ("));
         const QString sdb = sanDisk().block;
         QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "open " + sdb}));
+    }
+
+    void drivesAreKnownByMoreThanWhereTheyAre()
+    {
+        // Each disk has an identity beyond its object path: its drive's Id
+        // (maker, model, serial), its size, and what's on it.
+        const QString at = "/org/freedesktop/UDisks2/block_devices/";
+        const QString drive = "/org/freedesktop/UDisks2/drives/Reader";
+        auto objects = [&](const QString &uuid) {
+            Disks::Objects o;
+            o[at + "sdb"] = {{"Block", {{"Device", "/dev/sdb"}, {"Drive", drive}, {"Size", 32'000'000'000LL}}}};
+            o[at + "sdb1"] = {{"Block", {{"Device", "/dev/sdb1"}, {"Drive", drive}, {"Size", 31'000'000'000LL}, {"IdUUID", uuid}}},
+                              {"Partition", {{"Table", at + "sdb"}}}};
+            o[drive] = {{"Drive", {{"Id", "Generic-SD_Reader-000000001"}, {"ConnectionBus", "usb"}, {"Removable", true}}}};
+            return o;
+        };
+        // Another card in the same reader is another disk.
+        const QString first = Disks::parse(objects("1234-ABCD")).value(0).identity;
+        QVERIFY(first.contains(at + "sdb"));
+        QVERIFY(first.contains("Generic-SD_Reader-000000001"));
+        QCOMPARE(Disks::parse(objects("1234-ABCD")).value(0).identity, first);
+        QVERIFY(Disks::parse(objects("9876-FEDC")).value(0).identity != first);
+    }
+
+    void drivesSwappedBeforeTheyreChangedArentTouched()
+    {
+        QTemporaryDir dir;
+        const QString image = dir.filePath("ubuntu.iso");
+        writeImageFile(image, 1 << 20);
+        auto fake = fakeDisks();
+        FileOps ops;
+        const QString id = ops.burnTargets(image).value(0).toMap().value("id").toString();
+        QCOMPARE(ops.driveAt("/run/media/me/STICK").value("id").toString(), id);
+        // Pulled out after its menu opened, and another put in its place.
+        fake->disks = {otherStick()};
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.burn(image, id);
+        ops.format(id, "Photos");
+        QCOMPARE(failed.count(), 2);
+        QVERIFY(fake->calls.isEmpty());
+    }
+
+    void drivesSwappedWhilePolkitAsksArentTouched()
+    {
+        QTemporaryDir dir;
+        const QString image = dir.filePath("ubuntu.iso");
+        writeImageFile(image, 1 << 20);
+        auto fake = fakeDisks();
+        fake->device = dir.filePath("sdb");
+        // Swapped while the password was asked for, before it's written to.
+        fake->during = [&](const QString &method) { if (method == "open") fake->disks = {otherStick()}; };
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed), notice(&ops, &FileOps::notice);
+        ops.burn(image, sanDisk().identity);
+        QTRY_COMPARE(failed.count(), 1);
+        QCOMPARE(failed.at(0).at(0).toString(), QString("Couldn't burn ubuntu.iso to SanDisk Ultra. The drive was changed or removed."));
+        QCOMPARE(QFileInfo(fake->device).size(), 0);
+        const QString sdb = sanDisk().block;
+        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "open " + sdb}));
+
+        // The same before it's formatted.
+        fake->calls.clear();
+        fake->disks = {sanDisk()};
+        fake->during = [&](const QString &method) { if (method == "unmount") fake->disks = {otherStick()}; };
+        ops.format(sanDisk().identity, "Photos");
+        QTRY_COMPARE(failed.count(), 2);
+        QCOMPARE(failed.at(1).at(0).toString(), QString("Couldn't format SanDisk Ultra. The drive was changed or removed."));
+        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1"}));
+        QCOMPARE(notice.count(), 0);
     }
 
     void drivesSayWhatsFreeInTheLanguagesDigits()
