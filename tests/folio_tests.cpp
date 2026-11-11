@@ -1545,7 +1545,7 @@ private slots:
         QTemporaryDir dir;
         write(dir.filePath("notes.md"), "# Packing\n\n- passport\n- charger\n");
         const QImage page = Thumbnails::textPage(dir.filePath("notes.md"), 256, QColor("#fafaf7"), QColor("#303034"));
-        QCOMPARE(page.size(), QSize(256, 184));
+        QCOMPARE(page.size(), QSize(218, 256));
         // Dark ink near the top left, where the first line is; plain paper
         // at the bottom right.
         bool ink = false;
@@ -1553,7 +1553,7 @@ private slots:
             for (int x = 0; x < 120 && !ink; ++x)
                 ink = qGray(page.pixel(x, y)) < 128;
         QVERIFY(ink);
-        QVERIFY(qGray(page.pixel(250, 180)) > 240);
+        QVERIFY(qGray(page.pixel(214, 252)) > 240);
 
         // Binary that claims to be text gets the stand-in.
         write(dir.filePath("blob.txt"), QByteArray("abc\0def", 7));

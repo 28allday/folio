@@ -227,21 +227,21 @@ QImage Thumbnails::textPage(const QString &path, int pixels, const QColor &paper
     if (decode.hasError() && head.size() < 4096)
         return {};
 
-    // A sheet as wide as the tile's picture box, so lines show more of
-    // themselves, in the theme's colors: the monospace font at a size that
-    // stays readable on the tile, as many lines as fit and no wrapping.
-    const QSize size(pixels, qRound(pixels * 0.72));
+    // A sheet a little narrower than it is tall, so it still reads as a page
+    // rather than a folder, in the theme's colors: the monospace font at a
+    // size that stays readable on the tile, as many lines as fit, no wrapping.
+    const QSize size(qRound(pixels * 0.85), pixels);
     QImage page(size, QImage::Format_ARGB32_Premultiplied);
     page.fill(paper);
     QPainter painter(&page);
     painter.setRenderHint(QPainter::TextAntialiasing);
     QFont font("monospace");
     font.setStyleHint(QFont::Monospace);
-    font.setPixelSize(qMax(6, pixels / 20));
+    font.setPixelSize(qMax(6, pixels / 17));
     painter.setFont(font);
     painter.setPen(ink);
     const QFontMetricsF metrics(font);
-    const qreal margin = size.height() * 0.08, line = metrics.lineSpacing();
+    const qreal margin = size.width() * 0.08, line = metrics.lineSpacing();
     // Long lines stop at the right margin rather than the page's edge.
     painter.setClipRect(QRectF(margin, 0, size.width() - 2 * margin, size.height()));
     qreal y = margin + metrics.ascent();
