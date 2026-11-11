@@ -2,7 +2,6 @@
 #include "fileops.h"
 #include "previewer.h"
 
-#include <QDesktopServices>
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
@@ -155,10 +154,10 @@ void Backend::open(const QString &path) {
         navigate(path);
         return;
     }
-    // The desktop's default app for the type, via xdg-open, same as a click
-    // anywhere else in Omarchy.
-    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(path)))
-        setMessage(tr("No app is set up to open %1.").arg(info.fileName()));
+    // The desktop's default app for the type, or for the nearest type it
+    // belongs to.
+    if (const QString problem = FileOps::openInDefaultApp(path); !problem.isEmpty())
+        setMessage(problem);
 }
 
 void Backend::goUp() {

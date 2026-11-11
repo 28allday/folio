@@ -104,6 +104,11 @@ public:
     // The archive name for compressing these into `folder`: "name.zip" for
     // one item, "Archive.zip" for several; never one that exists.
     static QString archiveName(const QStringList &paths, const QString &folder);
+    // The app a file opens with by default; GIO also looks at the type's
+    // parents, so a Ruby file finds the plain-text app. Empty for none.
+    static QString defaultAppFor(const QString &path);
+    // Opens the file in that app; a sentence saying why not when it can't.
+    static QString openInDefaultApp(const QString &path);
     // Whether the item at `path` is on the drive `folder` is on.
     static bool sameDrive(const QString &path, const QString &folder);
     // The home trash, where g_file_trash puts things: $XDG_DATA_HOME/Trash.

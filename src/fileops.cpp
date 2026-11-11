@@ -709,6 +709,44 @@ void FileOps::newFolder(const QString &folder) {
     emit done(folder, name);
 }
 
+QString FileOps::defaultAppFor(const QString &path) {
+    const QString mime = QFileInfo(path).isDir() ? QStringLiteral("inode/directory")
+                                                  : QMimeDatabase().mimeTypeForFile(path).name();
+    char *type = g_content_type_from_mime_type(mime.toUtf8().constData());
+    if (!type)
+        return {};
+    GAppInfo *app = g_app_info_get_default_for_type(type, FALSE);
+    g_free(type);
+    if (!app)
+        return {};
+    const QString id = QString::fromUtf8(g_app_info_get_id(app));
+    g_object_unref(app);
+    return id;
+}
+
+QString FileOps::openInDefaultApp(const QString &path) {
+    // xdg-open asks only for the file's exact type, so a type with no
+    // default of its own (Ruby, C++, shell scripts) opened nothing at all.
+    const QString id = defaultAppFor(path);
+    if (id.isEmpty())
+        return tr("No app is set up to open %1.").arg(QFileInfo(path).fileName());
+    GDesktopAppInfo *app = g_desktop_app_info_new(id.toUtf8().constData());
+    if (!app)
+        return tr("No app is set up to open %1.").arg(QFileInfo(path).fileName());
+    GList *files = g_list_append(nullptr, g_file_new_for_path(path.toUtf8().constData()));
+    GError *error = nullptr;
+    QString problem;
+    if (!g_app_info_launch(G_APP_INFO(app), files, nullptr, &error))
+        problem = tr("Couldn't open %1 with %2: %3")
+                      .arg(QFileInfo(path).fileName(), QString::fromUtf8(g_app_info_get_name(G_APP_INFO(app))),
+                           QString::fromUtf8(error ? error->message : ""));
+    if (error)
+        g_error_free(error);
+    g_list_free_full(files, g_object_unref);
+    g_object_unref(app);
+    return problem;
+}
+
 QVariantList FileOps::appsFor(const QString &path) const {
     QVariantList apps;
     const QString mime = QFileInfo(path).isDir() ? QStringLiteral("inode/directory")
