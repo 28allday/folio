@@ -5248,6 +5248,11 @@ private slots:
         QCOMPARE(marks(repo + "/shortcut").value("items"), marks(repo + "/sub").value("items"));
         QCOMPARE(marks(dir.filePath("outside")).value("items"), marks(repo + "/sub").value("items"));
         QFile::remove(repo + "/shortcut");
+        // A name that ends in a newline keeps it.
+        QVERIFY(QDir().mkpath(repo + "/tail\n"));
+        write(repo + "/tail\n/t.txt", "loose\n");
+        QCOMPARE(marks(repo + "/tail\n").value("items").toObject().keys(), QStringList({"t.txt"}));
+        QVERIFY(QDir(repo + "/tail\n").removeRecursively());
         // In a folder nothing in which is tracked, each of its files and
         // folders isn't, but not what's ignored; deeper down too.
         QDir().mkpath(repo + "/newdir/inner");

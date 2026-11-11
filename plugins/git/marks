@@ -9,7 +9,10 @@
 case $1 in /run/user/*/gvfs/*) echo '{"actions": []}'; exit 0 ;; esac
 # The folder's real path: Git names changed paths by where they really are,
 # so a folder reached through a link would otherwise match none of them.
-folder=$(cd "$1" 2>/dev/null && pwd -P) || { echo '{"actions": []}'; exit 0; }
+# A sentinel after it keeps the newlines a folder's name may end in, which
+# $(...) would strip.
+folder=$(cd "$1" 2>/dev/null && pwd -P && echo .) || { echo '{"actions": []}'; exit 0; }
+folder=${folder%?.}
 
 # The top of the repository, found by looking up for its .git rather than
 # by asking Git, so a folder outside one costs no git at all.
