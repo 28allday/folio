@@ -2305,6 +2305,56 @@ private slots:
         QVERIFY(!QFileInfo::exists(from.filePath("box/a.txt")));
     }
 
+    void undoStoppedAcrossDrivesCanBeDoneAgain()
+    {
+        // An undo stopped partway across drives has brought some back: the
+        // next undo still brings back the rest.
+        const auto other = elsewhere();
+        if (!other)
+            QSKIP("Needs a second drive.");
+        QTemporaryDir data, from;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::forgetHistory();
+        QDir(from.path()).mkpath("box/sub");
+        write(from.filePath("box/a.txt"), "a");
+        write(from.filePath("box/sub/b.txt"), "b");
+        write(from.filePath("box/z.txt"), "z");
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.cut({from.filePath("box")});
+        ops.paste(other->path());
+        QTRY_VERIFY(ops.busy().isEmpty());
+        const QByteArray pipe = QFile::encodeName(other->filePath("box/pipe"));
+        QVERIFY(mkfifo(pipe.constData(), 0600) == 0);
+        ops.undo();
+        int writer = -1;
+        const auto finish = qScopeGuard([&] {
+            if (writer >= 0)
+                close(writer);
+        });
+        QVERIFY(QTest::qWaitFor([&] { return (writer = open(pipe.constData(), O_WRONLY | O_NONBLOCK)) >= 0; }));
+        ops.cancel();
+        QCOMPARE(::write(writer, "x", 1), 1);
+        close(std::exchange(writer, -1));
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(from.filePath("box/a.txt")), QByteArray("a"));
+        QCOMPARE(contents(other->filePath("box/z.txt")), QByteArray("z"));
+        QVERIFY(QFile::remove(other->filePath("box/pipe")));
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(contents(from.filePath("box/a.txt")), QByteArray("a"));
+        QCOMPARE(contents(from.filePath("box/sub/b.txt")), QByteArray("b"));
+        QCOMPARE(contents(from.filePath("box/z.txt")), QByteArray("z"));
+        QVERIFY(!QFileInfo::exists(other->filePath("box")));
+        QCOMPARE(ops.undoName(), QString());
+        ops.redo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(contents(other->filePath("box/a.txt")), QByteArray("a"));
+        QVERIFY(!QFileInfo::exists(from.filePath("box")));
+    }
+
     void undoAReplacingMoveThatCouldntRemoveItsOriginal()
     {
         // Cut from a folder that can't be changed, the file is copied but

@@ -1768,8 +1768,9 @@ static void settle(const FileOps::Step &step) {
 }
 
 // Makes the change in `step` the other way (back, or forward again),
-// turning `step` around to match.
-static bool flip(FileOps::Step &step, QString *error, FileOps::Job *job) {
+// turning `step` around to match. A move across drives that doesn't all
+// go leaves `moved`, the steps that put back what did.
+static bool flip(FileOps::Step &step, QString *error, FileOps::Job *job, QList<FileOps::Step> *moved) {
     if (step.folder) {
         const QByteArray path = QFile::encodeName(step.path);
         const QString name = QFileInfo(step.path).fileName();
@@ -1799,8 +1800,11 @@ static bool flip(FileOps::Step &step, QString *error, FileOps::Job *job) {
     if (!step.trash) {
         // The folder it came from may have gone with it, as a merge's does.
         QDir().mkpath(QFileInfo(step.other).absolutePath());
-        if (!put(step.path, step.other, true, error, job))
+        QList<FileOps::Step> went;
+        if (!put(step.path, step.other, true, error, job, nullptr, &went)) {
+            *moved = went;
             return false;
+        }
         std::swap(step.path, step.other);
         step = identified(step);
         return true;
@@ -1857,7 +1861,8 @@ void FileOps::step(bool undoing) {
             Outcome result;
             job.total = steps.size();
             result.left = steps.size();
-            while (result.left > 0 && !job.cancelled && flip(steps[result.left - 1], &result.error, &job)) {
+            QList<Step> moved;
+            while (result.left > 0 && !job.cancelled && flip(steps[result.left - 1], &result.error, &job, &moved)) {
                 --result.left;
                 ++job.done;
             }
@@ -1865,7 +1870,17 @@ void FileOps::step(bool undoing) {
             for (qsizetype i = result.left; i < steps.size(); ++i)
                 if (steps[i].folder && !steps[i].gone)
                     settle(steps[i]);
-            result.steps = steps;
+            // What a step stopped partway had moved is put back before it
+            // goes again; what's been put back is done with, never redone.
+            result.steps = steps.mid(0, result.left);
+            for (Step &step : moved) {
+                step.back = true;
+                result.steps << step;
+            }
+            for (const Step &step : steps.mid(result.left))
+                if (!step.back)
+                    result.steps << step;
+            result.left += moved.size();
             return result;
         },
         [this, change, undoing, at, generation](const Outcome &result, const Job &job) {

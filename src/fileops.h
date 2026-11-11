@@ -71,6 +71,9 @@ public:
         bool folder = false, gone = false;
         uint mode = 0;
         timespec modified{};
+        // What an undo or redo stopped partway had moved of an item, put
+        // back (`back`) before the item goes again, and never redone.
+        bool back = false;
     };
     // What undo names: the kind of change, and the item or how many.
     enum Kind { Renaming, Moving, Copying, Duplicating, MakingFolder, Compressing, Extracting, Trashing };
