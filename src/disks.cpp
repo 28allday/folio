@@ -107,7 +107,7 @@ public:
         const QDBusMessage reply = call(disk.block, prefix + "PartitionTable", "CreatePartitionAndFormat",
                                         {QVariant::fromValue(qulonglong(1 << 20)), QVariant::fromValue(qulonglong(0)),
                                          QString::fromLatin1(fs->partitionType), QString(), QVariantMap(), type,
-                                         QVariantMap{{"label", label}}});
+                                         formatOptions(type, label)});
         if (reply.type() != QDBusMessage::ErrorMessage)
             *partition = reply.arguments().value(0).value<QDBusObjectPath>().path();
         return failure(reply);
@@ -210,6 +210,16 @@ const Disks::FileSystem *Disks::fileSystem(const QString &type) {
         if (type == QLatin1String(fs.type))
             return &fs;
     return nullptr;
+}
+
+QVariantMap Disks::formatOptions(const QString &type, const QString &label) {
+    QVariantMap options{{"label", label}};
+    // A Linux filesystem keeps owners, and a new one belongs to root, so
+    // the person formatting it couldn't put anything on it; udisks hands
+    // it to them. (exFAT, FAT and NTFS have no owners to give.)
+    if (type == "ext4")
+        options["take-ownership"] = true;
+    return options;
 }
 
 bool Disks::labelFits(const QString &label, const QString &type) {

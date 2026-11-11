@@ -3099,6 +3099,15 @@ private slots:
         QVERIFY(fake->calls.isEmpty());
     }
 
+    void formattingExt4HandsTheDriveToItsOwner()
+    {
+        // A new ext4 filesystem belongs to root unless udisks is told to
+        // hand it over; the others have no owners.
+        QCOMPARE(Disks::formatOptions("ext4", "Backups").value("take-ownership").toBool(), true);
+        QVERIFY(!Disks::formatOptions("exfat", "Photos").contains("take-ownership"));
+        QCOMPARE(Disks::formatOptions("vfat", "Photos").value("label").toString(), QString("Photos"));
+    }
+
     void formattingStopsAtWhatUdisksRefuses()
     {
         auto fake = fakeDisks();

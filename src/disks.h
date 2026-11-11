@@ -114,4 +114,6 @@ public:
     static const QList<FileSystem> &fileSystems();
     static const FileSystem *fileSystem(const QString &type);
     static bool labelFits(const QString &label, const QString &type);
+    // The options udisks formats `type` with.
+    static QVariantMap formatOptions(const QString &type, const QString &label);
 };
