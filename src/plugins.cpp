@@ -111,10 +111,10 @@ QString whyNot(const Plugins::Run &run) {
 Plugins::Plugins(const QString &language, const QStringList &folders, const QString &settingsFile, QObject *parent)
     : QObject(parent), m_language(language), m_folders(folders.isEmpty() ? defaultFolders() : folders),
       m_settingsFile(settingsFile.isEmpty() ? QSettings().fileName() : settingsFile) {
-    // Actions wait for their command in here for as long as it takes
-    // (sending a big file), so there are threads enough that polls never
-    // wait behind them.
-    m_pool.setMaxThreadCount(32);
+    // Actions wait for their command for as long as it takes (sending a
+    // big file), in a pool of their own, so polls and reading the plugins
+    // never wait behind them.
+    m_actions.setMaxThreadCount(32);
     migrate();
     reload(true);
 }
@@ -123,6 +123,7 @@ Plugins::~Plugins() {
     // Closing Folio ends every command still running, with all it started.
     *m_stop = true;
     m_pool.waitForDone();
+    m_actions.waitForDone();
 }
 
 QStringList Plugins::defaultFolders() {
@@ -502,11 +503,18 @@ void Plugins::poll(const QString &plugin) {
     // that the window would skip frames over it.
     using Polled = std::pair<Run, std::optional<Output>>;
     auto *watcher = new QFutureWatcher<Polled>(this);
-    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, plugin] {
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, plugin, dir = m->dir, command = m->poll] {
         watcher->deleteLater();
         m_polling.remove(plugin);
-        if (!manifest(plugin))
+        const Manifest *now = manifest(plugin);
+        if (!now)
             return;
+        // F5 read another manifest for it meanwhile: what the old one
+        // printed is dropped, and the new one asked instead.
+        if (now->dir != dir || now->poll != command) {
+            poll(plugin);
+            return;
+        }
         const auto [run, output] = watcher->result();
         // A failed poll counts as an empty answer, and says why once each
         // time the plugin goes from working to failing.
@@ -727,7 +735,7 @@ void Plugins::act(const Manifest &plugin, const QString &key, const QString &lab
             next(key);
         });
         // Work that was asked for takes as long as it takes.
-        watcher->setFuture(QtConcurrent::run(&m_pool, [plugin, command, environment, stop = m_stop] {
+        watcher->setFuture(QtConcurrent::run(&m_actions, [plugin, command, environment, stop = m_stop] {
             return execute(plugin, command, environment, -1, stop.get());
         }));
     };

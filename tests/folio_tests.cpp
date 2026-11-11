@@ -2318,6 +2318,72 @@ private slots:
         QCOMPARE(backend.path(), QDir::cleanPath(home.path()));
     }
 
+    void pluginPollsArentHeldUpByActions()
+    {
+        QTemporaryDir folder, home;
+        // Its items are what items.json says, each running a command.
+        auto items = [](const QStringList &ids, const QString &command) {
+            QJsonArray list;
+            for (const QString &id : ids)
+                list << QJsonObject{{"id", id}, {"name", id}, {"open", QJsonObject{{"run", QJsonArray{"sh", "-c", command}}}}};
+            return QJsonDocument(QJsonObject{{"items", list}}).toJson();
+        };
+        QStringList stuck;
+        for (int i = 0; i < 40; ++i)
+            stuck << QString("stuck%1").arg(i);
+        writePlugin(folder.path(), "acts", R"({"folio": 1, "poll": {"command": ["cat", "items.json"], "every": 86400},
+            "view": {"title": "Acts"}})", {{"items.json", items({"quick"}, "true")}});
+        Plugins plugins("en", {folder.path()}, home.filePath("folio.conf"));
+        auto names = [&] { return namesOf(plugins.views().value("plugin:acts").toMap().value("items").toList()); };
+        QTRY_COMPARE(names(), QStringList({"quick"}));
+
+        // An item's command says it's running in the status bar until it's done.
+        Backend backend(home.path());
+        backend.setPlugins(&plugins);
+        backend.open("plugin:acts/quick");
+        QCOMPARE(backend.busy(), QString("Opening quick…"));
+        QTRY_VERIFY(backend.busy().isEmpty());
+
+        // Actions that never end leave polls and F5 their own threads.
+        writePlugin(folder.path(), "acts", R"({"folio": 1, "poll": {"command": ["cat", "items.json"], "every": 86400},
+            "view": {"title": "Acts"}})", {{"items.json", items(stuck, "sleep 60")}});
+        plugins.refresh();
+        QTRY_COMPARE(names(), stuck);
+        for (const QString &id : stuck)
+            plugins.run("plugin:acts/" + id, [](const Plugins::Result &) {});
+        writePlugin(folder.path(), "acts", R"({"folio": 1, "poll": {"command": ["cat", "items.json"], "every": 86400},
+            "view": {"title": "Acts"}})", {{"items.json", items({"fresh"}, "true")}});
+        plugins.refresh();
+        QTRY_COMPARE(names(), QStringList({"fresh"}));
+    }
+
+    void pluginPollsOfAReplacedManifestAreDropped()
+    {
+        QTemporaryDir folder, home;
+        const QByteArray old = "#!/bin/sh\ntouch started\nsleep 1\necho '{\"items\": [{\"id\": \"old\", \"name\": \"old\"}]}'\n";
+        const QByteArray fresh = "#!/bin/sh\necho '{\"items\": [{\"id\": \"new\", \"name\": \"new\"}]}'\n";
+        writePlugin(folder.path(), "swap", R"({"folio": 1, "poll": {"command": ["./old"], "every": 86400},
+            "view": {"title": "Swap"}})", {{"old", old}, {"new", fresh}});
+        Plugins plugins("en", {folder.path()}, home.filePath("folio.conf"));
+        Backend backend(home.path());
+        backend.setPlugins(&plugins);
+        backend.navigate(home.path());
+        QSignalSpy place(&backend, &Backend::placeChanged);
+        QTRY_VERIFY(QFileInfo::exists(folder.filePath("swap/started")));
+
+        // F5 while the old manifest's poll runs: its answer is dropped, and
+        // the new manifest's command asked instead.
+        writePlugin(folder.path(), "swap", R"({"folio": 1, "poll": {"command": ["./new"], "every": 86400},
+            "view": {"title": "Swap"}})");
+        plugins.refresh();
+        auto names = [&] { return namesOf(plugins.views().value("plugin:swap").toMap().value("items").toList()); };
+        QTRY_COMPARE(names(), QStringList({"new"}));
+        QTest::qWait(1500);
+        QCOMPARE(names(), QStringList({"new"}));
+        // What the plugins show changed, so the place's names may have too.
+        QVERIFY(place.count() > 0);
+    }
+
     void tailscalePluginListsOnlineDesktopsByName()
     {
         QTemporaryDir dir;

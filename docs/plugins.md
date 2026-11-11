@@ -177,8 +177,9 @@ How long a command may take depends on what it's for:
   failed.
 - A **share entry** or an item's **run** command is work you asked for
   (sending a big file takes as long as it takes), so it has no time limit.
-  While it runs, the status bar shows its `busy` text, and the rest of Folio
-  stays usable, file operations included. A second click on the same entry
+  While it runs, the status bar shows its `busy` text (for a run command,
+  "Opening" and the item's name), and the rest of Folio stays usable, file
+  operations included. A second click on the same entry
   waits until the first is done. Closing Folio ends it.
 - A share entry with `"detach": true` is started and forgotten, for programs
   that open a window of their own.

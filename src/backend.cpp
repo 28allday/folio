@@ -215,10 +215,8 @@ void Backend::forward() {
 
 void Backend::setPlugins(Plugins *plugins) {
     m_plugins = plugins;
-    connect(plugins, &Plugins::changed, this, [this] {
-        if (FolderModel::isPluginView(path()))
-            emit placeChanged();
-    });
+    // A view's title and a mount's name come from the plugins.
+    connect(plugins, &Plugins::changed, this, &Backend::placeChanged);
 }
 
 void Backend::openItem(const QString &path) {
@@ -241,6 +239,9 @@ void Backend::openItem(const QString &path) {
             if (self)
                 self->finish(run, result);
         });
+        // It never finishes before this returns, so its busy text is up first.
+        m_runs.append({run, tr("Opening %1…").arg(item->name)});
+        emit busyChanged();
     }
 }
 

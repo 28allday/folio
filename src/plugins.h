@@ -200,8 +200,9 @@ private:
     QHash<QString, QList<std::function<void()>>> m_queue;
     QVariantList m_sections;
     QVariantMap m_marks, m_views;
-    // Commands wait for their process in here, never on the UI thread.
-    QThreadPool m_pool;
+    // Commands wait for their process in these, never on the UI thread:
+    // polls and reading the plugins in one, actions in the other.
+    QThreadPool m_pool, m_actions;
     std::shared_ptr<std::atomic<bool>> m_stop = std::make_shared<std::atomic<bool>>(false);
     quint64 m_reading = 0;
     // The next reading polls every plugin, not just new ones (F5).
