@@ -218,7 +218,10 @@ Rectangle {
                     glyph: modelData.icon
                     active: sidebar.activePath === modelData.path
                     onClicked: sidebar.target.navigate(modelData.path)
+                    // The name ends short of the unpin button while it shows.
+                    rightPadding: unpin.visible ? unpin.implicitWidth + 6 : 14
                     IconButton {
+                        id: unpin
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
                         implicitWidth: 28

@@ -114,7 +114,7 @@ ApplicationWindow {
                 target: win.activePane ? win.activePane.paneBackend : backend
                 onFinished: win.activePane.focusView()
                 Layout.topMargin: parent.parent.barHeight
-                Layout.preferredWidth: 236
+                Layout.preferredWidth: 170
                 Layout.fillHeight: true
             }
             Rectangle { Layout.topMargin: parent.parent.barHeight; Layout.fillHeight: true; implicitWidth: 1; color: Qt.alpha(theme.foreground, 0.12) }
