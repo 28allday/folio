@@ -85,9 +85,12 @@ Rectangle {
 
     function statusText(status) {
         // Up to date is the normal state and says nothing; only syncing or
-        // a stopped Dropbox is worth a word.
+        // a stopped Dropbox is worth a word. The status itself stays
+        // English; only what's shown is translated.
+        //: Dropbox's state, in small letters after the Dropbox row.
         return status === "syncing" ? qsTr("syncing")
-             : status === "stopped" ? qsTr("stopped") : ""
+             //: Dropbox's state, in small letters after the Dropbox row.
+             : status === "stopped" ? qsTr("not running") : ""
     }
 
     component SectionLabel: Text {

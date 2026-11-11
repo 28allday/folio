@@ -115,7 +115,7 @@ Rectangle {
             rowSpacing: 12
             columnSpacing: 16
 
-            Text { visible: pane.trashed; text: qsTr("From"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            Text { visible: pane.trashed; text: qsTr("Original location"); color: theme.secondaryForeground; font.pixelSize: 12 }
             Text {
                 visible: pane.trashed
                 Layout.fillWidth: true
