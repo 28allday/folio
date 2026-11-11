@@ -47,45 +47,46 @@ Item {
         return "M3 8Q3 6 5 6H10L12 8H19Q21 8 21 10V17Q21 19 19 19H5Q3 19 3 17Z"
     }
 
-    readonly property var paths: ({
-        "home": "M4 10l8-6 8 6v10H4zM10 20v-6h4v6",
-        "documents": page() + "M9 12h6M9 16h6",
-        "downloads": "M12 4v11M7 10l5 5 5-5M4 20h16",
-        "pictures": box(3, 5, 18, 14, r) + "M3 16l5-5 4 4 3-3 6 6" + circle(16, 9, 1.5),
-        "music": "M9 17V5l11-2v12" + circle(6.5, 17, 2.5) + circle(17.5, 15, 2.5),
-        "videos": box(3, 5, 18, 14, r) + "M10 9v6l5-3z",
+    // Glyphs come with every row, tile and menu entry, so only the drawing
+    // for this name is built. Any other name, "file" among them, is a page.
+    readonly property string path: {
+        switch (name) {
+        case "documents": return page() + "M9 12h6M9 16h6"
+        case "downloads": return "M12 4v11M7 10l5 5 5-5M4 20h16"
+        case "pictures": return box(3, 5, 18, 14, r) + "M3 16l5-5 4 4 3-3 6 6" + circle(16, 9, 1.5)
+        case "music": return "M9 17V5l11-2v12" + circle(6.5, 17, 2.5) + circle(17.5, 15, 2.5)
+        case "videos": return box(3, 5, 18, 14, r) + "M10 9v6l5-3z"
         // Dropbox's own mark, five diamonds: filled, as the brand draws it.
-        "dropbox": "M7 2.5L12 5.7 7 8.9 2 5.7zM17 2.5L22 5.7 17 8.9 12 5.7zM7 8.9L12 12.1 7 15.3 2 12.1zM17 8.9L22 12.1 17 15.3 12 12.1zM12 13.3L17 16.5 12 19.7 7 16.5z",
-        "recent": circle(12, 12, 9) + "M12 7v5l3 2",
-        "trash": "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13",
-        "drive": box(3, 6, 18, 12, r) + "M7 14h2",
-        "peer": box(4, 4, 16, 11, r) + "M9 20h6M12 15v5",
-        "folder": folderBox(),
-        "file": page(),
-        "back": "M15 6l-6 6 6 6",
-        "forward": "M9 6l6 6-6 6",
-        "up": "M6 15l6-6 6 6",
-        "grid": box(4, 4, 7, 7, r / 2) + box(13, 4, 7, 7, r / 2) + box(4, 13, 7, 7, r / 2) + box(13, 13, 7, 7, r / 2),
-        "list": "M4 6h16M4 12h16M4 18h16",
-        "columns": box(3, 4, 18, 16, r) + "M9 4v16M15 4v16",
-        "preview": box(3, 5, 18, 14, r) + "M14 5v14",
-        "hidden": "M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" + circle(12, 12, 3),
+        case "dropbox": return "M7 2.5L12 5.7 7 8.9 2 5.7zM17 2.5L22 5.7 17 8.9 12 5.7zM7 8.9L12 12.1 7 15.3 2 12.1zM17 8.9L22 12.1 17 15.3 12 12.1zM12 13.3L17 16.5 12 19.7 7 16.5z"
+        case "recent": return circle(12, 12, 9) + "M12 7v5l3 2"
+        case "trash": return "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"
+        case "drive": return box(3, 6, 18, 12, r) + "M7 14h2"
+        case "peer": return box(4, 4, 16, 11, r) + "M9 20h6M12 15v5"
+        case "folder": return folderBox()
+        case "back": return "M15 6l-6 6 6 6"
+        case "forward": return "M9 6l6 6-6 6"
+        case "grid": return box(4, 4, 7, 7, r / 2) + box(13, 4, 7, 7, r / 2) + box(4, 13, 7, 7, r / 2) + box(13, 13, 7, 7, r / 2)
+        case "list": return "M4 6h16M4 12h16M4 18h16"
+        case "columns": return box(3, 4, 18, 16, r) + "M9 4v16M15 4v16"
+        case "preview": return box(3, 5, 18, 14, r) + "M14 5v14"
+        case "hidden": return "M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" + circle(12, 12, 3)
         // One per sort order: a slim arrow on the left (down for the usual
         // direction, up for oldest first), and what it sorts by on the right,
         // kept apart so both read at toolbar size.
-        "sort": "M6 4v16M3 17l3 3 3-3M12 6h9M12 12h6.5M12 18h4",
-        "sort-name": "M6 4v16M3 17l3 3 3-3M12 11l3-7 3 7M13.2 8.4h3.6M12 14h6l-6 6h6",
-        "sort-kind": "M6 4v16M3 17l3 3 3-3" + circle(16.5, 7.5, 3) + box(13.5, 14, 6, 6, r / 2),
-        "sort-newest": "M6 4v16M3 17l3 3 3-3" + circle(16.5, 12, 5) + "M16.5 9v3.2l2.2 1.4",
-        "sort-oldest": "M6 20V4M3 7l3-3 3 3" + circle(16.5, 12, 5) + "M16.5 9v3.2l2.2 1.4",
-        "sort-size": "M6 4v16M3 17l3 3 3-3M12 6h9M12 12h6.5M12 18h4",
-        "play": "M8 5v14l11-7z",
-        "pause": "M8 5v14M16 5v14",
-        "open": "M14 4h6v6M20 4l-9 9M18 14v6H4V6h6",
-        "audio": "M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2",
-        "check": "M5 12l5 5 9-10",
-        "close": "M6 6l12 12M18 6L6 18"
-    })
+        case "sort-name": return "M6 4v16M3 17l3 3 3-3M12 11l3-7 3 7M13.2 8.4h3.6M12 14h6l-6 6h6"
+        case "sort-kind": return "M6 4v16M3 17l3 3 3-3" + circle(16.5, 7.5, 3) + box(13.5, 14, 6, 6, r / 2)
+        case "sort-newest": return "M6 4v16M3 17l3 3 3-3" + circle(16.5, 12, 5) + "M16.5 9v3.2l2.2 1.4"
+        case "sort-oldest": return "M6 20V4M3 7l3-3 3 3" + circle(16.5, 12, 5) + "M16.5 9v3.2l2.2 1.4"
+        case "sort-size": return "M6 4v16M3 17l3 3 3-3M12 6h9M12 12h6.5M12 18h4"
+        case "play": return "M8 5v14l11-7z"
+        case "pause": return "M8 5v14M16 5v14"
+        case "open": return "M14 4h6v6M20 4l-9 9M18 14v6H4V6h6"
+        case "audio": return "M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"
+        case "check": return "M5 12l5 5 9-10"
+        case "close": return "M6 6l12 12M18 6L6 18"
+        default: return page()
+        }
+    }
 
     Shape {
         anchors.fill: parent
@@ -98,7 +99,7 @@ Item {
             capStyle: theme.radius > 0 ? ShapePath.RoundCap : ShapePath.SquareCap
             joinStyle: theme.radius > 0 ? ShapePath.RoundJoin : ShapePath.MiterJoin
             scale: Qt.size(glyph.size / 24, glyph.size / 24)
-            PathSvg { path: glyph.paths[glyph.name] || glyph.paths["file"] }
+            PathSvg { path: glyph.path }
         }
     }
 }
