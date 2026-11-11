@@ -45,8 +45,9 @@ private:
     QImage runThumbnailer(const QString &command, const QString &path, int pixels) const;
     static QImage pdfPage(const QString &path, int pixels);
     void remember(QImage image, const QString &path, int size, const QDateTime &modified) const;
-    void rememberFailure(const QString &path, const QDateTime &modified) const;
-    bool failedBefore(const QString &path, const QDateTime &modified) const;
+    // A failure goes with the type's thumbnailer as it was then, none included: one installed since gets its turn.
+    void rememberFailure(const QString &path, const QDateTime &modified, const QString &thumbnailer) const;
+    bool failedBefore(const QString &path, const QDateTime &modified, const QString &thumbnailer) const;
     void save(QImage image, const QString &target, const QString &path, const QDateTime &modified) const;
     static bool madeFor(const QImage &image, const QString &path, const QDateTime &modified);
 

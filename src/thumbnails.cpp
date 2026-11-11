@@ -231,6 +231,9 @@ QString Thumbnails::failPath(const QString &path) const {
     return m_cache + "/" + failures + "/" + cacheKey(path);
 }
 
+// The marker's own key for the thumbnailer command the type had when it failed, empty for none.
+static const QString kFailedWith = QStringLiteral("X-Folio::Thumbnailer");
+
 QImage Thumbnails::load(const QString &path, const QString &mime, int size) const {
     const QFileInfo info(path);
     if (!info.isFile())
@@ -243,14 +246,15 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
     const QDateTime modified = info.lastModified();
     if (const QImage image(cachePath(path, size)); madeFor(image, path, modified))
         return image;
-    if (failedBefore(path, modified))
-        return {};
 
     // A folder's peek asks for any picture ("image/*"); named by extension,
     // as the grid names it, it goes to the same thumbnailer as its tile.
     const QString type = mime.endsWith("/*")
         ? QMimeDatabase().mimeTypeForFile(path, QMimeDatabase::MatchExtension).name()
         : mime;
+    const QString thumbnailer = m_thumbnailers.value(type);
+    if (failedBefore(path, modified, thumbnailer))
+        return {};
     const int pixels = bucketPixels(bucketFor(size));
     bool attempted = false;
     QImage image = generate(path, type, pixels, attempted);
@@ -258,7 +262,7 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
         // Only a reader or thumbnailer that ran and failed is remembered, so
         // one installed later still gets its turn.
         if (attempted)
-            rememberFailure(path, modified);
+            rememberFailure(path, modified, thumbnailer);
         return {};
     }
     if (image.width() > pixels || image.height() > pixels)
@@ -400,14 +404,16 @@ void Thumbnails::remember(QImage image, const QString &path, int size, const QDa
     save(std::move(image), cachePath(path, size), path, modified);
 }
 
-void Thumbnails::rememberFailure(const QString &path, const QDateTime &modified) const {
+void Thumbnails::rememberFailure(const QString &path, const QDateTime &modified, const QString &thumbnailer) const {
     QImage marker(1, 1, QImage::Format_ARGB32);
     marker.fill(Qt::transparent);
+    marker.setText(kFailedWith, thumbnailer);
     save(std::move(marker), failPath(path), path, modified);
 }
 
-bool Thumbnails::failedBefore(const QString &path, const QDateTime &modified) const {
-    return madeFor(QImage(failPath(path)), path, modified);
+bool Thumbnails::failedBefore(const QString &path, const QDateTime &modified, const QString &thumbnailer) const {
+    const QImage marker(failPath(path));
+    return madeFor(marker, path, modified) && marker.text(kFailedWith) == thumbnailer;
 }
 
 // Whether a cached thumbnail (or failure marker) was made from the file as it

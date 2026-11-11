@@ -5161,9 +5161,29 @@ private slots:
         QImage stale(1, 1, QImage::Format_ARGB32);
         stale.setText("Thumb::URI", QUrl::fromLocalFile(older).toString(QUrl::FullyEncoded));
         stale.setText("Thumb::MTime", QString::number(QFileInfo(older).lastModified().toSecsSinceEpoch()));
+        // It names the thumbnailer this Folio's marker names, so only its folder sets it apart.
+        const QImage current(dir.filePath("cache/" + Thumbnails::failures + "/" + Thumbnails::cacheKey(clip)));
+        QVERIFY(!current.text("X-Folio::Thumbnailer").isEmpty());
+        stale.setText("X-Folio::Thumbnailer", current.text("X-Folio::Thumbnailer"));
         QVERIFY(stale.save(marker));
         QVERIFY(thumbnails.load(older, "video/mp4", 128).isNull());
         QCOMPARE(QFileInfo(runs).size(), 8);
+    }
+
+    void thumbnailsLetAThumbnailerInstalledLaterDraw()
+    {
+        QTemporaryDir dir;
+        // A camera RAW with no picture inside and nothing installed to draw it fails, and that is remembered.
+        const QString raw = dir.filePath("bare.cr2");
+        write(raw, "no picture inside");
+        QVERIFY(Thumbnails(dir.filePath("cache"), {dir.filePath("none")}).load(raw, "image/x-canon-cr2", 128).isNull());
+        QVERIFY(QFile::exists(dir.filePath("cache/" + Thumbnails::failures + "/" + Thumbnails::cacheKey(raw))));
+
+        // The failure was the built-in reader's, so a thumbnailer installed since still draws the file.
+        QVERIFY(QImage(10, 20, QImage::Format_RGB32).save(dir.filePath("mark.png")));
+        write(dir.filePath("raw.thumbnailer"), "[Thumbnailer Entry]\nTryExec=/bin/cp\nExec=/bin/cp \""
+              + dir.filePath("mark.png").toUtf8() + "\" %o\nMimeType=image/x-canon-cr2;\n");
+        QCOMPARE(Thumbnails(dir.filePath("cache"), {dir.path()}).load(raw, "image/x-canon-cr2", 128).size(), QSize(10, 20));
     }
 
     void thumbnailsRememberOnlyWhatFailed()
