@@ -50,7 +50,7 @@ FocusScope {
     property bool cursorLetGo: false
     // While a text field has the keyboard (renaming, a password), single-key
     // and clipboard shortcuts stand aside so typing works.
-    readonly property bool typing: rename.visible || confirm.visible || clash.visible || formatDialog.visible || backend.mounter.asking || pathBar.editing || pathBar.searchFocused || (!!host && host.helpVisible)
+    readonly property bool typing: rename.visible || confirm.visible || clash.visible || formatDialog.visible || backend.mounter.asking || pathBar.editing || pathBar.searchFocused || (!!host && (host.helpVisible || (!!host.bar && host.bar.typing)))
     // Keys for the pane as a whole (undo, a new window, typing a path) work
     // wherever the keyboard is; keys for its files only while the files
     // have it, not while Tab has put it in the sidebar or the details, where
@@ -108,6 +108,11 @@ FocusScope {
                     qsTr("%Ln items will be deleted permanently. This can't be undone.", "", count),
                     qsTr("Empty Trash"), () => fileOps.emptyTrash())
     }
+
+    // A question from outside the pane (a file chooser's Replace), asked
+    // over it like its own.
+    function ask(heading, body, button, run) { confirm.ask(heading, body, button, run) }
+    readonly property bool asking: confirm.visible
 
     // Format… from a drive's menu in the sidebar, and Burn from an image's.
     function formatDrive(disk) { formatDialog.open(disk) }
