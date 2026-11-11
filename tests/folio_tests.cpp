@@ -1500,6 +1500,20 @@ private slots:
         QCOMPARE(backend.path(), FolderModel::tailnetPath());
     }
 
+    void typedViewsGoToTheirView()
+    {
+        // The path bar shows a view as its own name, so Return on it, or
+        // the name typed, goes there rather than to a folder it isn't.
+        QTemporaryDir home;
+        Backend backend(home.path());
+        backend.navigate(FolderModel::tailnetPath());
+        QVERIFY(backend.goTyped(backend.typedPath()));
+        QCOMPARE(backend.path(), FolderModel::tailnetPath());
+        QVERIFY(backend.message().isEmpty());
+        QVERIFY(backend.goTyped(" recent: "));
+        QCOMPARE(backend.path(), FolderModel::recentPath());
+    }
+
     void tailnetViewSearchesMachineNames()
     {
         const QVariantList peers = Places::parseTailscale(tailnet());

@@ -311,6 +311,11 @@ QString Backend::expandTyped(const QString &text, const QString &home, const QSt
 }
 
 bool Backend::goTyped(const QString &text) {
+    // A view is typed as the path bar shows it, by its own name.
+    if (const QString view = text.trimmed(); FolderModel::isView(view)) {
+        navigate(view);
+        return true;
+    }
     const QString target = QDir::cleanPath(expandTyped(text, m_home, path()));
     const QFileInfo info(target);
     if (info.isDir()) {
