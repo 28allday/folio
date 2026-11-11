@@ -901,8 +901,14 @@ private slots:
         previewer.show(dir.filePath("a.md"));
         QCOMPARE(previewer.index(), 1);
         QCOMPARE(previewer.count(), 4);
-        previewer.show(dir.filePath("album"));
+        QTemporaryDir other;
+        write(other.filePath("x.txt"), "x");
+        write(other.filePath("y.txt"), "y");
+        previewer.show(other.filePath("y.txt"));
+        QCOMPARE(previewer.count(), 1);
         QCOMPARE(previewer.index(), 0);
+        QTRY_COMPARE(previewer.count(), 2);
+        QCOMPARE(previewer.index(), 1);
         QVERIFY(changed.count() > 0);
     }
 
