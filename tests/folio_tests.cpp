@@ -96,6 +96,22 @@ private slots:
         QCOMPARE(FolderModel::list(dir.path(), true, "name", &error).size(), 5);
     }
 
+    void folderSortsByTheGivenLanguagesAlphabet()
+    {
+        // Swedish puts å after z; English sorts it with a.
+        QTemporaryDir dir;
+        write(dir.filePath("zeta.txt"), "x");
+        write(dir.filePath("åsa.txt"), "x");
+        auto names = [&](const QLocale &locale) {
+            QStringList out;
+            for (const auto &e : FolderModel::list(dir.path(), false, "name", nullptr, {}, locale))
+                out << e.name;
+            return out;
+        };
+        QCOMPARE(names(QLocale("sv_SE")), QStringList({"zeta.txt", "åsa.txt"}));
+        QCOMPARE(names(QLocale("en_US")), QStringList({"åsa.txt", "zeta.txt"}));
+    }
+
     void folderReportsMissingFolders()
     {
         QString error;

@@ -203,6 +203,13 @@ FocusScope {
     // folder, the new name): right away when the folder already lists it
     // (a long move's folder arrived long before the move was done),
     // otherwise once the folder has re-read.
+    // Names sort by the language's alphabet, so a switch lists the folder
+    // again.
+    Connections {
+        target: translator
+        function onChanged() { backend.folder.reload() }
+    }
+
     Connections {
         target: fileOps
         function onDone(folder, name) {

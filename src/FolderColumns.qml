@@ -95,6 +95,11 @@ Item {
                             sortMode: backend.folder.sortMode
                             onLoaded: column.revealNext()
                         }
+                        // Names sort by the language's alphabet.
+                        Connections {
+                            target: translator
+                            function onChanged() { folder.reload() }
+                        }
                         function revealNext() { positionViewAtIndex(Math.max(0, folder.indexOf(ancestor.next)), ListView.Contain) }
                         TapHandler {
                             acceptedButtons: Qt.RightButton
@@ -184,9 +189,14 @@ Item {
                     }
                 }
                 model: FolderModel {
+                    id: insideFolder
                     path: view.selected.isDir === true ? view.selected.path : ""
                     showHidden: backend.folder.showHidden
                     sortMode: backend.folder.sortMode
+                }
+                Connections {
+                    target: translator
+                    function onChanged() { insideFolder.reload() }
                 }
                 delegate: FileRow {
                     width: inside.width
