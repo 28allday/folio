@@ -1910,7 +1910,8 @@ private slots:
                     {{"where", "#!/bin/sh\necho \"{\\\"dir\\\": \\\"$PWD\\\", \\\"plugin\\\": \\\"$FOLIO_PLUGIN_DIR\\\", "
                                "\\\"language\\\": \\\"$FOLIO_LANGUAGE\\\", \\\"args\\\": \\\"$*\\\"}\"\n"
                                "echo 'first' >&2\necho 'last words' >&2\nread line && echo stdin >&2\nexit 3\n"},
-                     {"hang", "#!/bin/sh\nsleep 30 &\necho $! > \"$1\"\nwait\n"}});
+                     {"hang", "#!/bin/sh\nsleep 30 &\necho $! > \"$1\"\nwait\n"},
+                     {"leave", "#!/bin/sh\nsleep 30 >/dev/null 2>&1 &\necho $! > \"$1\"\n"}});
         const auto plugins = Plugins::read({folder.path()}, "da");
         QCOMPARE(plugins.size(), 1);
         const auto &plugin = plugins[0];
@@ -1944,6 +1945,15 @@ private slots:
         const pid_t child = file.readAll().trimmed().toInt();
         QVERIFY(child > 0);
         QTRY_VERIFY(::kill(child, 0) != 0);
+
+        // One that finishes takes what it left running with it.
+        const Plugins::Run left = Plugins::execute(plugin, {"./leave", pidFile}, env, 5000);
+        QVERIFY(left.ok());
+        QFile leftFile(pidFile);
+        QVERIFY(leftFile.open(QIODevice::ReadOnly));
+        const pid_t helper = leftFile.readAll().trimmed().toInt();
+        QVERIFY(helper > 0 && helper != child);
+        QTRY_VERIFY(::kill(helper, 0) != 0);
 
         // A program that isn't there never starts.
         QVERIFY(!Plugins::execute(plugin, {"folio-no-such-program"}, env, 1000).started);

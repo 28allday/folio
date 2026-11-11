@@ -164,8 +164,8 @@ Every command runs in the plugin's folder, with no input, and with:
 | `FOLIO_LANGUAGE` | The language Folio is showing, as Omarchy's code: `en`, `da`, `pt-BR`. Folio translates the text you print itself (see [Translations](#translations)); this is for anything else that should follow the language. |
 | `FOLIO_TARGET`, `FOLIO_TARGET_NAME` | For a share entry in a submenu, the chosen item's `id` and `name`. |
 
-Each command starts in a process group of its own, and when Folio ends it,
-the whole group goes, so nothing it started lingers. What it prints on
+Each command starts in a process group of its own, and when it finishes or
+Folio ends it, the whole group goes, so nothing it started lingers. What it prints on
 standard output must be one JSON object, at most 1 MB. What it prints on
 standard error goes to Folio's own standard error (the journal), each line
 marked with the plugin's id and cut short at 1000 bytes; a failing share

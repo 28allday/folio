@@ -372,6 +372,8 @@ Plugins::Run Plugins::execute(const Manifest &plugin, const QStringList &command
     check.start(50);
     if (process.state() != QProcess::NotRunning)
         loop.exec();
+    // Whatever it left running in the background goes with it.
+    end();
     readOut();
     readErrors(true);
     if (!run.timedOut && !run.tooLong)
