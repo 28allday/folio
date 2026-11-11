@@ -20,7 +20,10 @@ Rectangle {
     readonly property string origin: hasItem && folderPane.inTrash ? fileOps.originalPath(item.path) : ""
     readonly property bool trashed: origin.length > 0
     function homeless(path) { return path.startsWith(places.home + "/") ? "~" + path.slice(places.home.length) : path }
-    readonly property var info: hasItem ? backend.details(item.path, item.kind, item.mime) : ({})
+    // Its type's name, and a picture's size or a text's opening lines once
+    // they've been read off the UI thread.
+    readonly property var info: backend.details
+    onItemChanged: backend.describe(item)
 
     color: theme.darkBackground
 

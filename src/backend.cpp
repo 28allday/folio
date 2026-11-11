@@ -6,9 +6,11 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QFutureWatcher>
 #include <QImageReader>
 #include <QMimeDatabase>
 #include <QUrl>
+#include <QtConcurrent>
 #include <unistd.h>
 
 Backend::Backend(const QString &home, QObject *parent)
@@ -207,22 +209,48 @@ QString Backend::takeSelection() {
     return name;
 }
 
-QVariantMap Backend::details(const QString &path, const QString &kind, const QString &mime) const {
-    QVariantMap map;
-    // The system's own name for the type ("JPEG image"), already translated.
-    map.insert("type", QMimeDatabase().mimeTypeForName(mime).comment());
-    if (kind == "image") {
-        QImageReader reader(path);
-        reader.setAutoTransform(true);
-        const QSize size = reader.size();
-        if (size.isValid())
-            map.insert("dimensions", QString("%1 × %2").arg(size.width()).arg(size.height()));
-    } else if (kind == "text") {
-        // Enough of the top of the file to recognize it, never the whole
-        // thing: a log can be gigabytes.
-        map.insert("text", Previewer::readText(path, 6000).section('\n', 0, 40));
+void Backend::describe(const QVariantMap &item) {
+    const QString path = item.value("path").toString();
+    const QString kind = item.value("kind").toString();
+    const quint64 generation = ++m_describing;
+    // The system's own name for the type ("JPEG image"), already translated,
+    // needs nothing from the file. The same item again (its folder re-read)
+    // keeps what it shows until the new reading is in, rather than flickering.
+    QVariantMap details{{"type", QMimeDatabase().mimeTypeForName(item.value("mime").toString()).comment()}};
+    if (path != m_described) {
+        m_described = path;
+        m_details = details;
+        emit detailsChanged();
     }
-    return map;
+    if (kind != "image" && kind != "text")
+        return;
+
+    // Reading the file waits on its disk, which for a slow mount would hold
+    // up moving through files, so it happens off the UI thread.
+    auto *watcher = new QFutureWatcher<QVariantMap>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, details]() mutable {
+        watcher->deleteLater();
+        if (generation != m_describing)
+            return; // The selection moved on while this was read.
+        details.insert(watcher->result());
+        m_details = details;
+        emit detailsChanged();
+    });
+    watcher->setFuture(QtConcurrent::run([path, kind] {
+        QVariantMap read;
+        if (kind == "image") {
+            QImageReader reader(path);
+            reader.setAutoTransform(true);
+            const QSize size = reader.size();
+            if (size.isValid())
+                read.insert("dimensions", QString("%1 × %2").arg(size.width()).arg(size.height()));
+        } else {
+            // Enough of the top of the file to recognize it, never the whole
+            // thing: a log can be gigabytes.
+            read.insert("text", Previewer::readText(path, 6000).section('\n', 0, 40));
+        }
+        return read;
+    }));
 }
 
 Backend::~Backend() {

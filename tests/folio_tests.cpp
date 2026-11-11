@@ -1031,6 +1031,32 @@ private slots:
         QCOMPARE(backend.takeSelection(), QString("report.pdf"));
     }
 
+    void backendReadsDetailsOffTheUiThread()
+    {
+        // A picture's size and a text's opening lines are read in the
+        // background: on a slow mount, reading them as the selection moves
+        // would hold up the window.
+        QTemporaryDir dir;
+        const QString photo = dir.filePath("photo.png"), notes = dir.filePath("notes.txt");
+        QVERIFY(QImage(40, 30, QImage::Format_RGB32).save(photo));
+        write(notes, "hello");
+        Backend backend(dir.path());
+        backend.describe({{"path", photo}, {"kind", "image"}, {"mime", "image/png"}});
+        QCOMPARE(backend.details().value("type").toString(), QMimeDatabase().mimeTypeForName("image/png").comment());
+        QVERIFY(!backend.details().contains("dimensions"));
+        QTRY_COMPARE(backend.details().value("dimensions").toString(), QString("40 × 30"));
+
+        // The next item starts from its type alone, and what was read for
+        // one left behind is dropped.
+        backend.describe({{"path", photo}, {"kind", "image"}, {"mime", "image/png"}});
+        backend.describe({{"path", notes}, {"kind", "text"}, {"mime", "text/plain"}});
+        QVERIFY(!backend.details().contains("dimensions"));
+        QTRY_COMPARE(backend.details().value("text").toString(), QString("hello"));
+        QThreadPool::globalInstance()->waitForDone();
+        QCoreApplication::processEvents();
+        QVERIFY(!backend.details().contains("dimensions"));
+    }
+
     void mounterOutlivedByGiosReply()
     {
         // A local folder can't be mounted, so GIO answers with an error on
@@ -1293,7 +1319,7 @@ private slots:
         // A binary with a text name falls back to the plain file view.
         Previewer previewer;
         previewer.start(dir.filePath("blob.txt"), false, "name");
-        QCOMPARE(previewer.viewer(), QString("other"));
+        QTRY_COMPARE(previewer.viewer(), QString("other"));
     }
 
     void previewerStepsThroughTheFolder()
@@ -1310,7 +1336,7 @@ private slots:
         previewer.start(dir.filePath("b.txt"), false, "name");
         // Shown at once, before the folder is listed.
         QCOMPARE(previewer.item().value("name").toString(), QString("b.txt"));
-        QCOMPARE(previewer.text(), QString("b"));
+        QTRY_COMPARE(previewer.text(), QString("b"));
 
         // The listing moves the index without touching what's shown, which
         // would restart a playing video.
@@ -1322,7 +1348,7 @@ private slots:
         QCOMPARE(previewer.viewer(), QString("markdown"));
         previewer.previous();
         QCOMPARE(previewer.viewer(), QString("folder"));
-        QCOMPARE(previewer.item().value("itemCount").toInt(), 0);
+        QTRY_COMPARE(previewer.item().value("itemCount").toInt(), 0);
         previewer.previous();
         QCOMPARE(previewer.index(), 0);
         previewer.next();
@@ -1347,6 +1373,31 @@ private slots:
         QVERIFY(changed.count() > 0);
     }
 
+    void previewerReadsOffTheUiThread()
+    {
+        // A big folder, or any file on a slow mount, would hold up the
+        // window for as long as reading it takes, so an item shows at once
+        // and its text, or a folder's count and first pictures, follow.
+        QTemporaryDir dir;
+        write(dir.filePath("notes.txt"), "hello");
+        QDir(dir.path()).mkdir("album");
+        write(dir.filePath("album/a.jpg"), "x");
+        Previewer previewer;
+        previewer.start(dir.filePath("notes.txt"), false, "name");
+        QCOMPARE(previewer.text(), QString());
+        QTRY_COMPARE(previewer.text(), QString("hello"));
+        previewer.show(dir.filePath("album"));
+        QCOMPARE(previewer.item().value("itemCount").toInt(), -1);
+        QTRY_COMPARE(previewer.item().value("itemCount").toInt(), 1);
+
+        // What's read for an item left behind is dropped.
+        previewer.show(dir.filePath("notes.txt"));
+        previewer.show(dir.filePath("album"));
+        QThreadPool::globalInstance()->waitForDone();
+        QCoreApplication::processEvents();
+        QCOMPARE(previewer.text(), QString());
+    }
+
     void previewerCountsHiddenFilesWhenTheyShow()
     {
         QTemporaryDir dir;
@@ -1356,7 +1407,7 @@ private slots:
         // The first folder shown counts what Folio's tile counts.
         Previewer previewer;
         previewer.start(dir.filePath("dots"), true, "name");
-        QCOMPARE(previewer.item().value("itemCount").toInt(), 1);
+        QTRY_COMPARE(previewer.item().value("itemCount").toInt(), 1);
     }
 
     void previewerPeeksIntoFolders()
@@ -1368,7 +1419,7 @@ private slots:
         write(dir.filePath("album/a.jpg"), "x");
         Previewer previewer;
         previewer.start(dir.filePath("album"), false, "name");
-        QCOMPARE(previewer.item().value("peek").toStringList(), QStringList({dir.filePath("album/a.jpg")}));
+        QTRY_COMPARE(previewer.item().value("peek").toStringList(), QStringList({dir.filePath("album/a.jpg")}));
         QVERIFY(!FolderModel::toMap(FolderModel::Entry()).contains("peek"));
     }
 

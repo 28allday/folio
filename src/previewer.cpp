@@ -140,16 +140,36 @@ void Previewer::open() {
 
 void Previewer::setIndex(int index, bool report) {
     m_index = index;
-    FolderModel::Entry &e = m_entries[index];
-    if (e.isDir && e.itemCount < 0)
-        FolderModel::summarize(e, m_showHidden);
+    const FolderModel::Entry e = m_entries.at(index);
     m_viewer = viewerFor(e.mime, e.isDir);
     m_text.clear();
-    if (m_viewer == "text" || m_viewer == "markdown") {
-        m_text = readText(e.path);
-        // A ".txt" that turns out to be binary is shown as a plain file.
-        if (m_text.isEmpty() && e.size > 0)
-            m_viewer = "other";
+
+    // A folder's count and first pictures, and a text's opening part, are
+    // read off the UI thread: a big folder, or any file on a slow mount,
+    // would hold up the window until they were in.
+    const quint64 generation = ++m_reading;
+    const bool count = e.isDir && e.itemCount < 0;
+    const bool text = m_viewer == "text" || m_viewer == "markdown";
+    if (count || text) {
+        auto *watcher = new QFutureWatcher<QPair<FolderModel::Entry, QString>>(this);
+        connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, text] {
+            watcher->deleteLater();
+            if (generation != m_reading)
+                return; // Stepped on to another item while this was read.
+            const auto [entry, read] = watcher->result();
+            m_entries[m_index] = entry;
+            m_text = read;
+            // A ".txt" that turns out to be binary is shown as a plain file.
+            if (text && m_text.isEmpty() && entry.size > 0)
+                m_viewer = "other";
+            emit changed();
+        });
+        const bool showHidden = m_showHidden;
+        watcher->setFuture(QtConcurrent::run([entry = e, showHidden, count, text]() mutable {
+            if (count)
+                FolderModel::summarize(entry, showHidden);
+            return qMakePair(entry, text ? readText(entry.path) : QString());
+        }));
     }
     emit changed();
     emit listed();

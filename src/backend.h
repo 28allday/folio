@@ -23,6 +23,10 @@ class Backend : public QObject {
     Q_PROPERTY(QString notice READ notice NOTIFY noticeChanged)
     Q_PROPERTY(QString busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(bool previewing READ previewing NOTIFY previewingChanged)
+    // What the details pane shows beyond the listing, for the item last
+    // given to describe(): its type's name, and a picture's dimensions or a
+    // text's opening lines once they've been read in the background.
+    Q_PROPERTY(QVariantMap details READ details NOTIFY detailsChanged)
 
 public:
     explicit Backend(const QString &home = {}, QObject *parent = nullptr);
@@ -53,7 +57,8 @@ public:
     Q_INVOKABLE void showNotice(const QString &notice);
     // Selects `name` the next time the folder loads (after file work).
     Q_INVOKABLE void expectSelection(const QString &name) { m_pendingSelection = name; }
-    Q_INVOKABLE QVariantMap details(const QString &path, const QString &kind, const QString &mime) const;
+    QVariantMap details() const { return m_details; }
+    Q_INVOKABLE void describe(const QVariantMap &item);
     // The item to select once the folder has loaded (where we came from, or
     // what "Show in folder" asked for); empty means the first item.
     Q_INVOKABLE QString takeSelection();
@@ -85,6 +90,7 @@ signals:
     void noticeChanged();
     void busyChanged();
     void previewingChanged();
+    void detailsChanged();
     void newWindowRequested(const QString &path);
     void selectRequested(const QString &name);
     void activateRequested();
@@ -113,4 +119,9 @@ private:
     // Set while Folio closes the preview itself, which isn't a crash.
     bool m_closingPreview = false;
     QString m_previewed;
+    QVariantMap m_details;
+    // Whose details they are, and the newest describe(), which a reading
+    // has to match to be shown.
+    QString m_described;
+    quint64 m_describing = 0;
 };
