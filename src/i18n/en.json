@@ -80,12 +80,9 @@
   "Couldn't start a terminal: xdg-terminal-exec isn't installed.": "Couldn't start a terminal: xdg-terminal-exec isn't installed.",
   "Cut": "Cut",
   "Delete": "Delete",
-  "Delete %Ln Items": {
-    "one": "Delete %Ln Item",
-    "other": "Delete %Ln Items"
-  },
   "Delete Permanently…": "Delete Permanently…",
   "Delete for good?": "Delete for good?",
+  "Delete permanently (asks first)": "Delete permanently (asks first)",
   "Deleted": "Deleted",
   "Deleting %Ln items…": {
     "one": "Deleting %Ln item…",
@@ -136,8 +133,13 @@
   "Machines": "Machines",
   "Making a preview…": "Making a preview…",
   "Modified": "Modified",
+  "Move %Ln Items to the Trash": {
+    "one": "Move %Ln Item to the Trash",
+    "other": "Move %Ln Items to the Trash"
+  },
   "Move between the sidebar and the panes": "Move between the sidebar and the panes",
   "Move the selection": "Move the selection",
+  "Move to the Trash": "Move to the Trash",
   "Move to the trash": "Move to the trash",
   "Moved only part of %1: %2": "Moved only part of %1: %2",
   "Moving %Ln items to the trash…": {
