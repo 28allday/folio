@@ -218,7 +218,7 @@ QVector<FolderModel::Entry> FolderModel::list(const QString &path, bool showHidd
                                               QString *error, const std::function<bool()> &stop) {
     if (path == recentPath()) {
         // Recents are always most recently used first; that's what they're for.
-        return listRecent(recentFile(), showHidden);
+        return listRecent(recentFile(), showHidden, 200, stop);
     }
     QVector<Entry> entries;
     QDir dir(path);
@@ -332,7 +332,8 @@ void FolderModel::sortEntries(QVector<Entry> &entries, const QString &sort) {
 // Recents are GTK's recently used files (~/.local/share/recently-used.xbel),
 // which every GTK and many other apps add to: the files still there, the
 // most recently used first.
-QVector<FolderModel::Entry> FolderModel::listRecent(const QString &xbel, bool showHidden, int limit) {
+QVector<FolderModel::Entry> FolderModel::listRecent(const QString &xbel, bool showHidden, int limit,
+                                                    const std::function<bool()> &stop) {
     struct Used { QString path; QDateTime when; };
     QVector<Used> used;
     QFile file(xbel);
@@ -357,6 +358,9 @@ QVector<FolderModel::Entry> FolderModel::listRecent(const QString &xbel, bool sh
     QStringList seen;
     QMimeDatabase mimes;
     for (const Used &u : used) {
+        // Each check can wait on a slow drive, so leaving Recents stops it.
+        if (stop && stop())
+            break;
         const QFileInfo info(u.path);
         if (seen.contains(u.path) || !info.exists() || (!showHidden && info.fileName().startsWith('.')))
             continue;

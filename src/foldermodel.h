@@ -112,7 +112,8 @@ public:
     // The Recents view: a path that isn't a folder, listing recently used files.
     static QString recentPath() { return QStringLiteral("recent:"); }
     static QString recentFile();
-    static QVector<Entry> listRecent(const QString &xbel, bool showHidden, int limit = 200);
+    static QVector<Entry> listRecent(const QString &xbel, bool showHidden, int limit = 200,
+                                     const std::function<bool()> &stop = {});
     static QString kindForMime(const QString &mime);
     // Everything under `root` whose name contains `query` (ignoring case),
     // named by its path from `root`. Stops at `limit` matches, at other

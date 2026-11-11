@@ -874,6 +874,9 @@ private slots:
         QCOMPARE(entries.at(0).name, QString("new.pdf"));
         QCOMPARE(entries.at(1).name, QString("old.txt"));
         QCOMPARE(entries.at(0).kind, QString("pdf"));
+        // Left before it's done, it stops checking what's on the list.
+        int checks = 0;
+        QVERIFY(FolderModel::listRecent(dir.filePath("recently-used.xbel"), false, 200, [&] { return ++checks > 3; }).size() == 1);
     }
 
     void folderSortsFiveWays()
