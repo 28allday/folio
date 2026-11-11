@@ -117,7 +117,22 @@ QString Mounter::destinationFor(const QString &url) {
     if (known().contains(url))
         return known().value(url);
     const QString mount = folderFor(url);
-    return mount.isEmpty() ? QString() : QDir::cleanPath(mount + QUrl(url).path());
+    // The address's path is read from the server's top, where ".." goes no
+    // higher, as GVfs reads it. Joined first and cleaned after, it would
+    // climb out of the mount to a local folder ("sftp://nas/../../tmp");
+    // QDir::cleanPath keeps a leading "..", so the steps are taken here.
+    if (mount.isEmpty())
+        return {};
+    QStringList parts;
+    for (const QString &part : QUrl(url).path().split('/', Qt::SkipEmptyParts)) {
+        if (part == "..") {
+            if (!parts.isEmpty())
+                parts.removeLast();
+        } else if (part != ".") {
+            parts << part;
+        }
+    }
+    return parts.isEmpty() ? mount : mount + '/' + parts.join('/');
 }
 
 void Mounter::mount(const QString &uri, bool verified) {

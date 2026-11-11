@@ -2616,7 +2616,10 @@ private slots:
         QTemporaryDir dir;
         write(dir.filePath("secret.txt"), "secret");
         QProcess tar;
-        tar.start("bsdtar", {"--options", "zip:encryption=zipcrypt", "--passphrase", "x", "-acf",
+        // AES, whose password check is two bytes: ZipCrypto's one byte let
+        // Folio's stand-in password through once in 256 runs, and the
+        // archive read as damaged.
+        tar.start("bsdtar", {"--options", "zip:encryption=aes256", "--passphrase", "x", "-acf",
                              dir.filePath("locked.zip"), "-C", dir.path(), "secret.txt"});
         QVERIFY(tar.waitForFinished() && tar.exitCode() == 0);
         QFile::remove(dir.filePath("secret.txt"));
@@ -3541,6 +3544,11 @@ private slots:
         Mounter::known().remove("smb://nas/media/films");
         QVERIFY(Mounter::destinationFor("smb://nas/media").isEmpty());
         QCOMPARE(Mounter::destinationFor("sftp://studio/srv/www"), Mounter::root() + "/sftp:host=studio/srv/www");
+        QCOMPARE(Mounter::destinationFor("sftp://studio/"), Mounter::root() + "/sftp:host=studio");
+        // ".." stops at the server's top, never climbing out of the mount to
+        // a local folder.
+        QCOMPARE(Mounter::destinationFor("sftp://nas/../../../../../tmp"), Mounter::root() + "/sftp:host=nas/tmp");
+        QCOMPARE(Mounter::destinationFor("sftp://nas/srv/../.."), Mounter::root() + "/sftp:host=nas");
         QCOMPARE(Mounter::folderFor("sftp://me@studio:2222/"), Mounter::root() + "/sftp:host=studio,port=2222,user=me");
     }
 
