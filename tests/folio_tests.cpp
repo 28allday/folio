@@ -538,6 +538,16 @@ private slots:
         QVERIFY(FileOps::transfer({from.filePath("secret")}, to.path(), FileOps::Copy, &error).isEmpty());
         QCOMPARE(error, QString("Couldn't read secret."));
         QVERIFY(!QFile::exists(to.filePath("secret")));
+
+        // A copy that stops at a file that can't be read is left as private
+        // as the folder it came from.
+        QDir(from.path()).mkpath("private/keys");
+        write(from.filePath("private/z.txt"), "z");
+        QVERIFY(QFile::setPermissions(from.filePath("private"), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+        QVERIFY(QFile::setPermissions(from.filePath("private/z.txt"), QFile::WriteOwner));
+        QVERIFY(FileOps::transfer({from.filePath("private")}, to.path(), FileOps::Copy, &error).isEmpty());
+        QCOMPARE(error, QString("Couldn't copy z.txt."));
+        QCOMPARE(QFileInfo(to.filePath("private")).permissions(), QFileInfo(from.filePath("private")).permissions());
     }
 
     void fileOpsClipboardFormats()

@@ -138,7 +138,11 @@ bool FileOps::copyRecursively(const QString &from, const QString &to, QString *e
         *error = QObject::tr("Couldn't read %1.").arg(info.fileName());
         return false;
     }
-    if (!QDir().mkdir(to)) {
+    // A folder keeps its permissions, as QFile::copy keeps a file's. It's
+    // made with them, plus its owner's, so a private one is never open to
+    // others even when the copy stops partway, and a read-only one can be
+    // filled before it gets them exactly.
+    if (!QDir().mkdir(to, info.permissions() | QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner)) {
         *error = QObject::tr("Couldn't create %1.").arg(QFileInfo(to).fileName());
         return false;
     }
@@ -147,8 +151,6 @@ bool FileOps::copyRecursively(const QString &from, const QString &to, QString *e
     for (const QFileInfo &entry : entries)
         if (!copyRecursively(entry.filePath(), QDir(to).filePath(entry.fileName()), error, move))
             return false;
-    // A folder keeps its permissions, as QFile::copy keeps a file's, and gets
-    // them once it's filled, so a read-only one can be.
     QFile::setPermissions(to, info.permissions());
     // Only once it's empty: what turned up in it while the rest moved was
     // never copied, so it stays where it is, and the folder with it.
