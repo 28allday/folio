@@ -84,6 +84,7 @@ public:
 
     static QString expandTyped(const QString &text, const QString &home, const QString &current);
     static QString complete(const QString &text, const QString &home, const QString &current);
+    static QString mountLabel(const QString &mountFolder);
 
 signals:
     void pathChanged();

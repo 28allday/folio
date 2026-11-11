@@ -58,6 +58,17 @@ QString Backend::gvfsRoot() {
     return QStringLiteral("/run/user/%1/gvfs").arg(getuid());
 }
 
+// What a gvfs mount is called on screen: the host or server from its
+// folder's name ("sftp:host=nas,user=me", "smb-share:server=nas,..."), and only the machine's own name for a tailnet
+// address, since every machine on it shares the "tailXXXX.ts.net" part.
+QString Backend::mountLabel(const QString &mountFolder) {
+    QString host = mountFolder;
+    for (const QString &field : mountFolder.section(':', 1).split(','))
+        if (field.startsWith("host=") || field.startsWith("server="))
+            host = field.section('=', 1);
+    return host.endsWith(".ts.net") ? host.section('.', 0, 0) : host;
+}
+
 QString Backend::title() const {
     const QString p = path();
     if (p == FolderModel::recentPath())
@@ -71,7 +82,7 @@ QString Backend::title() const {
     if (p == "/")
         return tr("Computer");
     if (QFileInfo(p).absolutePath() == gvfsRoot())
-        return QFileInfo(p).fileName().section('=', 1);
+        return mountLabel(QFileInfo(p).fileName());
     return QFileInfo(p).fileName();
 }
 
@@ -94,7 +105,7 @@ QVariantList Backend::crumbs() const {
     } else if (p.startsWith(gvfsRoot() + "/")) {
         const QString mount = p.section('/', 0, 5);
         base = mount;
-        label = mount.section('/', -1).section('=', 1);
+        label = mountLabel(mount.section('/', -1));
     }
 
     QVariantList crumbs{QVariantMap{{"name", label}, {"path", base}}};

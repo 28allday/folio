@@ -1553,6 +1553,14 @@ private slots:
         QVERIFY2(found, qPrintable(host));
     }
 
+    void tailnetMountsGoByTheMachinesName()
+    {
+        QCOMPARE(Backend::mountLabel("sftp:host=studio.example.ts.net"), QString("studio"));
+        QCOMPARE(Backend::mountLabel("sftp:host=studio.example.ts.net,user=me"), QString("studio"));
+        QCOMPARE(Backend::mountLabel("sftp:host=files.example.com"), QString("files.example.com"));
+        QCOMPARE(Backend::mountLabel("smb-share:server=nas,share=media"), QString("nas"));
+    }
+
     void placesListOnlyPhysicalDrives()
     {
         const QList<Places::Mount> mounts{
