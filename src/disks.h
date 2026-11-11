@@ -33,6 +33,10 @@ struct Disk {
     // udisks' own guess that it belongs to the computer rather than being
     // a device plugged into it.
     bool hintSystem = false;
+    // Part of it makes up another device (an LVM volume group, a RAID
+    // array) or is swap in use. Whatever is mounted from those can't be
+    // followed back here, so it may hold the system without saying so.
+    bool inUse = false;
     // Where anything on it is mounted, and the filesystems mounted there,
     // which have to let go before the disk can be written.
     QStringList mounts;

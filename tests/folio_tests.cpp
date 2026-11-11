@@ -2458,6 +2458,38 @@ private slots:
         QVERIFY(!Disks::holdsSystem(stick));
     }
 
+    void disksHoldingVolumesOrSwapCountAsTheSystems()
+    {
+        // The system on an external SSD under LVM: its root is mounted from
+        // a logical volume udisks doesn't tie back to the disk, so the
+        // volume group's member is what gives it away. Swap in use counts
+        // the same.
+        const QString at = "/org/freedesktop/UDisks2/block_devices/";
+        const QString drive = "/org/freedesktop/UDisks2/drives/Samsung_T7";
+        Disks::Objects objects;
+        objects[at + "sda"] = {{"Block", {{"Device", "/dev/sda"}, {"Drive", drive}, {"Size", 1'000'000'000'000LL}}}};
+        objects[at + "sda1"] = {{"Block", {{"Device", "/dev/sda1"}, {"Drive", drive}, {"Size", 999'000'000'000LL}, {"IdUsage", "raid"}, {"IdType", "LVM2_member"}}},
+                                {"Partition", {{"Table", at + "sda"}}}};
+        objects[at + "dm_2d0"] = {{"Block", {{"Device", "/dev/dm-0"}, {"Drive", "/"}, {"Size", 999'000'000'000LL}, {"IdUsage", "filesystem"}}},
+                                  {"Filesystem", {{"MountPoints", QStringList{"/"}}}}};
+        objects[at + "sdb"] = {{"Block", {{"Device", "/dev/sdb"}, {"Drive", drive + "2"}, {"Size", 64'000'000'000LL}}}};
+        objects[at + "sdb1"] = {{"Block", {{"Device", "/dev/sdb1"}, {"Drive", drive + "2"}, {"Size", 8'000'000'000LL}, {"IdUsage", "other"}, {"IdType", "swap"}}},
+                                {"Partition", {{"Table", at + "sdb"}}},
+                                {"Swapspace", {{"Active", true}}}};
+        objects[drive] = {{"Drive", {{"ConnectionBus", "usb"}, {"Removable", false}, {"CanPowerOff", true}}}};
+        objects[drive + "2"] = objects[drive];
+        const QList<Disk> disks = Disks::parse(objects);
+        QCOMPARE(disks.size(), 2);
+        for (const Disk &disk : disks) {
+            QVERIFY(Disks::holdsSystem(disk));
+            QCOMPARE(Disks::fit(disk, 1), Disks::Unfit);
+        }
+
+        // Swap that isn't on, on a stick, is just a partition.
+        objects[at + "sdb1"]["Swapspace"]["Active"] = false;
+        QVERIFY(!Disks::holdsSystem(Disks::parse(objects).value(1)));
+    }
+
     void disksDecideWhereAnImageCanBurn()
     {
         const qint64 image = 4'000'000'000;

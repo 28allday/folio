@@ -232,14 +232,18 @@ QList<Disk> Disks::parse(const Objects &objects) {
         disks.insert(disk.block, disk);
     }
 
-    // What's on each disk: its filesystems, wherever they're mounted, and
-    // the first label among them.
+    // What's on each disk: its filesystems, wherever they're mounted, the
+    // first label among them, and whether it's part of something bigger.
     for (auto it = objects.begin(); it != objects.end(); ++it) {
         auto disk = disks.find(diskOf(it.key()));
         if (disk == disks.end())
             continue;
         const QVariantMap block = it.value().value("Block");
         disk->identity += '\n' + block.value("IdUUID").toString();
+        // LVM2 and RAID members are "raid" to udisks.
+        if (block.value("IdUsage").toString() == "raid"
+            || it.value().value("Swapspace").value("Active").toBool())
+            disk->inUse = true;
         if (disk->label.isEmpty() && block.value("IdUsage").toString() == "filesystem")
             disk->label = block.value("IdLabel").toString();
         const QStringList mounts = it.value().value("Filesystem").value("MountPoints").toStringList();
@@ -265,7 +269,7 @@ bool Disks::isSystemMount(const QString &root) {
 }
 
 bool Disks::holdsSystem(const Disk &disk) {
-    return std::any_of(disk.mounts.begin(), disk.mounts.end(), isSystemMount);
+    return disk.inUse || std::any_of(disk.mounts.begin(), disk.mounts.end(), isSystemMount);
 }
 
 QString Disks::name(const Disk &disk) {
