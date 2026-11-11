@@ -10,8 +10,10 @@
 
 namespace {
 
-// Header and directory bytes read per file in total.
+// Header and directory bytes read per file in total, and the reads they take: each one is its own system call, and a
+// round trip on a network mount, so many tiny reads cost far more than their bytes.
 constexpr quint64 kHeaderBudget = 1048576;
+constexpr int kMaxReads = 4096;
 // Frame-header bytes read per file across all candidates; then validation stops.
 constexpr qint64 kSofBudget = 1048576;
 // One candidate's frame-header walk never reads past this.
@@ -29,6 +31,8 @@ constexpr quint64 kEntryLength = 12;
 constexpr quint64 kMaxValue = 65536;
 // SubIFD fan-out is capped, so one count cannot queue unbounded work.
 constexpr quint32 kMaxPointers = 64;
+// No camera's preview holds more pixels than this; a frame header that claims more would cost a vast decode for nothing.
+constexpr quint64 kMaxPixels = 250000000;
 // The largest embedded JPEG read into memory; a real one is a few MiB.
 constexpr quint64 kMaxJpeg = 64 * 1048576;
 // SOI plus one frame header: anything shorter is no picture.
@@ -75,10 +79,12 @@ struct Source {
     QByteArray slice;
     quint64 size;
     quint64 left;
+    int reads = kMaxReads;
 
     bool get(quint64 offset, quint64 length, QByteArray &out) {
-        if (length > left || offset > size || length > size - offset)
+        if (reads == 0 || length > left || offset > size || length > size - offset)
             return false;
+        --reads;
         left -= length;
         if (!file)
             out = slice.mid(qsizetype(offset), qsizetype(length));
@@ -288,7 +294,7 @@ QVector<Preview> ranked(QFile &file, const QVector<Candidate> &candidates) {
         quint32 width = 0, height = 0;
         const bool found = span >= kMinJpeg && file.seek(qint64(offset)) && firstFrame(file, left, marker, width, height);
         sofLeft -= span - left;
-        if (found && marker <= kLastHuffmanFrame)
+        if (found && marker <= kLastHuffmanFrame && quint64(width) * height <= kMaxPixels)
             previews.append({offset, length, quint64(width) * height, candidates[i].turn});
     }
     std::stable_sort(previews.begin(), previews.end(), [](const Preview &a, const Preview &b) {
@@ -301,8 +307,11 @@ QVector<Preview> ranked(QFile &file, const QVector<Candidate> &candidates) {
 QImage decoded(QFile &file, const Preview &preview, quint64 turn, int pixels) {
     if (!file.seek(qint64(preview.offset)))
         return {};
-    QByteArray jpeg = file.read(qint64(preview.length));
-    if (quint64(jpeg.size()) != preview.length)
+    // Room for the Exif segment is kept, so putting it in moves the bytes in place instead of copying them all.
+    QByteArray jpeg;
+    jpeg.reserve(qsizetype(preview.length + sizeof kExifOrientation));
+    jpeg.resize(qsizetype(preview.length));
+    if (file.read(jpeg.data(), jpeg.size()) != jpeg.size())
         return {};
     if (turn >= kFirstTurn && turn <= kLastTurn && !ownOrientation(jpeg.left(kJpegPrefix))) {
         QByteArray segment(reinterpret_cast<const char *>(kExifOrientation), sizeof kExifOrientation);

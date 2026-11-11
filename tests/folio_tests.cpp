@@ -5750,6 +5750,15 @@ private slots:
         QCOMPARE(wide(kEntryLimit), QSize(160, 120));
         QVERIFY(wide(kEntryLimit + 1).isEmpty());
         QVERIFY(wide(kMostEntries).isEmpty());
+        // A frame header that claims more pixels than any camera's preview, 20000 by 20000, is passed over undecoded.
+        QByteArray vast = big;
+        const qsizetype frame = vast.indexOf(QByteArray("\xFF\xC0", 2));
+        QVERIFY(frame > 0);
+        vast.replace(frame + 5, 4, QByteArray("\x4E\x20\x4E\x20", 4));
+        Raw claimed(true);
+        const quint32 thumbAt = claimed.add(small), vastAt = claimed.add(vast);
+        claimed.setFirst(claimed.ifd(pair(thumbAt, small.size()), claimed.ifd(pair(vastAt, vast.size()))));
+        QCOMPARE(rawThumbnail(claimed.bytes), QSize(160, 120));
     }
 
     void thumbnailsKeepOtherPathsForCameraRaws()
