@@ -95,6 +95,8 @@ signals:
     void newWindowRequested(const QString &path);
     void selectRequested(const QString &name);
     void activateRequested();
+    // A machine was asked for, for the sidebar to remember it by.
+    void peerOpened(const QString &host);
 
 private:
     static QString gvfsRoot();

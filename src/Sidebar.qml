@@ -8,8 +8,8 @@ Rectangle {
     id: sidebar
 
     color: theme.background
-    // A long tailnet scrolls inside the sidebar instead of spilling over
-    // the status bar below it.
+    // A long sidebar scrolls inside itself instead of spilling over the
+    // status bar below it.
     clip: true
 
     // Keyboard: Tab moves here from the files and back. ↑ ↓ move between
@@ -25,7 +25,7 @@ Rectangle {
     readonly property bool dragging: drop.containsDrag || dropHovers > 0 || pinDrop.containsDrag
     // The tailnet's last row opens the view of every machine on it.
     readonly property var allMachines: places.peers.length > 0 ? [{ path: "tailnet:" }] : []
-    readonly property var rows: [].concat(places.places, places.pinned, places.views, places.devices, places.peers,
+    readonly property var rows: [].concat(places.places, places.pinned, places.views, places.devices, places.machines,
                                           allMachines)
     readonly property int pinnedAt: places.places.length
     readonly property int viewsAt: pinnedAt + places.pinned.length
@@ -33,10 +33,11 @@ Rectangle {
     readonly property int peersAt: devicesAt + places.devices.length
 
     function focusSidebar() {
-        // Start on the row for where we are, or the top.
+        // Start on the row for where we are (a machine's for anywhere on
+        // it), or the top.
         let at = 0
         for (let i = 0; i < rows.length; ++i)
-            if (rows[i].path === activePath)
+            if (rows[i].host !== undefined ? onMachine(rows[i].host) : rows[i].path === activePath)
                 at = i
         cursor = at
         forceActiveFocus()
@@ -51,6 +52,7 @@ Rectangle {
             sidebar.target.navigate(row.path)
         finished()
     }
+    function onMachine(host) { return sidebar.target.path.indexOf("/sftp:host=" + host) >= 0 }
     function reveal(item) {
         const y = item.mapToItem(column, 0, 0).y
         if (y < flick.contentY)
@@ -300,23 +302,38 @@ Rectangle {
                 }
             }
 
+            // The machines opened here lately, while they're online, then
+            // the way to every other one.
             SectionLabel { text: qsTr("Tailnet"); visible: places.peers.length > 0 }
             Repeater {
-                model: places.peers
+                model: places.machines
                 PlaceRow {
+                    id: machineRow
                     required property var modelData
                     required property int index
                     keyed: sidebar.activeFocus && sidebar.cursor === sidebar.peersAt + index
                     onKeyedChanged: if (keyed) sidebar.reveal(this)
                     text: modelData.name
                     glyph: "peer"
-                    active: sidebar.target.path.indexOf("/sftp:host=" + modelData.host) >= 0
+                    active: sidebar.onMachine(modelData.host)
                     onClicked: sidebar.target.openPeer(modelData.host)
+                    rightPadding: forget.visible ? forget.implicitWidth + 6 : 14
+                    IconButton {
+                        id: forget
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        implicitWidth: 28
+                        implicitHeight: 28
+                        visible: machineRow.hovered || hovered
+                        glyph: "close"
+                        text: qsTr("Remove from the sidebar")
+                        onClicked: places.forget(machineRow.modelData.host)
+                    }
                 }
             }
             PlaceRow {
                 visible: sidebar.allMachines.length > 0
-                keyed: sidebar.activeFocus && sidebar.cursor === sidebar.peersAt + places.peers.length
+                keyed: sidebar.activeFocus && sidebar.cursor === sidebar.peersAt + places.machines.length
                 onKeyedChanged: if (keyed) sidebar.reveal(this)
                 // Under Tailnet, "Machines" says all of them, and unlike
                 // "All machines" it fits the narrow sidebar beside the count.

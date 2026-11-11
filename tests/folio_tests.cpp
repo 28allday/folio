@@ -11,6 +11,7 @@
 #include <QProcess>
 #include <QQmlComponent>
 #include <QQmlEngine>
+#include <QSettings>
 #include <QSignalSpy>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -1417,6 +1418,58 @@ private slots:
         QCOMPARE(peers.at(0).toMap().value("name").toString(), QString("studio"));
         QCOMPARE(peers.at(0).toMap().value("host").toString(), QString("studio.example.ts.net"));
         QCOMPARE(peers.at(0).toMap().value("os").toString(), QString("Linux"));
+    }
+
+    void placesRememberOpenedMachines()
+    {
+        QTemporaryDir home;
+        Places places(home.path());
+        places.remember("studio.example.ts.net");
+        places.remember("nas.example.ts.net");
+        // Most recently opened first; opening one again moves it up.
+        QCOMPARE(places.opened(), QStringList({"nas.example.ts.net", "studio.example.ts.net"}));
+        places.remember("studio.example.ts.net");
+        QCOMPARE(places.opened(), QStringList({"studio.example.ts.net", "nas.example.ts.net"}));
+        // Kept in Folio's settings, with when.
+        QSettings settings(home.filePath(".config/folio/folio.conf"), QSettings::IniFormat);
+        QCOMPARE(settings.beginReadArray("opened-machines"), 2);
+        settings.setArrayIndex(0);
+        QVERIFY(QDateTime::fromString(settings.value("when").toString(), Qt::ISODate).isValid());
+        settings.endArray();
+        QCOMPARE(Places(home.path()).opened().size(), 2);
+
+        places.forget("studio.example.ts.net");
+        QCOMPARE(places.opened(), QStringList({"nas.example.ts.net"}));
+
+        // Only the last 20 are kept.
+        for (int i = 0; i < 25; ++i)
+            places.remember(QString("machine%1.example.ts.net").arg(i));
+        QCOMPARE(places.opened().size(), 20);
+        QCOMPARE(places.opened().first(), QString("machine24.example.ts.net"));
+        QCOMPARE(places.opened().last(), QString("machine5.example.ts.net"));
+    }
+
+    void placesShowOnlyOnlineOpenedMachines()
+    {
+        const QVariantList peers = Places::parseTailscale(tailnet());
+        // The offline nas and the phone aren't shown, however recently opened.
+        const QStringList opened{"nas.example.ts.net", "studio.example.ts.net", "phone.example.ts.net",
+                                 "build.example.ts.net"};
+        const auto shown = Places::onlineOf(opened, peers);
+        QCOMPARE(shown.size(), 2);
+        QCOMPARE(shown.at(0).toMap().value("name").toString(), QString("studio"));
+        QCOMPARE(shown.at(1).toMap().value("name").toString(), QString("build"));
+        QCOMPARE(Places::onlineOf(opened, peers, 1).size(), 1);
+
+        // The sidebar shows a handful at most.
+        QVariantList many;
+        QStringList hosts;
+        for (int i = 0; i < 10; ++i) {
+            const QString host = QString("machine%1.example.ts.net").arg(i);
+            many << QVariantMap{{"name", QString("machine%1").arg(i)}, {"host", host}, {"os", "Linux"}};
+            hosts << host;
+        }
+        QCOMPARE(Places::onlineOf(hosts, many).size(), 6);
     }
 
     void tailnetViewListsOnlineDesktopsByName()

@@ -178,6 +178,7 @@ FocusScope {
         target: backend
         function onSelectRequested(name) { if (view.item) view.item.select(backend.folder.indexOf(name), false) }
         function onActivateRequested() { if (pane.host) { pane.host.raise(); pane.host.requestActivate() } }
+        function onPeerOpened(host) { places.remember(host) }
     }
 
     Connections {

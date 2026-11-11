@@ -189,6 +189,10 @@ void Backend::forward() {
 void Backend::openPeer(const QString &host) {
     if (m_mounter.busy())
         return;
+    // Remembered as it's asked for, not once it's mounted: a machine that
+    // didn't open (asleep, or without Tailscale SSH yet) is still the one
+    // to try again, and the sidebar only shows it while it's online.
+    emit peerOpened(host);
     const QString root = gvfsRoot() + "/sftp:host=" + host;
     if (QFileInfo(root).isDir()) {
         const QString remoteHome = root + QDir::homePath();
