@@ -80,7 +80,9 @@ QStringList expandCommand(const QString &command, const QString &input, const QS
     return args;
 }
 
-// Each optional package's thumbnailers and the MimeType= lines they ship, as "video/mp4;video/webm;".
+// Each optional package's thumbnailers and the MimeType= lines they ship, as "video/mp4;video/webm;". Copied from the
+// .thumbnailer files of Arch's ffmpegthumbnailer 2.3.1 (the video one only: the audio one draws just cover art, which
+// most files lack), glycin 2.2.6, papers 51.1 and libgsf's gsf-office; refresh them from there when a package adds types.
 struct PackageTypes {
     const char *package;
     const char *types;
