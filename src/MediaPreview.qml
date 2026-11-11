@@ -108,11 +108,15 @@ Item {
             implicitHeight: 52
             color: theme.background
 
+            // Time runs left to right in every language, as the seek keys
+            // (Shift+← back, Shift+→ ahead) do.
             RowLayout {
                 anchors.fill: parent
                 anchors.leftMargin: 16
                 anchors.rightMargin: 24
                 spacing: 12
+                LayoutMirroring.enabled: false
+                LayoutMirroring.childrenInherit: true
                 IconButton {
                     glyph: media.playing ? "pause" : "play"
                     text: media.playing ? qsTr("Pause (K)") : qsTr("Play (K)")

@@ -13,7 +13,7 @@ Rectangle {
 
     property var shortcuts: [
         ["← ↑ → ↓", qsTr("Move the selection")],
-        ["→ / ←", qsTr("In list and columns: into a folder / back out")],
+        [LayoutMirroring.enabled ? "← / →" : "→ / ←", qsTr("In list and columns: into a folder / back out")],
         // The keys in these few are mixed with words; the key names (Shift,
         // Alt, ⏎) stay as they are in every language.
         [qsTr("Shift+click / Shift+arrows"), qsTr("Select a range")],

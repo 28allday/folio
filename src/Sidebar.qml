@@ -13,7 +13,8 @@ Rectangle {
     clip: true
 
     // Keyboard: Tab moves here from the files and back. ↑ ↓ move between
-    // rows, ⏎ (or →) opens one and hands the keyboard back to the files.
+    // rows, ⏎ (or →, toward the files) opens one and hands the keyboard
+    // back to the files.
     signal finished()
     // The ? in the corner: show or hide the shortcuts.
     signal helpRequested()
@@ -67,7 +68,9 @@ Rectangle {
     Keys.onDownPressed: cursor = Math.min(rows.length - 1, cursor + 1)
     Keys.onReturnPressed: activate(cursor)
     Keys.onEnterPressed: activate(cursor)
-    Keys.onRightPressed: activate(cursor)
+    // The way to the files: left, when mirrored.
+    Keys.onRightPressed: if (!LayoutMirroring.enabled) activate(cursor)
+    Keys.onLeftPressed: if (LayoutMirroring.enabled) activate(cursor)
     Keys.onEscapePressed: finished()
 
     // The deepest place the current folder sits under.
@@ -150,8 +153,11 @@ Rectangle {
         contentItem: RowLayout {
             spacing: 14
             Glyph { name: row.glyph; color: row.active ? theme.brightForeground : theme.foreground }
+            // Set, so that it's mirrored: left as it is, a Latin name would
+            // follow its own script and stay on the left.
             Text {
                 Layout.fillWidth: true
+                horizontalAlignment: Text.AlignLeft
                 text: row.text
                 elide: Text.ElideRight
                 color: row.active ? theme.brightForeground : theme.foreground

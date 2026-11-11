@@ -21,7 +21,7 @@ Item {
     function menuAnchor() { return here.currentItem }
 
     // Every column has a menu: on an item there, or on the column's folder.
-    signal contextMenu(var item, string folder)
+    signal contextMenu(var item, string folder, point at)
 
     readonly property var crumbs: backend.crumbs
 
@@ -50,8 +50,11 @@ Item {
     Component.onCompleted: syncTrail()
     readonly property var selected: here.currentIndex >= 0 ? (backend.folder.count, backend.folder.get(here.currentIndex)) : ({})
 
-    // Keeps the newest columns in view as the trail grows.
-    function revealEnd() { flick.contentX = Math.max(0, flick.contentWidth - flick.width) }
+    // Keeps the newest columns in view as the trail grows: on the left,
+    // when mirrored.
+    function revealEnd() { flick.contentX = view.LayoutMirroring.enabled ? 0 : Math.max(0, flick.contentWidth - flick.width) }
+    LayoutMirroring.onEnabledChanged: revealEnd()
+    function enter() { if (view.selected.isDir) backend.navigate(view.selected.path) }
 
     component Separator: Rectangle { width: 1; height: parent ? parent.height : 0; color: Qt.alpha(theme.foreground, 0.1) }
 
@@ -60,7 +63,7 @@ Item {
         anchors.fill: parent
         clip: true
         acceptedButtons: Qt.NoButton
-        contentWidth: row.width
+        contentWidth: Math.max(width, row.width)
         contentHeight: height
         boundsBehavior: Flickable.StopAtBounds
         onContentWidthChanged: view.revealEnd()
@@ -69,6 +72,9 @@ Item {
 
         Row {
             id: row
+            // A Row isn't placed by its Flickable, so it's moved to the right
+            // edge by hand when mirrored.
+            x: LayoutMirroring.enabled ? parent.width - width : 0
             height: flick.height
 
             // The folders on the way here, each showing which way the trail goes.
@@ -105,7 +111,7 @@ Item {
                             acceptedButtons: Qt.RightButton
                             onTapped: (point) => {
                                 const index = column.indexAt(point.position.x + column.contentX, point.position.y + column.contentY)
-                                view.contextMenu(index >= 0 ? folder.get(index) : null, ancestor.path)
+                                view.contextMenu(index >= 0 ? folder.get(index) : null, ancestor.path, point.scenePosition)
                             }
                         }
                         Connections {
@@ -144,13 +150,15 @@ Item {
 
                 TapHandler {
                     acceptedButtons: Qt.RightButton
-                    onTapped: (point) => view.contextMenu(selecting.menuAt(point), backend.path)
+                    onTapped: (point) => view.contextMenu(selecting.menuAt(point), backend.path, point.scenePosition)
                 }
 
                 onCurrentIndexChanged: selecting.cursorMoved()
                 Keys.onPressed: (event) => selecting.extendBy(event, event.key === Qt.Key_Up ? -1 : event.key === Qt.Key_Down ? 1 : 0)
-                Keys.onRightPressed: if (view.selected.isDir) backend.navigate(view.selected.path)
-                Keys.onLeftPressed: backend.goUp()
+                // Into a folder is the way the columns grow: leftward, when
+                // mirrored.
+                Keys.onRightPressed: view.LayoutMirroring.enabled ? backend.goUp() : view.enter()
+                Keys.onLeftPressed: view.LayoutMirroring.enabled ? view.enter() : backend.goUp()
 
                 delegate: FileRow {
                     width: here.width
@@ -162,7 +170,7 @@ Item {
 
                 // Where the first item would be, lined up with the names.
                 Text {
-                    x: 14 + 20 + 12
+                    x: LayoutMirroring.enabled ? here.width - width - 46 : 46
                     y: 8
                     visible: here.count === 0 && !backend.folder.loading && backend.folder.error.length === 0
                     text: backend.folder.query ? qsTr("No matches") : qsTr("No items")
@@ -185,7 +193,7 @@ Item {
                     acceptedButtons: Qt.RightButton
                     onTapped: (point) => {
                         const index = inside.indexAt(point.position.x + inside.contentX, point.position.y + inside.contentY)
-                        view.contextMenu(index >= 0 ? inside.model.get(index) : null, view.selected.path)
+                        view.contextMenu(index >= 0 ? inside.model.get(index) : null, view.selected.path, point.scenePosition)
                     }
                 }
                 model: FolderModel {
@@ -206,7 +214,7 @@ Item {
                 }
 
                 Text {
-                    x: 14 + 20 + 12
+                    x: LayoutMirroring.enabled ? inside.width - width - 46 : 46
                     y: 8
                     visible: inside.count === 0 && !inside.model.loading
                     text: qsTr("No items")

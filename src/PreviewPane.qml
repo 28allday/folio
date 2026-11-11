@@ -90,8 +90,11 @@ Rectangle {
         ColumnLayout {
             spacing: 4
             Layout.fillWidth: true
+            // Aligned explicitly, so that they're mirrored: left as they
+            // are, a Latin name would stay on the left.
             Text {
                 Layout.fillWidth: true
+                horizontalAlignment: Text.AlignLeft
                 text: pane.item.name || ""
                 color: theme.brightForeground
                 font.pixelSize: 15
@@ -102,6 +105,7 @@ Rectangle {
             }
             Text {
                 Layout.fillWidth: true
+                horizontalAlignment: Text.AlignLeft
                 text: {
                     translator.language // The type's name comes from the system, in the language of the moment.
                     return Format.summary(pane.item, backend.typeName(pane.item.mime || ""))

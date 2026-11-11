@@ -91,7 +91,9 @@ Rectangle {
             Layout.fillWidth: true
             visible: bar.searching && !bar.editing
             font.pixelSize: 14
-            rightPadding: scope.implicitWidth + 24
+            // Room at the end for where it searches; padding isn't mirrored.
+            leftPadding: LayoutMirroring.enabled ? scope.implicitWidth + 24 : 12
+            rightPadding: LayoutMirroring.enabled ? 12 : scope.implicitWidth + 24
             // Where it searches, at the end of the field. Unlike a
             // placeholder, it stays while typing. The tailnet has nothing
             // below it.
@@ -124,15 +126,21 @@ Rectangle {
             visible: !bar.editing && !bar.searching
             Layout.fillWidth: true
             Layout.fillHeight: true
-            contentWidth: crumbs.implicitWidth
+            contentWidth: Math.max(width, crumbs.implicitWidth)
             clip: true
             boundsBehavior: Flickable.StopAtBounds
             // Long paths keep their end in view; that's where you are.
-            onContentWidthChanged: contentX = Math.max(0, contentWidth - width)
-            onWidthChanged: contentX = Math.max(0, contentWidth - width)
+            // Mirrored, the end is on the left.
+            function revealEnd() { contentX = LayoutMirroring.enabled ? 0 : Math.max(0, contentWidth - width) }
+            onContentWidthChanged: revealEnd()
+            onWidthChanged: revealEnd()
+            LayoutMirroring.onEnabledChanged: revealEnd()
 
             Row {
                 id: crumbs
+                // A Row isn't placed by its Flickable, so it's moved to the
+                // right edge by hand when mirrored.
+                x: LayoutMirroring.enabled ? parent.width - width : 0
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 10
 
@@ -187,7 +195,8 @@ Rectangle {
             glyph: sortMenu.current.glyph
             text: sortMenu.current.tip
             active: sortMenu.visible
-            onClicked: sortMenu.popup(sortButton, 0, sortButton.height + 4)
+            // Under the button, reaching toward the files.
+            onClicked: sortMenu.popup(sortButton, LayoutMirroring.enabled ? sortButton.width - sortMenu.width : 0, sortButton.height + 4)
         }
         SortMenu { id: sortMenu }
         IconButton {

@@ -184,7 +184,7 @@ FocusScope {
 
     Connections {
         target: view.item
-        function onContextMenu(item, folder) { fileMenu.show(item, folder) }
+        function onContextMenu(item, folder, at) { fileMenu.show(item, folder, null, at) }
         function onCursorLetGo() { pane.cursorLetGo = true }
         // The cursor's item is remembered as the cursor moves, and once the
         // folder's loaded has placed it. Not when a re-read leaves the cursor
@@ -356,12 +356,13 @@ FocusScope {
         Component { id: columnsView; FolderColumns { } }
     }
 
-    // Drawn over the window's top bar. It reaches left over the sidebar for
-    // the first pane (so the path starts at the window's edge) and right over
+    // Drawn over the window's top bar. It reaches back over the sidebar for
+    // the first pane (so the path starts at the window's edge) and on over
     // the details column for the last one (so the buttons end at the edge).
+    // Mirrored, the sidebar is on the right and the details on the left.
     PathBar {
         id: pathBar
-        x: -pane.barLeft
+        x: LayoutMirroring.enabled ? -pane.barExtension : -pane.barLeft
         width: pane.barLeft + pane.width + pane.barExtension
         onEditDone: pane.focusView()
         previewVisible: pane.host ? pane.host.previewVisible : true

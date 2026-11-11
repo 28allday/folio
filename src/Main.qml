@@ -29,6 +29,12 @@ ApplicationWindow {
     Material.background: theme.background
     Material.roundedScale: theme.radius
 
+    // Right-to-left languages mirror the window, its menus and tooltips
+    // included: they live in the window's overlay, outside its other items.
+    // The Translator sets the application's layout direction.
+    LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
+    LayoutMirroring.childrenInherit: true
+
     property bool helpVisible: false
     property bool previewVisible: true
     // Columns on a first launch; after that, whichever view was used last.
@@ -100,12 +106,8 @@ ApplicationWindow {
         }
     }
 
-    // Right-to-left languages mirror the window; the Translator sets the
-    // application's layout direction.
     Item {
         anchors.fill: parent
-        LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
-        LayoutMirroring.childrenInherit: true
 
         // The bar across the top; the panes' path bars draw over it.
         readonly property int barHeight: 60
