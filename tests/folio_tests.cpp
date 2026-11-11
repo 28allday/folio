@@ -730,6 +730,17 @@ private slots:
         QVERIFY(!QFileInfo::exists(trash + "/files/album"));
         QVERIFY(!QFile::exists(trash + "/info/album.trashinfo"));
         QVERIFY(QFile::exists(other->filePath("album/inner/a.jpg")));
+
+        // One that can't be copied at all keeps its note.
+        if (geteuid() != 0) {
+            write(trash + "/files/locked.txt", "x");
+            write(trash + "/info/locked.txt.trashinfo", "[Trash Info]\nPath=" + other->filePath("locked.txt").toUtf8() + "\n");
+            QVERIFY(QFile::setPermissions(trash + "/files/locked.txt", QFile::WriteOwner));
+            error.clear();
+            QCOMPARE(FileOps::restoreOne(trash + "/files/locked.txt", &error), QString());
+            QCOMPARE(error, QString("Couldn't copy locked.txt."));
+            QVERIFY(QFile::exists(trash + "/info/locked.txt.trashinfo"));
+        }
     }
 
     void fileOpsWeedOutWhatsInsideQuickly()

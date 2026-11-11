@@ -571,10 +571,10 @@ QString FileOps::restoreOne(const QString &trashedPath, QString *error) {
     // Across drives (rare: trash lives on the item's own drive), it moves
     // the way a move across drives does, each original removed once it's
     // copied. The note stays while anything of it is left in the trash.
-    const bool copied = copyRecursively(trashedPath, destination, error, true);
+    if (!copyRecursively(trashedPath, destination, error, true))
+        return {};
     if (QFileInfo::exists(trashedPath) || QFileInfo(trashedPath).isSymLink()) {
-        if (copied)
-            *error = tr("Restored %1, but couldn't remove it from the trash.").arg(QFileInfo(trashedPath).fileName());
+        *error = tr("Restored %1, but couldn't remove it from the trash.").arg(QFileInfo(trashedPath).fileName());
         return {};
     }
     QFile::remove(infoFileFor(trashedPath));
