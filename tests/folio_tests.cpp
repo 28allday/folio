@@ -1992,7 +1992,7 @@ private slots:
         ops.extract({dir.filePath("notes.zip")});
         QVERIFY(clash.wait(5000));
         ops.answerClash("both", false);
-        QCOMPARE(done.count(), 1);
+        QVERIFY(done.wait(5000));
         QCOMPARE(done.first(), QList<QVariant>({dir.path(), "notes (copy)"}));
         QCOMPARE(contents(dir.filePath("notes (copy)/a.txt")), QByteArray("new"));
         QCOMPARE(contents(dir.filePath("notes/a.txt")), QByteArray("old"));
@@ -2001,10 +2001,52 @@ private slots:
         ops.extract({dir.filePath("notes.zip")});
         QVERIFY(clash.wait(5000));
         ops.answerClash("replace", false);
+        QTRY_VERIFY(ops.busy().isEmpty());
         QCOMPARE(contents(dir.filePath("notes/a.txt")), QByteArray("new"));
         QCOMPARE(contents(dir.filePath("notes/b.txt")), QByteArray("new"));
         QCOMPARE(contents(data.filePath("Trash/files/a.txt")), QByteArray("old"));
         QCOMPARE(everything(dir.path()), QStringList({"notes", "notes (copy)", "notes.zip"}));
+    }
+
+    void extractPlacesInTheBackgroundAndCanStop()
+    {
+        // Merging what's extracted into a folder that's there goes through
+        // it all, off the UI thread, and Cancel stops it: what's not placed
+        // goes with the hidden folder. The worker is held back until the
+        // cancel, so it's stopped before it starts.
+        if (QStandardPaths::findExecutable("bsdtar").isEmpty())
+            QSKIP("Extracting needs bsdtar.");
+        QTemporaryDir data, dir, source;
+        const auto restore = dataHomeAt(data.path());
+        write(source.filePath("a.txt"), "new");
+        write(source.filePath("b.txt"), "new");
+        pack(dir.filePath("notes.zip"), source.path(), {"a.txt", "b.txt"});
+        QDir(dir.path()).mkdir("notes");
+        write(dir.filePath("notes/a.txt"), "old");
+        FileOps ops;
+        QSignalSpy clash(&ops, &FileOps::clashChanged), notice(&ops, &FileOps::notice);
+        ops.extract({dir.filePath("notes.zip")});
+        QVERIFY(clash.wait(5000));
+        QTRY_VERIFY(ops.busy().isEmpty());
+
+        QThreadPool *pool = QThreadPool::globalInstance();
+        const int threads = pool->maxThreadCount();
+        pool->setMaxThreadCount(1);
+        std::atomic<bool> hold = true;
+        pool->start([&] {
+            while (hold)
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        });
+        ops.answerClash("replace", false);
+        QCOMPARE(ops.busy(), QString("Extracting notes.zip…"));
+        ops.cancel();
+        hold = false;
+        QTRY_VERIFY(ops.busy().isEmpty());
+        pool->setMaxThreadCount(threads);
+        QCOMPARE(notice.last().first().toString(), QString("Stopped extracting notes.zip; nothing was extracted."));
+        QCOMPARE(everything(dir.path()), QStringList({"notes", "notes.zip"}));
+        QCOMPARE(everything(dir.filePath("notes")), QStringList({"a.txt"}));
+        QCOMPARE(contents(dir.filePath("notes/a.txt")), QByteArray("old"));
     }
 
     void extractRefusesWhatWouldLandOutside()

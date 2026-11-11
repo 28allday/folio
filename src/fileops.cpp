@@ -1092,36 +1092,51 @@ void FileOps::extract(const QStringList &archives) {
                 if (taken(archive.absoluteDir().filePath(QFileInfo(result.made[i]).fileName())))
                     clashing << items.last();
             }
+            // Placed off the UI thread too, since merging into a folder
+            // that's there goes through all of it, and it can be stopped.
             // The hidden folders go once what's in them is placed, with
-            // whatever was skipped, or once the clash is dropped.
-            const auto place = [this, items, from, hidden](const QHash<QString, Choice> &choices) {
-                QList<Step> steps;
-                QString error, folder, made;
-                for (const auto &[item, into] : items) {
-                    const QStringList names = transfer({item}, into, Move, &error, choices, nullptr, &steps);
-                    if (made.isEmpty() && !names.isEmpty()) {
-                        folder = into;
-                        made = names.first();
-                    }
-                    if (!error.isEmpty())
-                        break;
-                }
-                // Moved out of its hidden folder, what was extracted is new
-                // where it is now: undo sends it to the trash, as it does a
-                // copy.
-                for (Step &step : steps)
-                    if (!step.trash) {
-                        step.trash = true;
-                        step.other.clear();
-                    }
-                for (const auto &folder : hidden)
-                    folder->remove();
-                if (!steps.isEmpty())
-                    remember({Extracting, from.first(), int(from.size()), steps});
-                if (!error.isEmpty())
-                    emit failed(error);
-                if (!made.isEmpty())
-                    emit done(folder, made);
+            // whatever was skipped or stopped, or once the clash is dropped.
+            const auto place = [this, items, from, hidden, name, count](const QHash<QString, Choice> &choices) {
+                inBackground(
+                    [name, count](const Job &) {
+                        return count > 1 ? tr("Extracting %n archives…", "", count) : tr("Extracting %1…").arg(name);
+                    },
+                    [items, choices](Job &job) {
+                        Outcome result;
+                        for (const auto &[item, into] : items) {
+                            const QStringList names = transfer({item}, into, Move, &result.error, choices, &job, &result.steps);
+                            if (result.made.isEmpty() && !names.isEmpty())
+                                result.made = {into, names.first()};
+                            if (!result.error.isEmpty() || job.cancelled)
+                                break;
+                        }
+                        return result;
+                    },
+                    [this, from, hidden, name, count](const Outcome &result, const Job &job) {
+                        // Moved out of its hidden folder, what was extracted
+                        // is new where it is now: undo sends it to the
+                        // trash, as it does a copy.
+                        QList<Step> steps = result.steps;
+                        for (Step &step : steps)
+                            if (!step.trash) {
+                                step.trash = true;
+                                step.other.clear();
+                            }
+                        for (const auto &folder : hidden)
+                            folder->remove();
+                        if (!steps.isEmpty())
+                            remember({Extracting, from.first(), int(from.size()), steps});
+                        if (!result.error.isEmpty())
+                            emit failed(result.error);
+                        else if (job.cancelled && steps.isEmpty())
+                            emit notice(count == 1 ? tr("Stopped extracting %1; nothing was extracted.").arg(name)
+                                                   : tr("Stopped extracting; nothing was extracted."));
+                        else if (job.cancelled)
+                            emit notice(count == 1 ? tr("Stopped extracting %1; only part of it was extracted.").arg(name)
+                                                   : tr("Stopped extracting; only part was extracted."));
+                        if (!result.made.isEmpty())
+                            emit done(result.made.first(), result.made.last());
+                    });
             };
             if (clashing.isEmpty()) {
                 place({});
