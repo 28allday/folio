@@ -3028,6 +3028,28 @@ private slots:
         QVERIFY(Disks::parse(objects).value(0).identity != before);
     }
 
+    void disksStayTheSameDiskOnceLocked()
+    {
+        // Burning locks an encrypted stick's volume, which udisks then no
+        // longer lists: it's still the stick that was picked.
+        const QString at = "/org/freedesktop/UDisks2/block_devices/";
+        const QString drive = "/org/freedesktop/UDisks2/drives/Kingston";
+        Disks::Objects objects;
+        objects[at + "sdb"] = {{"Block", {{"Device", "/dev/sdb"}, {"Drive", drive}, {"Size", 64'000'000'000LL}}}};
+        objects[at + "sdb1"] = {{"Block", {{"Device", "/dev/sdb1"}, {"Drive", drive}, {"Size", 63'000'000'000LL}, {"IdUsage", "crypto"}, {"IdUUID", "luks"}}},
+                                {"Partition", {{"Table", at + "sdb"}}},
+                                {"Encrypted", {}}};
+        objects[at + "dm_2d1"] = {{"Block", {{"Device", "/dev/dm-1"}, {"Drive", "/"}, {"Size", 62'900'000'000LL}, {"IdUsage", "filesystem"}, {"IdUUID", "ext4"}, {"CryptoBackingDevice", at + "sdb1"}}},
+                                  {"Filesystem", {{"MountPoints", QStringList{"/run/media/me/Vault"}}}}};
+        objects[drive] = {{"Drive", {{"Id", "Kingston-1"}, {"ConnectionBus", "usb"}, {"Removable", true}}}};
+        const Disk unlocked = Disks::parse(objects).value(0);
+        QCOMPARE(unlocked.unlocked, QStringList{at + "sdb1"});
+        objects.remove(at + "dm_2d1");
+        const Disk locked = Disks::parse(objects).value(0);
+        QVERIFY(locked.unlocked.isEmpty());
+        QCOMPARE(locked.identity, unlocked.identity);
+    }
+
     void disksHoldingVolumesOrSwapCountAsTheSystems()
     {
         // The system on an external SSD under LVM: its root is mounted from

@@ -292,9 +292,12 @@ QList<Disk> Disks::parse(const Objects &objects) {
         if (disk == disks.end())
             continue;
         const QVariantMap block = it.value().value("Block");
-        disk->identity += '\n' + block.value("IdUUID").toString();
+        // What's unlocked comes and goes with its key (burning locks it),
+        // so it's no part of which disk this is.
         if (const QString backing = block.value("CryptoBackingDevice").toString(); !backing.isEmpty() && backing != "/")
             disk->unlocked << backing;
+        else
+            disk->identity += '\n' + block.value("IdUUID").toString();
         // LVM2 and RAID members are "raid" to udisks.
         if (block.value("IdUsage").toString() == "raid"
             || it.value().value("Swapspace").value("Active").toBool())
