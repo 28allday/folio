@@ -173,10 +173,6 @@ public:
     // Writes the image over the whole disk, then ejects it, as Omarchy's
     // iso2sd does.
     Q_INVOKABLE void burn(const QString &image, const QString &id);
-    // Copies the image to the open device `fd` in chunks, counting the
-    // bytes in the job and stopping when it's cancelled; empty, or why it
-    // failed.
-    static QString writeImage(const QString &image, int fd, Job *job);
 
     // Stops the work under way at the next file; what's done stays done.
     Q_INVOKABLE void cancel();

@@ -94,7 +94,7 @@ QString Backend::title() const {
 // Where the removable or extra drive holding `path` is mounted, when it's one
 // (under /run/media, /media or /mnt), so its path starts at its name rather
 // than at /run/media/<user>/.
-QString Backend::driveRoot(const QString &path) {
+static QString driveRoot(const QString &path) {
     static const QStringList places{"/run/media/", "/media/", "/mnt/"};
     for (const QString &place : places) {
         if (!path.startsWith(place))

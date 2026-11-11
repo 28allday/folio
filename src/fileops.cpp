@@ -2188,6 +2188,37 @@ QVariantList FileOps::burnTargets(const QString &image) const {
     return targets;
 }
 
+// Copies the image to the open device `fd` in chunks, counting the bytes in
+// the job and stopping when it's cancelled; empty, or why it failed.
+static QString writeImage(const QString &image, int fd, FileOps::Job &job) {
+    QFile in(image);
+    if (!in.open(QIODevice::ReadOnly))
+        return FileOps::tr("%1 couldn't be read.").arg(QFileInfo(image).fileName());
+    // 4 MiB at a time, as iso2sd's dd does.
+    QByteArray buffer(4 << 20, Qt::Uninitialized);
+    while (!job.cancelled) {
+        const qint64 read = in.read(buffer.data(), buffer.size());
+        if (read < 0)
+            return FileOps::tr("%1 couldn't be read.").arg(QFileInfo(image).fileName());
+        if (read == 0)
+            break;
+        for (qint64 at = 0; at < read;) {
+            const ssize_t written = ::write(fd, buffer.constData() + at, read - at);
+            if (written < 0 && errno == EINTR)
+                continue;
+            // A device that takes nothing more is full, or gone.
+            if (written <= 0)
+                return FileOps::tr("The drive stopped taking data (%1).").arg(qt_error_string(written < 0 ? errno : ENOSPC));
+            at += written;
+            job.bytes += written;
+        }
+    }
+    // What can't be synced (EINVAL) has nothing waiting to be.
+    if (::fsync(fd) != 0 && errno != EINVAL)
+        return FileOps::tr("The drive stopped taking data (%1).").arg(qt_error_string(errno));
+    return {};
+}
+
 void FileOps::burn(const QString &image, const QString &id) {
     if (!idle(Lane::Drive))
         return;
@@ -2222,7 +2253,7 @@ void FileOps::burn(const QString &image, const QString &id) {
             // Opening it may have waited on a password, long enough to
             // swap one stick for another.
             if (result.error = unchanged(*disks, disk); result.error.isEmpty())
-                result.error = writeImage(image, fd, &job);
+                result.error = writeImage(image, fd, job);
             ::close(fd);
             // Only a whole image is let go of; a partial one stays, to be
             // burned again.
@@ -2245,35 +2276,6 @@ void FileOps::burn(const QString &image, const QString &id) {
                 emit notice(tr("Burned %1 to %2. It's safe to remove now.").arg(file, drive));
         },
         Lane::Drive);
-}
-
-QString FileOps::writeImage(const QString &image, int fd, Job *job) {
-    QFile in(image);
-    if (!in.open(QIODevice::ReadOnly))
-        return tr("%1 couldn't be read.").arg(QFileInfo(image).fileName());
-    // 4 MiB at a time, as iso2sd's dd does.
-    QByteArray buffer(4 << 20, Qt::Uninitialized);
-    while (!job->cancelled) {
-        const qint64 read = in.read(buffer.data(), buffer.size());
-        if (read < 0)
-            return tr("%1 couldn't be read.").arg(QFileInfo(image).fileName());
-        if (read == 0)
-            break;
-        for (qint64 at = 0; at < read;) {
-            const ssize_t written = ::write(fd, buffer.constData() + at, read - at);
-            if (written < 0 && errno == EINTR)
-                continue;
-            // A device that takes nothing more is full, or gone.
-            if (written <= 0)
-                return tr("The drive stopped taking data (%1).").arg(qt_error_string(written < 0 ? errno : ENOSPC));
-            at += written;
-            job->bytes += written;
-        }
-    }
-    // What can't be synced (EINVAL) has nothing waiting to be.
-    if (::fsync(fd) != 0 && errno != EINVAL)
-        return tr("The drive stopped taking data (%1).").arg(qt_error_string(errno));
-    return {};
 }
 
 bool FileOps::idle(Lane lane) {
