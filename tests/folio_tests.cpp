@@ -5372,6 +5372,21 @@ private slots:
         QVERIFY(thumbnails.load(dir.filePath("photo.tif"), "image/tiff", 1024).isNull());
     }
 
+    void thumbnailsNameThePackageThatWouldDrawAType()
+    {
+        QTemporaryDir dir;
+        write(dir.filePath("webm.thumbnailer"),
+              "[Thumbnailer Entry]\nTryExec=/bin/sh\nExec=/bin/sh -c \"exit 1\" %i %o\nMimeType=video/webm;\n");
+        const Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
+        QCOMPARE(thumbnails.missingPackage("video/mp4"), QString("ffmpegthumbnailer"));
+        QCOMPARE(thumbnails.missingPackage("application/pdf"), QString("papers"));
+        QCOMPARE(thumbnails.missingPackage("application/vnd.oasis.opendocument.text"), QString("libgsf"));
+        // Installed already, drawn by Qt itself, or no package known: nothing to name.
+        QVERIFY(thumbnails.missingPackage("video/webm").isEmpty());
+        QVERIFY(thumbnails.missingPackage("image/png").isEmpty());
+        QVERIFY(thumbnails.missingPackage("model/step").isEmpty());
+    }
+
     void previewerPicksAViewerForEachType()
     {
         QCOMPARE(Previewer::viewerFor("image/png", false), QString("image"));

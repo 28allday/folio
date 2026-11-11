@@ -80,6 +80,71 @@ QStringList expandCommand(const QString &command, const QString &input, const QS
     return args;
 }
 
+// Each optional package's thumbnailers and the MimeType= lines they ship, as "video/mp4;video/webm;".
+struct PackageTypes {
+    const char *package;
+    const char *types;
+};
+const PackageTypes packageTypes[] = {
+    {"ffmpegthumbnailer",
+     "video/3gpp;video/3gpp2;video/annodex;video/dv;video/isivideo;video/matroska;video/matroska-3d;"
+     "video/mj2;video/mp2t;video/mp4;video/mpeg;video/ogg;video/quicktime;video/vnd.avi;"
+     "video/vnd.mpegurl;video/vnd.radgamettools.bink;video/vnd.radgamettools.smacker;"
+     "video/vnd.rn-realvideo;video/vnd.vivo;video/vnd.youtube.yt;video/wavelet;video/webm;"
+     "video/x-anim;video/x-flic;video/x-flv;video/x-javafx;video/x-matroska;video/x-matroska-3d;"
+     "video/x-mjpeg;video/x-mng;video/x-ms-wmv;video/x-nsv;video/x-ogm+ogg;video/x-sgi-movie;"
+     "video/x-theora+ogg;application/mxf;application/vnd.ms-asf;application/vnd.rn-realmedia;"
+     "application/matroska;application/x-matroska;application/ogg;"},
+    {"glycin",
+     "image/avif;image/heif;image/apng;image/bmp;image/gif;image/jp2;image/jpeg;image/png;image/qoi;"
+     "image/tiff;image/vnd.microsoft.icon;image/webp;image/x-dds;image/x-exr;image/x-jp2-codestream;"
+     "image/x-portable-anymap;image/x-portable-bitmap;image/x-portable-graymap;"
+     "image/x-portable-pixmap;image/x-tga;image/x-win-bitmap;image/x-xbitmap;image/x-xpixmap;"
+     "image/jxl;image/svg+xml;image/svg+xml-compressed;"},
+    {"papers",
+     "application/vnd.comicbook-rar;application/vnd.comicbook+zip;application/x-cb7;application/x-cbr;"
+     "application/x-cbt;application/x-cbz;application/x-ext-cb7;application/x-ext-cbr;"
+     "application/x-ext-cbt;application/x-ext-cbz;application/x-ext-djv;application/x-ext-djvu;"
+     "image/vnd.djvu;image/vnd.djvu+multipage;application/pdf;application/x-bzpdf;"
+     "application/x-ext-pdf;application/x-gzpdf;application/x-xzpdf;application/illustrator;"
+     "image/tiff;"},
+    {"libgsf",
+     "application/msword;application/vnd.ms-excel;application/vnd.ms-powerpoint;"
+     "application/vnd.oasis.opendocument.chart;application/vnd.oasis.opendocument.formula;"
+     "application/vnd.oasis.opendocument.graphics;"
+     "application/vnd.oasis.opendocument.graphics-template;application/vnd.oasis.opendocument.image;"
+     "application/vnd.oasis.opendocument.presentation;"
+     "application/vnd.oasis.opendocument.presentation-template;"
+     "application/vnd.oasis.opendocument.spreadsheet;"
+     "application/vnd.oasis.opendocument.spreadsheet-template;application/vnd.oasis.opendocument.text;"
+     "application/vnd.oasis.opendocument.text-master;application/vnd.oasis.opendocument.text-template;"
+     "application/vnd.openxmlformats-officedocument.presentationml.presentation;"
+     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;"
+     "application/vnd.openxmlformats-officedocument.wordprocessingml.document;"
+     "application/vnd.sun.xml.calc;application/vnd.sun.xml.calc.template;application/vnd.sun.xml.draw;"
+     "application/vnd.sun.xml.draw.template;application/vnd.sun.xml.impress;"
+     "application/vnd.sun.xml.impress.template;application/vnd.sun.xml.math;"
+     "application/vnd.sun.xml.writer;application/vnd.sun.xml.writer.global;"
+     "application/vnd.sun.xml.writer.template;"},
+};
+
+// The package for each type by its own name, read once; the first package listed wins, so glycin draws TIFF before papers.
+const QHash<QString, QString> &packageFor() {
+    static const QHash<QString, QString> table = [] {
+        QMimeDatabase mimes;
+        QHash<QString, QString> byType;
+        for (const PackageTypes &entry : packageTypes) {
+            for (const QString &declared : QString::fromLatin1(entry.types).split(';', Qt::SkipEmptyParts)) {
+                const QString type = mimes.mimeTypeForName(declared).name();
+                if (const QString key = type.isEmpty() ? declared : type; !byType.contains(key))
+                    byType.insert(key, QString::fromLatin1(entry.package));
+            }
+        }
+        return byType;
+    }();
+    return table;
+}
+
 } // namespace
 
 Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbnailerDirectories)
@@ -130,6 +195,14 @@ Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbna
         m_thumbnailers.insert(aliased);
         m_thumbnailers.insert(named);
     }
+}
+
+QString Thumbnails::missingPackage(const QString &mime) const {
+    // Qt draws its own pictures in-process, and an installed thumbnailer needs nothing more.
+    if ((mime.startsWith("image/") && QImageReader::supportedMimeTypes().contains(mime.toLatin1()))
+        || m_thumbnailers.contains(mime))
+        return {};
+    return packageFor().value(mime);
 }
 
 QString Thumbnails::cacheKey(const QString &path) {
