@@ -2304,6 +2304,36 @@ private slots:
         QVERIFY(!QFileInfo::exists(from.filePath("box/a.txt")));
     }
 
+    void undoAReplacingMoveThatCouldntRemoveItsOriginal()
+    {
+        // Cut from a folder that can't be changed, the file is copied but
+        // stays: undo takes the copy away and brings back what it replaced.
+        if (geteuid() == 0)
+            QSKIP("Root can change every folder.");
+        QTemporaryDir data, from, to;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::forgetHistory();
+        write(from.filePath("a.txt"), "new");
+        write(to.filePath("a.txt"), "old");
+        QVERIFY(QFile::setPermissions(from.path(), QFile::ReadOwner | QFile::ExeOwner));
+        const auto unlock = qScopeGuard([&] {
+            QFile::setPermissions(from.path(), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+        });
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.cut({from.filePath("a.txt")});
+        ops.paste(to.path());
+        ops.answerClash("replace", false);
+        QTRY_COMPARE(failed.count(), 1);
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(contents(to.filePath("a.txt")), QByteArray("new"));
+        ops.undo();
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(contents(to.filePath("a.txt")), QByteArray("old"));
+        QCOMPARE(contents(from.filePath("a.txt")), QByteArray("new"));
+    }
+
     void undoFollowsAFolderMadeAgain()
     {
         // Undoing a merge makes the folder it removed again, under another

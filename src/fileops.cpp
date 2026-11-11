@@ -526,11 +526,12 @@ static bool putReplacing(const QString &from, const QString &to, bool move, bool
     const bool finished = put(from, to, move, error, job, &arrived, &moved);
     // Noted for undo: a move that finished can be moved back, as can what
     // moved of one that didn't, and a copy that made something (even one
-    // that stopped partway) can go to the trash. What was at `to` already,
-    // and stayed when the copy failed, was never the copy's.
+    // that stopped partway, or a move whose original couldn't go) can go to
+    // the trash. What was at `to` already, and stayed when the copy failed,
+    // was never the copy's.
     if (steps && move && finished)
         *steps << identified({false, to, from});
-    else if (steps && move)
+    else if (steps && move && !moved.isEmpty())
         *steps << moved;
     else if (steps && arrived)
         *steps << identified({true, to, {}});
