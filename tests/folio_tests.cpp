@@ -584,6 +584,24 @@ private slots:
         QVERIFY(!QFileInfo::exists(trash.filePath("files/album")));
     }
 
+    void fileOpsWeedOutWhatsInsideQuickly()
+    {
+        // Select All in a big folder hands over every item. Comparing each
+        // with every other to find what's inside another took most of a
+        // minute for 20,000 photos before the first was touched.
+        QTemporaryDir dir;
+        QStringList paths{dir.filePath("gone")};
+        for (int i = 0; i < 20000; ++i)
+            paths << dir.filePath(QString("photos/%1.jpg").arg(i));
+        QElapsedTimer timer;
+        timer.start();
+        // The first is missing, so it stops there, once they're weeded out.
+        QString error;
+        FileOps::transfer(paths, dir.path(), FileOps::Copy, &error);
+        QCOMPARE(error, QString("gone is no longer there."));
+        QVERIFY2(timer.elapsed() < 1000, qPrintable(QString("Took %1 ms.").arg(timer.elapsed())));
+    }
+
     void fileOpsLetGoOfOnlyThePastedCut()
     {
         // Cut files are gone once pasted, so the clipboard lets go of them,

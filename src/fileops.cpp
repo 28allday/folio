@@ -8,12 +8,12 @@
 #include <QMimeData>
 #include <QMimeDatabase>
 #include <QProcess>
+#include <QSet>
 #include <QStorageInfo>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QUrl>
 #include <QtConcurrent>
-#include <algorithm>
 #include <unistd.h>
 
 // GIO's headers use `signals` as a struct member, which Qt defines as a
@@ -160,13 +160,23 @@ bool FileOps::copyRecursively(const QString &from, const QString &to, QString *e
 // The paths that aren't inside another of them. A folder takes what's in it
 // along, so anything also chosen inside it (search results list both) would
 // be copied or archived twice, be gone by its turn once the folder moved, or
-// be deleted twice.
+// be deleted twice. Each path looks for the folders above it among the
+// chosen, rather than at every other path, which for a Select All of
+// thousands took minutes.
 static QStringList outermost(const QStringList &paths) {
+    QSet<QString> chosen;
+    for (const QString &path : paths)
+        chosen.insert(QDir::cleanPath(path));
+    const auto within = [&](const QString &path) {
+        const QString clean = QDir::cleanPath(path);
+        for (qsizetype slash = clean.lastIndexOf('/'); slash > 0; slash = clean.lastIndexOf('/', slash - 1))
+            if (chosen.contains(clean.left(slash)))
+                return true;
+        return false;
+    };
     QStringList outer;
     for (const QString &path : paths)
-        if (std::none_of(paths.begin(), paths.end(), [&](const QString &other) {
-                return QDir::cleanPath(path).startsWith(QDir::cleanPath(other) + "/");
-            }))
+        if (!within(path))
             outer << path;
     return outer;
 }
