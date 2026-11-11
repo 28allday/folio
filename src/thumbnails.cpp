@@ -198,9 +198,10 @@ Thumbnails::Thumbnails(const QString &cacheDirectory, const QStringList &thumbna
 }
 
 QString Thumbnails::missingPackage(const QString &mime) const {
-    // Qt draws its own pictures in-process, and an installed thumbnailer needs nothing more.
+    // Qt draws its own pictures in-process, an installed thumbnailer needs nothing more, and pdftoppm draws a PDF without one.
     if ((mime.startsWith("image/") && QImageReader::supportedMimeTypes().contains(mime.toLatin1()))
-        || m_thumbnailers.contains(mime))
+        || m_thumbnailers.contains(mime)
+        || (mime == "application/pdf" && !QStandardPaths::findExecutable("pdftoppm").isEmpty()))
         return {};
     return packageFor().value(mime);
 }

@@ -5420,12 +5420,23 @@ private slots:
               "[Thumbnailer Entry]\nTryExec=/bin/sh\nExec=/bin/sh -c \"exit 1\" %i %o\nMimeType=video/webm;\n");
         const Thumbnails thumbnails(dir.filePath("cache"), {dir.path()});
         QCOMPARE(thumbnails.missingPackage("video/mp4"), QString("ffmpegthumbnailer"));
-        QCOMPARE(thumbnails.missingPackage("application/pdf"), QString("papers"));
         QCOMPARE(thumbnails.missingPackage("application/vnd.oasis.opendocument.text"), QString("libgsf"));
         // Installed already, drawn by Qt itself, or no package known: nothing to name.
         QVERIFY(thumbnails.missingPackage("video/webm").isEmpty());
         QVERIFY(thumbnails.missingPackage("image/png").isEmpty());
         QVERIFY(thumbnails.missingPackage("model/step").isEmpty());
+
+        // A PDF has its package named only where pdftoppm is not there to draw it.
+        const QByteArray programs = qgetenv("PATH");
+        QVERIFY(QDir(dir.path()).mkpath("bin"));
+        qputenv("PATH", dir.filePath("bin").toUtf8());
+        const QString without = thumbnails.missingPackage("application/pdf");
+        write(dir.filePath("bin/pdftoppm"), "#!/bin/sh\n");
+        QFile::setPermissions(dir.filePath("bin/pdftoppm"), QFile::ReadOwner | QFile::ExeOwner);
+        const QString with = thumbnails.missingPackage("application/pdf");
+        qputenv("PATH", programs);
+        QCOMPARE(without, QString("papers"));
+        QVERIFY(with.isEmpty());
     }
 
     void previewerPicksAViewerForEachType()
