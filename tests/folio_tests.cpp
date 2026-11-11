@@ -570,6 +570,39 @@ private slots:
         QVERIFY(!QFileInfo::exists(data.filePath("Trash/files/album")));
     }
 
+    void folderPaneKeysAreNotBoundTwice()
+    {
+        // Two shortcuts on one key, both on, make Qt call neither: the key
+        // does nothing. A standard key can carry more than its usual one
+        // (Cut is Shift+Delete too on Linux), so they count as theirs.
+        QFile qml(QFINDTESTDATA("../src/FolderPane.qml"));
+        QVERIFY(qml.open(QIODevice::ReadOnly));
+        const QRegularExpression shortcut("^\\s*Shortcut \\{ sequences?: \\[?(.*?)\\]?; enabled: ");
+        const QRegularExpression item("\"([^\"]+)\"|StandardKey\\.(\\w+)");
+        const QMetaEnum standard = QMetaEnum::fromType<QKeySequence::StandardKey>();
+        QHash<QKeySequence, QString> bound;
+        int count = 0;
+        for (const QString &line : QString::fromUtf8(qml.readAll()).split('\n')) {
+            const auto found = shortcut.match(line);
+            if (!found.hasMatch())
+                continue;
+            for (auto it = item.globalMatch(found.captured(1)); it.hasNext();) {
+                const auto key = it.next();
+                const QList<QKeySequence> sequences = key.captured(1).isEmpty()
+                    ? QKeySequence::keyBindings(QKeySequence::StandardKey(standard.keyToValue(key.captured(2).toLatin1())))
+                    : QList<QKeySequence>{QKeySequence(key.captured(1))};
+                for (const QKeySequence &sequence : sequences) {
+                    QVERIFY2(!bound.contains(sequence),
+                             qPrintable(sequence.toString() + " is bound by both " + bound.value(sequence) + " and " + line.trimmed()));
+                    bound.insert(sequence, line.trimmed());
+                    ++count;
+                }
+            }
+        }
+        QVERIFY(count > 30);
+        QVERIFY(bound.contains(QKeySequence("Shift+Del")));
+    }
+
     void fileOpsNeverOverwrite()
     {
         QTemporaryDir dir;

@@ -122,7 +122,9 @@ FocusScope {
 
     Shortcut { sequence: "Space"; enabled: pane.fileKeys; onActivated: backend.togglePreview(pane.current.path || "") }
     Shortcut { sequences: [StandardKey.Copy]; enabled: pane.fileKeys; onActivated: fileOps.copy(pane.selectedPaths()) }
-    Shortcut { sequences: [StandardKey.Cut]; enabled: pane.fileKeys; onActivated: fileOps.cut(pane.selectedPaths()) }
+    // Ctrl+X alone: StandardKey.Cut is Shift+Delete too on Linux, which
+    // deletes for good here.
+    Shortcut { sequence: "Ctrl+X"; enabled: pane.fileKeys; onActivated: fileOps.cut(pane.selectedPaths()) }
     Shortcut { sequences: [StandardKey.Paste]; enabled: pane.fileKeys; onActivated: fileOps.paste(backend.path) }
     // "Yank": the selected path (or the folder's) as text, for a terminal.
     Shortcut { sequence: "Ctrl+Shift+C"; enabled: pane.fileKeys; onActivated: { const paths = pane.selectedPaths(); fileOps.yank(paths.length > 0 ? paths : [backend.path]) } }
