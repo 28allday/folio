@@ -687,6 +687,51 @@ private slots:
         QVERIFY(QFileInfo(to.filePath("box/through")).isSymLink());
     }
 
+    void fileOpsRestoreAcrossDrivesLeavesWhatArrivesMeanwhile()
+    {
+        // Restoring across drives moves the way a move across drives does:
+        // what turns up in the trashed folder meanwhile stays in the trash,
+        // with the note that can bring it back.
+        const auto other = elsewhere();
+        if (!other)
+            QSKIP("Needs a second drive.");
+        QTemporaryDir home;
+        const auto restore = dataHomeAt(home.path());
+        const QString trash = home.filePath("Trash");
+        QDir().mkpath(trash + "/files/box");
+        QDir().mkpath(trash + "/info");
+        write(trash + "/info/box.trashinfo", "[Trash Info]\nPath=" + other->filePath("box").toUtf8() + "\n");
+        const QByteArray pipe = QFile::encodeName(trash + "/files/box/pipe");
+        QVERIFY(mkfifo(pipe.constData(), 0600) == 0);
+        QString error;
+        QFuture<QString> restored = QtConcurrent::run([&] { return FileOps::restoreOne(trash + "/files/box", &error); });
+        int writer = -1;
+        const auto finish = qScopeGuard([&] {
+            if (writer >= 0)
+                close(writer);
+            restored.waitForFinished();
+        });
+        QVERIFY(QTest::qWaitFor([&] { return (writer = open(pipe.constData(), O_WRONLY | O_NONBLOCK)) >= 0; }));
+        write(trash + "/files/box/new.txt", "new");
+        close(std::exchange(writer, -1));
+        QCOMPARE(restored.result(), QString());
+        QCOMPARE(error, QString("Restored box, but couldn't remove it from the trash."));
+        QVERIFY(QFile::exists(trash + "/files/box/new.txt"));
+        QVERIFY(QFile::exists(trash + "/info/box.trashinfo"));
+        QVERIFY(QFileInfo::exists(other->filePath("box/pipe")));
+
+        // With nothing new, all of it goes, and its note with it.
+        QDir().mkpath(trash + "/files/album/inner");
+        write(trash + "/files/album/inner/a.jpg", "picture");
+        write(trash + "/info/album.trashinfo", "[Trash Info]\nPath=" + other->filePath("album").toUtf8() + "\n");
+        error.clear();
+        QCOMPARE(FileOps::restoreOne(trash + "/files/album", &error), other->filePath("album"));
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QVERIFY(!QFileInfo::exists(trash + "/files/album"));
+        QVERIFY(!QFile::exists(trash + "/info/album.trashinfo"));
+        QVERIFY(QFile::exists(other->filePath("album/inner/a.jpg")));
+    }
+
     void fileOpsWeedOutWhatsInsideQuickly()
     {
         // Select All in a big folder hands over every item. Comparing each
