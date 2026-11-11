@@ -92,11 +92,15 @@ private slots:
         write(dir.filePath("b.png"), "x");
         write(dir.filePath("c.png"), "x");
         write(dir.filePath("notes.txt"), "x");
+        write(dir.filePath(".hidden"), "x");
         FolderModel::Entry entry;
         entry.path = dir.path();
         FolderModel::summarize(entry, false);
         QCOMPARE(entry.itemCount, 4);
         QCOMPARE(entry.peek.size(), 2);
+        // The folder counts just count, the hidden only when they show.
+        QCOMPARE(FolderModel::itemCount(dir.path(), false), 4);
+        QCOMPARE(FolderModel::itemCount(dir.path(), true), 5);
     }
 
     void folderModelLoadsInTheBackground()

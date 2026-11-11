@@ -387,6 +387,13 @@ void FolderModel::summarize(Entry &entry, bool showHidden) {
     }
 }
 
+int FolderModel::itemCount(const QString &folder, bool showHidden) {
+    int count = 0;
+    for (QDirIterator it(folder, entryFilters(showHidden)); it.hasNext(); it.next())
+        ++count;
+    return count;
+}
+
 void FolderModel::reload() {
     if (m_path.isEmpty())
         return;
@@ -426,7 +433,7 @@ void FolderModel::reload() {
         emit loaded();
         if (error.isEmpty())
             remember();
-        summarizeFolders(generation);
+        countFolders(generation);
     });
     watcher->setFuture(QtConcurrent::run([path, showHidden, sort, query, latest, generation] {
         QString error;
@@ -438,7 +445,7 @@ void FolderModel::reload() {
     }));
 }
 
-void FolderModel::summarizeFolders(quint64 generation) {
+void FolderModel::countFolders(quint64 generation) {
     // Only the folders not counted yet: a listing just read, or one whose
     // counting was overtaken by a re-read (and so remembered without them).
     QVector<QPair<int, Entry>> folders;
@@ -477,7 +484,7 @@ void FolderModel::summarizeFolders(quint64 generation) {
         for (auto &folder : folders) {
             if (*latest != generation)
                 break;
-            summarize(folder.second, showHidden);
+            folder.second.itemCount = itemCount(folder.second.path, showHidden);
         }
         return folders;
     }));

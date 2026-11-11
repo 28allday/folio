@@ -99,7 +99,11 @@ public:
     static Entry entryFor(const QFileInfo &info, const QMimeDatabase &mimes);
     // An entry as QML reads it, by the names of its fields.
     static QVariantMap toMap(const Entry &entry);
+    // A folder's item count and first pictures, for the preview window.
     static void summarize(Entry &entry, bool showHidden);
+    // Only how many items a folder holds, for the folder counts, which have
+    // no use for its pictures or their order.
+    static int itemCount(const QString &folder, bool showHidden);
     static QStringList sortModes();
     static void sortEntries(QVector<Entry> &entries, const QString &sort);
     // The Recents view: a path that isn't a folder, listing recently used files.
@@ -132,7 +136,7 @@ private:
     void remember();
     static bool sameListing(const QVector<Entry> &a, const QVector<Entry> &b);
     void setError(const QString &error);
-    void summarizeFolders(quint64 generation);
+    void countFolders(quint64 generation);
 
     QString m_path;
     QVector<Entry> m_entries;
