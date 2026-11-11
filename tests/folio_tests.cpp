@@ -327,6 +327,30 @@ private slots:
         QCOMPARE(QFileInfo(to.filePath("project/link")).readSymLink(), QString("data.txt"));
     }
 
+    void fileOpsCopyFolderPermissions()
+    {
+        // A private folder stays private, and a read-only one is filled
+        // before it's made read-only.
+        QTemporaryDir from, to;
+        QDir(from.path()).mkdir("private");
+        QDir(from.path()).mkdir("locked");
+        write(from.filePath("locked/a.txt"), "a");
+        const auto all = QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner;
+        QVERIFY(QFile::setPermissions(from.filePath("private"), all));
+        QVERIFY(QFile::setPermissions(from.filePath("locked"), QFile::ReadOwner | QFile::ExeOwner));
+        const auto unlock = qScopeGuard([&] {
+            QFile::setPermissions(from.filePath("locked"), all);
+            QFile::setPermissions(to.filePath("locked"), all);
+        });
+        QString error;
+        QCOMPARE(FileOps::transfer({from.filePath("private"), from.filePath("locked")}, to.path(), false, &error),
+                 QStringList({"private", "locked"}));
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QVERIFY(QFile::exists(to.filePath("locked/a.txt")));
+        QCOMPARE(QFileInfo(to.filePath("private")).permissions(), QFileInfo(from.filePath("private")).permissions());
+        QCOMPARE(QFileInfo(to.filePath("locked")).permissions(), QFileInfo(from.filePath("locked")).permissions());
+    }
+
     void fileOpsClipboardFormats()
     {
         std::unique_ptr<QMimeData> data(FileOps::mimeDataFor({"/tmp/a b.txt", "/tmp/c.txt"}, true));

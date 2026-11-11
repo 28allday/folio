@@ -137,6 +137,9 @@ bool FileOps::copyRecursively(const QString &from, const QString &to, QString *e
     for (const QFileInfo &entry : entries)
         if (!copyRecursively(entry.filePath(), QDir(to).filePath(entry.fileName()), error))
             return false;
+    // A folder keeps its permissions, as QFile::copy keeps a file's, and gets
+    // them once it's filled, so a read-only one can be.
+    QFile::setPermissions(to, info.permissions());
     return true;
 }
 
