@@ -3,6 +3,7 @@
 #include <QHash>
 #include <QDateTime>
 #include <QImage>
+#include <QObject>
 #include <QQuickAsyncImageProvider>
 #include <QStringList>
 #include <QThreadPool>
@@ -15,7 +16,9 @@
 // /usr/share/thumbnailers (videos via ffmpegthumbnailer, and so on), with
 // Poppler's pdftoppm drawing PDFs when no thumbnailer does. Nothing is generated until a
 // tile asks for it: there is no background crawl.
-class Thumbnails {
+class Thumbnails : public QObject {
+    Q_OBJECT
+
 public:
     explicit Thumbnails(const QString &cacheDirectory = {}, const QStringList &thumbnailerDirectories = {});
 
@@ -31,6 +34,8 @@ public:
     // fresh each time rather than cached, since the colors follow the theme.
     static QImage textPage(const QString &path, int pixels, const QColor &paper, const QColor &ink);
     QString thumbnailerFor(const QString &mime) const { return m_thumbnailers.value(mime); }
+    // The package that would draw `mime` when neither Qt nor an installed thumbnailer does, or nothing.
+    Q_INVOKABLE QString missingPackage(const QString &mime) const;
 
 private:
     QString cachePath(const QString &path, int size) const;
