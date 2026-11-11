@@ -15,11 +15,13 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMimeDatabase>
+#include <QMutex>
 #include <QProcess>
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQmlPropertyMap>
+#include <QQuickImageProvider>
 #include <QQuickItem>
 #include <QQuickWindow>
 #include <QSettings>
@@ -473,6 +475,34 @@ static Plugins::Run runBundled(const Plugins::Manifest &plugin, const QStringLis
         env.insert(it.key(), it.value());
     return Plugins::execute(plugin, command, env, 5000);
 }
+
+// Answers every picture asked of it and keeps the pixels and path of each, for a test of what a view asks for.
+class AskedPictures : public QQuickImageProvider {
+public:
+    AskedPictures() : QQuickImageProvider(QQuickImageProvider::Image) {}
+    QImage requestImage(const QString &id, QSize *size, const QSize &) override
+    {
+        const QMutexLocker locker(&m_mutex);
+        // "128/1700000000000/image%2Fpng/%2Ftmp%2Fa%20b%2Fphoto.png", or for a text file's page "page/256/1700000000000/1a1b26/a9b1d6/%2Ftmp%2Fnotes.txt": the path last and percent-encoded.
+        const bool page = id.startsWith("page/");
+        m_asked << id.section('/', 0, 0) + ' ' + QUrl::fromPercentEncoding(id.section('/', page ? 5 : 3).toUtf8());
+        // Twice as tall as wide, so a test can tell a fitted picture from a cropped one by its shape.
+        QImage image(8, 16, QImage::Format_RGB32);
+        image.fill(Qt::gray);
+        if (size)
+            *size = image.size();
+        return image;
+    }
+    QStringList asked()
+    {
+        const QMutexLocker locker(&m_mutex);
+        return m_asked;
+    }
+
+private:
+    QMutex m_mutex;
+    QStringList m_asked;
+};
 
 class FolioTests : public QObject {
     Q_OBJECT
@@ -5119,6 +5149,86 @@ private slots:
         QCOMPARE(shownWidth(second.addMSecs(100)), 64);
         saveAt({64, 32}, second.addMSecs(600));
         QCOMPARE(shownWidth(second.addMSecs(600)), 128);
+    }
+
+    void rowsAskForThePicturesTilesAskFor()
+    {
+        // A row of the list and the columns asks for the thumbnail its tile asks for, and only photos and video are cropped. Text is the one difference: a tile draws its page, a row keeps its icon.
+        QTemporaryDir dir;
+        Theme theme(dir.path());
+        Translator translator(dir.path() + "/language", dir.path());
+        QQmlEngine engine;
+        auto *pictures = new AskedPictures;
+        engine.addImageProvider("thumb", pictures);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("translator", &translator);
+        QQmlComponent row(&engine, QUrl::fromLocalFile(QFINDTESTDATA("../src/FileRow.qml")));
+        QQmlComponent tile(&engine, QUrl::fromLocalFile(QFINDTESTDATA("../src/FileTile.qml")));
+        // The thumbnail pictures an item holds, as "<pixels asked> <fill mode>".
+        const auto asks = [](QObject *item) {
+            QStringList found;
+            for (QObject *child : item->findChildren<QObject *>()) {
+                const QString source = child->inherits("QQuickImage") ? child->property("source").toUrl().toString() : QString();
+                if (source.startsWith("image://thumb/"))
+                    found << source.section('/', 3, 3) + ' ' + QString::number(child->property("fillMode").toInt());
+            }
+            return found;
+        };
+        // The first thumbnail picture an item holds.
+        const auto picture = [](QObject *item) {
+            for (QObject *child : item->findChildren<QObject *>())
+                if (child->inherits("QQuickImage") && child->property("source").toUrl().toString().startsWith("image://thumb/"))
+                    return child;
+            return static_cast<QObject *>(nullptr);
+        };
+        constexpr int stretch = 0, crop = 2, ready = 1;
+        constexpr qreal frame = 20;
+        int pictured = 0;
+        struct Case {
+            const char *name, *mime;
+            bool pictured, filled;
+        };
+        // The three that are not pictured go first, so the waits of the others cover an ask of theirs that came late.
+        for (const Case &c : {Case{"notes.txt", "text/plain", false, false}, Case{"Folder", "inode/directory", false, false},
+                              Case{"studio", "", false, false},
+                              Case{"photo.png", "image/png", true, true}, Case{"clip.mp4", "video/mp4", true, true},
+                              Case{"song.mp3", "audio/mpeg", true, false}, Case{"paper.pdf", "application/pdf", true, false},
+                              Case{"backup.zip", "application/zip", true, false}, Case{"model.stl", "model/stl", true, false}}) {
+            // A plugin's item has no type: its kind is set where the items are listed.
+            const QString kind = *c.mime ? FolderModel::kindForMime(c.mime) : QStringLiteral("item");
+            const QVariantMap item{{"index", 0}, {"name", c.name}, {"path", dir.filePath(c.name)}, {"isDir", kind == "folder"},
+                                   {"kind", kind}, {"mime", c.mime}, {"extension", QFileInfo(c.name).suffix()}, {"size", 1},
+                                   {"modified", QDateTime::currentDateTime()}, {"itemCount", 0}, {"icon", kind == "item" ? "peer" : ""},
+                                   {"selected", false}};
+            std::unique_ptr<QObject> aRow(row.createWithInitialProperties(item));
+            QVERIFY2(aRow, qPrintable(row.errorString()));
+            std::unique_ptr<QObject> aTile(tile.createWithInitialProperties(item));
+            QVERIFY2(aTile, qPrintable(tile.errorString()));
+            const QString rowFill = QString::number(c.filled ? crop : stretch);
+            QVERIFY2(asks(aRow.get()) == (c.pictured ? QStringList{"128 " + rowFill} : QStringList{}), c.name);
+            // A tile lays a fitted picture out at its own shape, so its fill mode is its own; a folder's and a plugin item's tile are drawn, not asked, and text asks for its page.
+            const bool text = kind == "text";
+            QVERIFY2(asks(aTile.get()).size() == (c.pictured || text ? 1 : 0), c.name);
+            if (c.pictured || text)
+                QVERIFY2(asks(aTile.get()).first().startsWith(text ? "page " : "256 "), c.name);
+            // What they hold is what reaches the cache: one ask of each size for this file.
+            const QString path = dir.filePath(c.name);
+            if (c.pictured) {
+                QTRY_VERIFY2(pictures->asked().count("128 " + path) == 1 && pictures->asked().count("256 " + path) == 1, c.name);
+                // Once drawn, a photo fills the row's frame; a page or a cover takes its own shape inside it, where its corners can round.
+                const QObject *shown = picture(aRow.get());
+                QVERIFY2(shown, c.name);
+                QTRY_VERIFY2(shown->property("status").toInt() == ready, c.name);
+                QVERIFY2(shown->property("width").toReal() == (c.filled ? frame : frame / 2), c.name);
+                QVERIFY2(shown->property("height").toReal() == frame, c.name);
+            }
+            // The page is waited for while its tile lives: an ask still queued when its picture goes is dropped.
+            if (text)
+                QTRY_VERIFY2(pictures->asked().count("page " + path) == 1, c.name);
+            pictured += c.pictured;
+        }
+        // Nothing else was asked but the one page: a file that is not pictured never reaches the cache.
+        QCOMPARE(pictures->asked().size(), 2 * pictured + 1);
     }
 
     void thumbnailsReadInstalledThumbnailers()
