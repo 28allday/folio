@@ -301,8 +301,9 @@ FocusScope {
             // A file chooser picking a folder answers with what's selected,
             // or else the folder shown: arriving somewhere selects nothing,
             // so the first item (or the folder just come up out of) isn't
-            // the answer unasked.
-            if ((pending || !same) && pane.host && pane.host.bar && pane.host.bar.pickingFolder)
+            // the answer unasked. What file work made here (a new folder, a
+            // new name) is still selected, as it's what was just asked for.
+            if (!same && pane.host && pane.host.bar && pane.host.bar.pickingFolder)
                 pane.letGo()
             else if (pending)
                 view.item.select(backend.folder.indexOf(pending), false)
