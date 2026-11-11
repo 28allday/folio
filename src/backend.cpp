@@ -238,10 +238,9 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
     const QString kind = item.value("kind").toString();
     const QString mime = item.value("mime").toString();
     const quint64 generation = ++m_describing;
-    // The system's own name for the type ("JPEG image"), already translated,
-    // needs nothing from the file. The same item again (its folder re-read)
-    // keeps what it shows until the new reading is in, rather than flickering.
-    QVariantMap details{{"type", QMimeDatabase().mimeTypeForName(mime).comment()}};
+    // The same item again (its folder re-read) keeps what it shows until
+    // the new reading is in, rather than flickering.
+    QVariantMap details;
     if (const QString described = path + '\n' + mime; described != m_described) {
         m_described = described;
         m_details = details;
@@ -273,8 +272,12 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
             QImageReader reader(path);
             reader.setAutoTransform(true);
             const QSize size = reader.size();
-            if (size.isValid())
-                read.insert("dimensions", QString("%1 × %2").arg(size.width()).arg(size.height()));
+            // Numbers, not text: the pane writes them in the language's
+            // digits, and again when the language changes.
+            if (size.isValid()) {
+                read.insert("width", size.width());
+                read.insert("height", size.height());
+            }
         } else if (kind == "text") {
             // Enough of the top of the file to recognize it, never the whole
             // thing: a log can be gigabytes.
@@ -282,6 +285,10 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
         }
         return read;
     }));
+}
+
+QString Backend::typeName(const QString &mime) {
+    return QMimeDatabase().mimeTypeForName(mime).comment();
 }
 
 Backend::~Backend() {

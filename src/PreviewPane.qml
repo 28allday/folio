@@ -25,8 +25,8 @@ Rectangle {
     // A tailnet machine shows its system and host, and has no date.
     readonly property bool machine: hasItem && item.kind === "peer"
     function homeless(path) { return path.startsWith(places.home + "/") ? "~" + path.slice(places.home.length) : path }
-    // Its type's name, and a picture's size or a text's opening lines once
-    // they've been read off the UI thread.
+    // A picture's size or a text's opening lines once they've been read off
+    // the UI thread.
     readonly property var info: backend.details
     // Described once the folder's loaded has put the cursor back on its
     // item: a re-read leaves another item on the cursor's row for a moment,
@@ -90,8 +90,11 @@ Rectangle {
         ColumnLayout {
             spacing: 4
             Layout.fillWidth: true
+            // Aligned explicitly, so that they're mirrored: left as they
+            // are, a Latin name would stay on the left.
             Text {
                 Layout.fillWidth: true
+                horizontalAlignment: Text.AlignLeft
                 text: pane.item.name || ""
                 color: theme.brightForeground
                 font.pixelSize: 15
@@ -102,7 +105,11 @@ Rectangle {
             }
             Text {
                 Layout.fillWidth: true
-                text: Format.summary(pane.item, pane.info.type)
+                horizontalAlignment: Text.AlignLeft
+                text: {
+                    translator.language // The type's name comes from the system, in the language of the moment.
+                    return Format.summary(pane.item, backend.typeName(pane.item.mime || ""))
+                }
                 color: theme.secondaryForeground
                 font.pixelSize: 12
                 elide: Text.ElideRight
@@ -115,7 +122,7 @@ Rectangle {
             rowSpacing: 12
             columnSpacing: 16
 
-            Text { visible: pane.trashed; text: qsTr("From"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            Text { visible: pane.trashed; text: qsTr("Original location"); color: theme.secondaryForeground; font.pixelSize: 12 }
             Text {
                 visible: pane.trashed
                 Layout.fillWidth: true
@@ -148,12 +155,13 @@ Rectangle {
                 color: theme.foreground
                 font.pixelSize: 12
             }
-            Text { visible: !!pane.info.dimensions; text: qsTr("Dimensions"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            Text { visible: !!pane.info.width; text: qsTr("Dimensions"); color: theme.secondaryForeground; font.pixelSize: 12 }
             Text {
-                visible: !!pane.info.dimensions
+                visible: !!pane.info.width
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignRight
-                text: pane.info.dimensions || ""
+                text: pane.info.width ? qsTr("%1 × %2").arg(pane.info.width.toLocaleString(Qt.locale(), "f", 0))
+                                                     .arg(pane.info.height.toLocaleString(Qt.locale(), "f", 0)) : ""
                 color: theme.foreground
                 font.pixelSize: 12
             }

@@ -13,7 +13,8 @@ Rectangle {
     clip: true
 
     // Keyboard: Tab moves here from the files and back. ↑ ↓ move between
-    // rows, ⏎ (or →) opens one and hands the keyboard back to the files.
+    // rows, ⏎ (or →, toward the files) opens one and hands the keyboard
+    // back to the files.
     signal finished()
     // The ? in the corner: show or hide the shortcuts.
     signal helpRequested()
@@ -67,7 +68,9 @@ Rectangle {
     Keys.onDownPressed: cursor = Math.min(rows.length - 1, cursor + 1)
     Keys.onReturnPressed: activate(cursor)
     Keys.onEnterPressed: activate(cursor)
-    Keys.onRightPressed: activate(cursor)
+    // The way to the files: left, when mirrored.
+    Keys.onRightPressed: if (!LayoutMirroring.enabled) activate(cursor)
+    Keys.onLeftPressed: if (LayoutMirroring.enabled) activate(cursor)
     Keys.onEscapePressed: finished()
 
     // The deepest place the current folder sits under.
@@ -85,9 +88,12 @@ Rectangle {
 
     function statusText(status) {
         // Up to date is the normal state and says nothing; only syncing or
-        // a stopped Dropbox is worth a word.
+        // a stopped Dropbox is worth a word. The status itself stays
+        // English; only what's shown is translated.
+        //: Dropbox's state, in small letters after the Dropbox row.
         return status === "syncing" ? qsTr("syncing")
-             : status === "stopped" ? qsTr("stopped") : ""
+             //: Dropbox's state, in small letters after the Dropbox row.
+             : status === "stopped" ? qsTr("not running") : ""
     }
 
     component SectionLabel: Text {
@@ -112,11 +118,14 @@ Rectangle {
         readonly property bool dropHover: rowDrop.containsDrag
         property string status
         property color statusColor
+        // Room at the row's far end (its left, when mirrored), for a button
+        // over it. Padding isn't mirrored by itself.
+        property real endPadding: 14
 
         Layout.fillWidth: true
         implicitHeight: 34
-        leftPadding: 14
-        rightPadding: 14
+        leftPadding: mirrored ? endPadding : 14
+        rightPadding: mirrored ? 14 : endPadding
         hoverEnabled: true
         focusPolicy: Qt.NoFocus
         Accessible.name: text
@@ -147,8 +156,11 @@ Rectangle {
         contentItem: RowLayout {
             spacing: 14
             Glyph { name: row.glyph; color: row.active ? theme.brightForeground : theme.foreground }
+            // Set, so that it's mirrored: left as it is, a Latin name would
+            // follow its own script and stay on the left.
             Text {
                 Layout.fillWidth: true
+                horizontalAlignment: Text.AlignLeft
                 text: row.text
                 elide: Text.ElideRight
                 color: row.active ? theme.brightForeground : theme.foreground
@@ -232,7 +244,7 @@ Rectangle {
                     active: sidebar.activePath === modelData.path
                     onClicked: sidebar.target.navigate(modelData.path)
                     // The name ends short of the unpin button while it shows.
-                    rightPadding: unpin.visible ? unpin.implicitWidth + 6 : 14
+                    endPadding: unpin.visible ? unpin.implicitWidth + 6 : 14
                     IconButton {
                         id: unpin
                         anchors.right: parent.right
@@ -284,7 +296,7 @@ Rectangle {
                     required property int index
                     dropTrashes: modelData.icon === "trash"
                     onDropHoverChanged: sidebar.dropHovers += dropHover ? 1 : -1
-                    text: modelData.name
+                    text: modelData.icon === "trash" ? qsTr("Trash") : qsTr("Recents")
                     glyph: modelData.icon
                     active: sidebar.activePath === modelData.path
                     onClicked: sidebar.target.navigate(modelData.path)
@@ -325,7 +337,7 @@ Rectangle {
                     glyph: "peer"
                     active: sidebar.onMachine(modelData.host)
                     onClicked: sidebar.target.openPeer(modelData.host)
-                    rightPadding: forget.visible ? forget.implicitWidth + 6 : 14
+                    endPadding: forget.visible ? forget.implicitWidth + 6 : 14
                     IconButton {
                         id: forget
                         anchors.right: parent.right

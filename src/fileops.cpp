@@ -5,6 +5,7 @@
 #include <QFileInfo>
 #include <QFutureWatcher>
 #include <QGuiApplication>
+#include <QLocale>
 #include <QMimeData>
 #include <QMimeDatabase>
 #include <QProcess>
@@ -104,8 +105,10 @@ QString FileOps::freeName(const QString &folder, const QString &name) {
     const QString base = dot > 0 ? name.left(dot) : name;
     const QString ext = dot > 0 ? name.mid(dot) : QString();
     for (int n = 1;; ++n) {
+        // One arg() for all three: a name holding "%2" would otherwise be
+        // filled in again.
         const QString candidate = n == 1 ? QObject::tr("%1 (copy)%2").arg(base, ext)
-                                         : QObject::tr("%1 (copy %2)%3").arg(base).arg(n).arg(ext);
+                                         : QObject::tr("%1 (copy %2)%3").arg(base, QString::number(n), ext);
         if (!QFileInfo::exists(dir.filePath(candidate)))
             return candidate;
     }
@@ -328,8 +331,8 @@ void FileOps::transferInBackground(const QStringList &paths, const QString &fold
     // own drive.
     const bool moving = mode == Move || (mode == Drop && sameDrive(paths.first(), folder));
     const QString showing = !busy.isEmpty() ? busy
-                            : moving        ? tr("Moving %n items…", "", paths.size())
-                                            : tr("Copying %n items…", "", paths.size());
+                            : moving        ? tr("Moving %Ln items…", "", paths.size())
+                                            : tr("Copying %Ln items…", "", paths.size());
     inBackground(
         showing,
         [paths, folder, mode] {
@@ -463,24 +466,30 @@ void FileOps::trash(const QStringList &paths) {
     // .Trash folder, so Restore in any file manager puts things back. It
     // takes one item at a time, which on a slow drive adds up.
     inBackground(
-        tr("Moving %n items to the trash…", "", paths.size()),
+        tr("Moving %Ln items to the trash…", "", paths.size()),
         [paths] {
-            QStringList failedNames;
+            // Each name with GIO's reason, put into words back on the UI
+            // thread, in the language's own punctuation.
+            QList<QPair<QString, QString>> failures;
             for (const QString &path : outermost(paths)) {
                 GFile *file = g_file_new_for_path(path.toUtf8().constData());
                 GError *error = nullptr;
                 if (!g_file_trash(file, nullptr, &error)) {
-                    failedNames << QFileInfo(path).fileName() + (error ? QStringLiteral(" (") + QString::fromUtf8(error->message) + ")" : QString());
+                    failures.append({QFileInfo(path).fileName(), error ? QString::fromUtf8(error->message) : QString()});
                     if (error)
                         g_error_free(error);
                 }
                 g_object_unref(file);
             }
-            return failedNames;
+            return failures;
         },
-        [this](const QStringList &failedNames) {
-            if (!failedNames.isEmpty())
-                emit failed(tr("Couldn't move to the trash: %1").arg(failedNames.join(", ")));
+        [this](const QList<QPair<QString, QString>> &failures) {
+            if (failures.isEmpty())
+                return;
+            QStringList entries;
+            for (const auto &[name, error] : failures)
+                entries << (error.isEmpty() ? name : tr("%1 (%2)").arg(name, error));
+            emit failed(tr("Couldn't move to the trash: %1").arg(QLocale().createSeparatedList(entries)));
         });
 }
 
@@ -621,7 +630,7 @@ void FileOps::restore(const QStringList &paths) {
         return;
     // Restoring across drives copies, which for a folder can take a while.
     inBackground(
-        tr("Restoring %n items…", "", paths.size()),
+        tr("Restoring %Ln items…", "", paths.size()),
         [paths] {
             QStringList failures;
             QString last;
@@ -641,7 +650,7 @@ void FileOps::restore(const QStringList &paths) {
                 emit failed(failures.join(' '));
             else if (!last.isEmpty())
                 emit notice(count == 1 ? tr("Restored %1 to %2.").arg(QFileInfo(last).fileName(), QFileInfo(last).absolutePath())
-                                       : tr("Restored %n items.", "", count));
+                                       : tr("Restored %Ln items.", "", count));
         });
 }
 
@@ -649,7 +658,7 @@ void FileOps::deleteForever(const QStringList &paths) {
     if (paths.isEmpty() || !idle())
         return;
     inBackground(
-        tr("Deleting %n items…", "", paths.size()),
+        tr("Deleting %Ln items…", "", paths.size()),
         [paths] {
             int failures = 0;
             for (const QString &path : outermost(paths))
@@ -659,7 +668,7 @@ void FileOps::deleteForever(const QStringList &paths) {
         },
         [this](int failures) {
             if (failures > 0)
-                emit failed(tr("Couldn't delete %n items.", "", failures));
+                emit failed(tr("Couldn't delete %Ln items.", "", failures));
         });
 }
 
@@ -674,7 +683,7 @@ void FileOps::emptyTrash() {
                 count += emptyTrashDir(dir);
             return count;
         },
-        [this](int count) { emit notice(tr("Emptied the trash: %n items deleted.", "", count)); });
+        [this](int count) { emit notice(tr("Emptied the trash: %Ln items deleted.", "", count)); });
 }
 
 QString FileOps::rename(const QString &path, const QString &name) {
@@ -699,9 +708,11 @@ void FileOps::newFolder(const QString &folder) {
         emit failed(tr("Folders can't be made here."));
         return;
     }
-    QString name = tr("New Folder");
+    // Not "New Folder", the menu's command: many languages word a command
+    // as a verb and a name as a noun.
+    QString name = tr("Untitled Folder");
     for (int n = 2; QFileInfo::exists(QDir(folder).filePath(name)); ++n)
-        name = tr("New Folder %1").arg(n);
+        name = tr("Untitled Folder %1").arg(n);
     if (!QDir(folder).mkdir(name)) {
         emit failed(tr("Couldn't create a folder here."));
         return;

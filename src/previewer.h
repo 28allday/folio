@@ -38,6 +38,9 @@ public:
     void connectToFolio();
     // Shows another file; one in the same folder keeps the list.
     void show(const QString &path);
+    // Lists the folder again, keeping the file shown: after a language
+    // switch, names sort by the new alphabet.
+    void relist();
 
     int count() const { return m_entries.size(); }
     int index() const { return m_index; }

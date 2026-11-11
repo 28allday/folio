@@ -54,7 +54,7 @@ struct MounterCallbacks {
                 g_free(path);
                 self->finish();
                 if (local.isEmpty())
-                    emit self->failed(QObject::tr("GVfs mounted it but gave no local folder for it"));
+                    emit self->failed(QObject::tr("GVfs gave no local folder for the mount"));
                 else
                     emit self->mounted(local);
             } else {

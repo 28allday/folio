@@ -15,7 +15,7 @@ ApplicationWindow {
     minimumWidth: 480
     minimumHeight: 360
     visible: true
-    title: previewer.item.name || "Files"
+    title: previewer.item.name || qsTr("Files")
     color: theme.darkBackground
 
     Material.theme: theme.light ? Material.Light : Material.Dark
@@ -24,8 +24,15 @@ ApplicationWindow {
     Material.background: theme.background
     Material.roundedScale: theme.radius
 
+    // Right-to-left languages mirror the window, its menus and tooltips
+    // included: they live in the window's overlay, outside its other items.
+    // The Translator sets the application's layout direction.
+    LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
+    LayoutMirroring.childrenInherit: true
+
     property bool helpVisible: false
 
+    readonly property bool rtl: Qt.application.layoutDirection === Qt.RightToLeft
     readonly property var item: previewer.item
     readonly property string viewer: previewer.viewer
     readonly property bool external: viewer === "video" || viewer === "audio" || viewer === "pdf"
@@ -40,8 +47,9 @@ ApplicationWindow {
 
     Shortcut { sequences: ["Space", "Escape", "Q"]; context: Qt.ApplicationShortcut; onActivated: win.helpVisible ? win.helpVisible = false : Qt.quit() }
     Shortcut { sequence: "?"; context: Qt.ApplicationShortcut; onActivated: win.helpVisible = !win.helpVisible }
-    Shortcut { sequence: "Left"; context: Qt.ApplicationShortcut; onActivated: previewer.previous() }
-    Shortcut { sequence: "Right"; context: Qt.ApplicationShortcut; onActivated: previewer.next() }
+    // The folder's files run right to left when mirrored, so Left is next.
+    Shortcut { sequence: "Left"; context: Qt.ApplicationShortcut; onActivated: win.rtl ? previewer.next() : previewer.previous() }
+    Shortcut { sequence: "Right"; context: Qt.ApplicationShortcut; onActivated: win.rtl ? previewer.previous() : previewer.next() }
     Shortcut { sequences: ["Return", "Enter"]; context: Qt.ApplicationShortcut; onActivated: previewer.open() }
     Shortcut { sequences: ["Up"]; context: Qt.ApplicationShortcut; onActivated: win.call("scroll", -1) }
     Shortcut { sequences: ["Down"]; context: Qt.ApplicationShortcut; onActivated: win.call("scroll", 1) }
@@ -56,8 +64,6 @@ ApplicationWindow {
 
     Item {
         anchors.fill: parent
-        LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
-        LayoutMirroring.childrenInherit: true
 
         ColumnLayout {
             anchors.fill: parent
@@ -78,8 +84,11 @@ ApplicationWindow {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 2
+                        // Aligned explicitly, so that they're mirrored: left
+                        // as they are, a Latin name would stay on the left.
                         Text {
                             Layout.fillWidth: true
+                            horizontalAlignment: Text.AlignLeft
                             text: win.item.name || ""
                             color: theme.brightForeground
                             font.pixelSize: 15
@@ -88,6 +97,7 @@ ApplicationWindow {
                         }
                         Text {
                             Layout.fillWidth: true
+                            horizontalAlignment: Text.AlignLeft
                             text: Format.summary(win.item, previewer.type)
                             color: theme.secondaryForeground
                             font.pixelSize: 12
@@ -102,8 +112,20 @@ ApplicationWindow {
                         color: theme.secondaryForeground
                         font.pixelSize: 12
                     }
-                    IconButton { glyph: "back"; text: qsTr("Previous (←)"); enabled: previewer.index > 0; onClicked: previewer.previous() }
-                    IconButton { glyph: "forward"; text: qsTr("Next (→)"); enabled: previewer.index + 1 < previewer.count; onClicked: previewer.next() }
+                    // Mirrored, Next sits left of Previous; each points away
+                    // from the other, at the key that does the same.
+                    IconButton {
+                        glyph: win.rtl ? "forward" : "back"
+                        text: qsTr("Previous (%1)").arg(win.rtl ? "→" : "←")
+                        enabled: previewer.index > 0
+                        onClicked: previewer.previous()
+                    }
+                    IconButton {
+                        glyph: win.rtl ? "back" : "forward"
+                        text: qsTr("Next (%1)").arg(win.rtl ? "←" : "→")
+                        enabled: previewer.index + 1 < previewer.count
+                        onClicked: previewer.next()
+                    }
                     IconButton { glyph: "open"; text: qsTr("Open (⏎)"); onClicked: previewer.open() }
                     IconButton { glyph: "close"; text: qsTr("Close"); onClicked: Qt.quit() }
                 }
@@ -158,7 +180,7 @@ ApplicationWindow {
             visible: win.helpVisible
             onDismissed: win.helpVisible = false
             shortcuts: [
-                ["← / →", qsTr("Previous / next file")],
+                [win.rtl ? "→ / ←" : "← / →", qsTr("Previous / next file")],
                 ["⏎", qsTr("Open in its app")],
                 ["↑ ↓ PgUp PgDn", qsTr("Scroll")],
                 ["Ctrl+= / Ctrl+-", qsTr("Zoom in / out")],
