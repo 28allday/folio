@@ -461,6 +461,42 @@ private slots:
         QCOMPARE(QFileInfo(to.filePath("project/link")).readSymLink(), QString("data.txt"));
     }
 
+    void fileOpsMoveLinksAcrossDrivesAsLinks()
+    {
+        // A link moved or restored to another drive arrives as the link it
+        // was, not as a copy of what it leads to. One dropped from another
+        // drive is copied, wherever it leads.
+        const auto other = elsewhere();
+        if (!other)
+            QSKIP("Needs a second drive.");
+        QTemporaryDir here, data, folder;
+        write(here.filePath("data.txt"), "data");
+        QVERIFY(QFile::link("data.txt", here.filePath("relative")));
+        QVERIFY(QFile::link(here.filePath("data.txt"), here.filePath("absolute")));
+        QString error;
+        QCOMPARE(FileOps::transfer({here.filePath("relative"), here.filePath("absolute")}, other->path(), FileOps::Move, &error),
+                 QStringList({"relative", "absolute"}));
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QCOMPARE(QFileInfo(other->filePath("relative")).readSymLink(), QString("data.txt"));
+        QCOMPARE(QFileInfo(other->filePath("absolute")).readSymLink(), here.filePath("data.txt"));
+        QVERIFY(!QFileInfo(here.filePath("relative")).isSymLink());
+
+        const auto restore = dataHomeAt(data.path());
+        QDir().mkpath(data.filePath("Trash/files"));
+        QDir().mkpath(data.filePath("Trash/info"));
+        QVERIFY(QFile::link(here.filePath("data.txt"), data.filePath("Trash/files/trashed")));
+        write(data.filePath("Trash/info/trashed.trashinfo"), "[Trash Info]\nPath=" + other->filePath("trashed").toUtf8() + "\n");
+        QCOMPARE(FileOps::restoreOne(data.filePath("Trash/files/trashed"), &error), other->filePath("trashed"));
+        QCOMPARE(QFileInfo(other->filePath("trashed")).readSymLink(), here.filePath("data.txt"));
+
+        FileOps ops;
+        QSignalSpy done(&ops, &FileOps::done);
+        ops.dropInto({QUrl::fromLocalFile(other->filePath("absolute"))}, folder.path());
+        QVERIFY(done.wait(3000));
+        QCOMPARE(QFileInfo(folder.filePath("absolute")).readSymLink(), here.filePath("data.txt"));
+        QVERIFY(QFileInfo(other->filePath("absolute")).isSymLink());
+    }
+
     void fileOpsCopyFolderPermissions()
     {
         // A private folder stays private, and a read-only one is filled

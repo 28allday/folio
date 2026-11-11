@@ -104,7 +104,8 @@ public:
     // The archive name for compressing these into `folder`: "name.zip" for
     // one item, "Archive.zip" for several; never one that exists.
     static QString archiveName(const QStringList &paths, const QString &folder);
-    static bool sameDrive(const QString &a, const QString &b);
+    // Whether the item at `path` is on the drive `folder` is on.
+    static bool sameDrive(const QString &path, const QString &folder);
     // The home trash, where g_file_trash puts things: $XDG_DATA_HOME/Trash.
     static QString homeTrash();
     // The trash folders: the home one, then each mounted drive's own.

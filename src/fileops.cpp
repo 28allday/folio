@@ -210,8 +210,10 @@ QStringList FileOps::transfer(const QStringList &paths, const QString &folder, M
         const QString name = freeName(target, info.fileName());
         const QString destination = QDir(target).filePath(name);
         // A rename is instant on the same drive; across drives a move is a
-        // copy that removes each original once it's copied.
-        if (move && QFile::rename(path, destination)) {
+        // copy that removes each original once it's copied. A link is made
+        // again rather than renamed, which across drives would copy what it
+        // leads to.
+        if (move && !info.isSymLink() && QFile::rename(path, destination)) {
             made << name;
             continue;
         }
@@ -249,8 +251,11 @@ void FileOps::paste(const QString &folder) {
     transferInBackground(paths, folder, cut ? Move : Copy, cut);
 }
 
-bool FileOps::sameDrive(const QString &a, const QString &b) {
-    return QStorageInfo(a).device() == QStorageInfo(b).device();
+bool FileOps::sameDrive(const QString &path, const QString &folder) {
+    // QStorageInfo follows a link, but a link is on the drive of the folder
+    // it's in, wherever it leads.
+    const QFileInfo item(path);
+    return QStorageInfo(item.isSymLink() ? item.absolutePath() : path).device() == QStorageInfo(folder).device();
 }
 
 bool FileOps::canDrop(const QList<QUrl> &urls, const QString &folder) const {
@@ -538,7 +543,9 @@ QString FileOps::restoreOne(const QString &trashedPath, QString *error) {
         return {};
     }
     const QString destination = QDir(folder).filePath(freeName(folder, QFileInfo(original).fileName()));
-    if (QFile::rename(trashedPath, destination)) {
+    // A link is made again rather than renamed, which across drives would
+    // copy what it leads to.
+    if (!QFileInfo(trashedPath).isSymLink() && QFile::rename(trashedPath, destination)) {
         QFile::remove(infoFileFor(trashedPath));
         return destination;
     }
