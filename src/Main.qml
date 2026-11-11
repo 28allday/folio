@@ -116,6 +116,7 @@ ApplicationWindow {
                 id: sidebar
                 target: win.activePane ? win.activePane.paneBackend : backend
                 onFinished: win.activePane.focusView()
+                onHelpRequested: win.helpVisible = !win.helpVisible
                 Layout.topMargin: parent.parent.barHeight
                 Layout.preferredWidth: 190
                 Layout.fillHeight: true

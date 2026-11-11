@@ -105,7 +105,7 @@ ApplicationWindow {
                     IconButton { glyph: "back"; text: qsTr("Previous (←)"); enabled: previewer.index > 0; onClicked: previewer.previous() }
                     IconButton { glyph: "forward"; text: qsTr("Next (→)"); enabled: previewer.index + 1 < previewer.count; onClicked: previewer.next() }
                     IconButton { glyph: "open"; text: qsTr("Open (⏎)"); onClicked: previewer.open() }
-                    IconButton { glyph: "close"; text: qsTr("Close (Space)"); onClicked: Qt.quit() }
+                    IconButton { glyph: "close"; text: qsTr("Close"); onClicked: Qt.quit() }
                 }
                 Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Qt.alpha(theme.foreground, 0.12) }
             }

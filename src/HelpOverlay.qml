@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls
 
 // Every shortcut, one keypress away (?).
 Rectangle {
@@ -45,37 +46,51 @@ Rectangle {
 
     MouseArea { anchors.fill: parent; onClicked: overlay.dismissed() }
 
+    // Sized to what it holds: two columns of shortcuts side by side when
+    // the window is wide enough, and scrolling when it's too short for them.
     Rectangle {
         anchors.centerIn: parent
-        width: Math.min(parent.width - 64, 520)
-        height: content.implicitHeight + 56
+        width: Math.min(parent.width - 64, content.implicitWidth + 56)
+        height: Math.min(parent.height - 64, content.implicitHeight + 56)
         color: theme.background
         border.width: 1
         border.color: theme.accent
         radius: theme.radius
 
-        ColumnLayout {
-            id: content
+        Flickable {
             anchors.fill: parent
             anchors.margins: 28
-            spacing: 14
+            contentWidth: width
+            contentHeight: content.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            ScrollBar.vertical: FolioScrollBar { }
 
-            Text { text: qsTr("Keyboard shortcuts"); color: theme.brightForeground; font.pixelSize: 16; font.weight: Font.DemiBold }
+            ColumnLayout {
+                id: content
+                width: parent.width
+                spacing: 14
 
-            GridLayout {
-                columns: 2
-                rowSpacing: 10
-                columnSpacing: 28
-                // Each key, then what it does: the grid fills its two
-                // columns in order. (QML's JavaScript has no Array.flat.)
-                Repeater {
-                    model: [].concat(...overlay.shortcuts)
-                    delegate: Text {
-                        required property var modelData
-                        required property int index
-                        Layout.fillWidth: index % 2 === 1
-                        text: modelData
-                        color: index % 2 ? theme.foreground : theme.accent
+                Text { text: qsTr("Keyboard shortcuts"); color: theme.brightForeground; font.pixelSize: 16; font.weight: Font.DemiBold }
+
+                GridLayout {
+                    // Pairs of key and description, two pairs a row when the
+                    // window has room for them.
+                    columns: overlay.width >= 1500 ? 4 : 2
+                    rowSpacing: 10
+                    columnSpacing: 28
+                    // Each key, then what it does: the grid fills its columns
+                    // in order. (QML's JavaScript has no Array.flat.)
+                    Repeater {
+                        model: [].concat(...overlay.shortcuts)
+                        delegate: Text {
+                            required property var modelData
+                            required property int index
+                            Layout.maximumWidth: index % 2 ? 340 : -1
+                            text: modelData
+                            wrapMode: Text.WordWrap
+                            color: index % 2 ? theme.foreground : theme.accent
+                        }
                     }
                 }
             }

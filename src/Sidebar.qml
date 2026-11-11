@@ -15,6 +15,8 @@ Rectangle {
     // Keyboard: Tab moves here from the files and back. ↑ ↓ move between
     // rows, ⏎ (or →) opens one and hands the keyboard back to the files.
     signal finished()
+    // The ? in the corner: show or hide the shortcuts.
+    signal helpRequested()
     property int cursor: 0
     // The pane the sidebar acts on: the one used last.
     property var target: backend
@@ -348,6 +350,43 @@ Rectangle {
                 statusColor: theme.secondaryForeground
                 onClicked: sidebar.target.navigate("tailnet:")
             }
+        }
+    }
+
+    // A quiet ? in the corner, for finding the shortcuts without knowing
+    // the key that shows them.
+    AbstractButton {
+        id: help
+        anchors.left: parent.left
+        anchors.bottom: parent.bottom
+        anchors.leftMargin: 18
+        anchors.bottomMargin: 12
+        implicitWidth: 24
+        implicitHeight: 24
+        focusPolicy: Qt.NoFocus
+        hoverEnabled: true
+        text: qsTr("Keyboard shortcuts")
+        Accessible.name: text
+        onClicked: sidebar.helpRequested()
+        ToolTip {
+            visible: help.hovered
+            delay: 600
+            text: help.text
+            enter: null
+            exit: null
+        }
+        contentItem: Text {
+            text: "?"
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+            font.pixelSize: 13
+            color: help.hovered ? theme.foreground : Qt.alpha(theme.secondaryForeground, 0.6)
+        }
+        background: Rectangle {
+            radius: width / 2
+            color: "transparent"
+            border.width: 1
+            border.color: help.hovered ? theme.foreground : Qt.alpha(theme.secondaryForeground, 0.4)
         }
     }
 }

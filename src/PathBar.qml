@@ -173,9 +173,9 @@ Rectangle {
         IconButton {
             glyph: bar.viewMode
             // Names what a click does, like the buttons beside it.
-            text: bar.viewMode === "grid" ? qsTr("Show as list (Ctrl+2)")
-                : bar.viewMode === "list" ? qsTr("Show as columns (Ctrl+3)")
-                : qsTr("Show as grid (Ctrl+1)")
+            text: bar.viewMode === "grid" ? qsTr("Show as list")
+                : bar.viewMode === "list" ? qsTr("Show as columns")
+                : qsTr("Show as grid")
             onClicked: bar.cycleView()
         }
         IconButton {
@@ -189,20 +189,20 @@ Rectangle {
         SortMenu { id: sortMenu }
         IconButton {
             glyph: "hidden"
-            text: qsTr("Show hidden files (Ctrl+H)")
+            text: qsTr("Show hidden files")
             active: backend.folder.showHidden
             onClicked: backend.folder.showHidden = !backend.folder.showHidden
         }
         IconButton {
             glyph: "preview"
-            text: qsTr("Details (Ctrl+I)")
+            text: qsTr("Details")
             active: bar.previewVisible
             onClicked: bar.togglePreview()
         }
         IconButton {
             visible: bar.closable
             glyph: "close"
-            text: qsTr("Close this pane (Ctrl+W)")
+            text: qsTr("Close this pane")
             onClicked: bar.closeRequested()
         }
     }
