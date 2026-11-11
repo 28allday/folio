@@ -164,6 +164,28 @@ QColor Theme::secondaryForeground() const {
     return mix(background(), foreground(), 0.68);
 }
 
+QVariantMap Theme::tones() const {
+    // Each is the theme's own hue at a luminance of its own, so that they
+    // tell apart by lightness too, not only by hue, and each reads on the
+    // theme's background as small text does: light on a dark theme, dark
+    // on a light one. What isn't tracked is quiet.
+    auto at = [this](const QColor &hue, double onDark, double onLight) {
+        const double target = light() ? onLight : onDark;
+        // HSL lightness raises luminance steadily, so it's searched for.
+        double low = 0, high = 1;
+        QColor color = hue;
+        for (int i = 0; i < 20; ++i) {
+            const double mid = (low + high) / 2;
+            color = QColor::fromHslF(std::max(0.0f, hue.hslHueF()), hue.hslSaturationF(), mid);
+            (luminance(color) < target ? low : high) = mid;
+        }
+        return color;
+    };
+    const QColor modified = at(orange(), .40, .095);
+    return {{"modified", modified}, {"changed", modified}, {"added", at(blue(), .62, .045)},
+            {"conflict", at(red(), .22, .17)}, {"untracked", secondaryForeground()}};
+}
+
 void Theme::reload() {
     refreshRounding();
     const auto paths = m_watcher.files() + m_watcher.directories();

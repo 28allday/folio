@@ -399,6 +399,17 @@ static void writePlugin(const QString &folder, const QString &id, const QByteArr
     }
 }
 
+// The rows of plugins' details sections, as [label, value] each, for
+// comparing.
+static QVariantList pairsOf(const QVariantList &sections)
+{
+    QVariantList pairs;
+    for (const QVariant &section : sections)
+        for (const QVariant &row : section.toMap().value("rows").toList())
+            pairs << QVariant(QVariantList{row.toMap().value("label"), row.toMap().value("value")});
+    return pairs;
+}
+
 // The names of a list of maps, for comparing.
 static QStringList namesOf(const QVariantList &list)
 {
@@ -3446,6 +3457,17 @@ private slots:
         QVERIFY(!plain->opened);
         QCOMPARE(plain->limit, 6);
 
+        // Marks for a folder's files, and actions in a submenu of their own
+        // or in no menu.
+        const auto marked = Plugins::parseManifest(R"({"folio": 1, "marks": {"command": ["./marks"], "under": ["~/Code/"]},
+            "actions": [{"id": "a", "label": "A", "submenu": "Hub", "command": ["x"]},
+                        {"id": "b", "label": "B", "menu": "none", "command": ["x"]}]})", &error);
+        QVERIFY2(marked, qPrintable(error));
+        QCOMPARE(marked->marks, QStringList({"./marks"}));
+        QCOMPARE(marked->marksUnder, QStringList({"~/Code/"}));
+        QCOMPARE(marked->actions[0].submenu, QString("Hub"));
+        QVERIFY(marked->actions[0].listed && !marked->actions[1].listed);
+
         // What can't be followed is refused, saying why.
         for (const char *broken : {"not json", "[]", R"({"requires": []})", R"({"folio": 2})",
                                    R"({"folio": 1, "poll": {"command": []}})",
@@ -3460,6 +3482,7 @@ private slots:
                                    R"({"folio": 1, "actions": [{"id": "a", "label": "A", "command": ["x"], "types": "image/png"}]})",
                                    R"({"folio": 1, "actions": {"id": "a", "label": "A", "command": ["x"]}})",
                                    R"({"folio": 1, "details": {"under": ["~/Dropbox/"]}})",
+                                   R"({"folio": 1, "marks": {"under": ["~/Code/"]}})",
                                    R"({"folio": 1, "details": {"command": ["./x"], "types": [""]}})"}) {
             error.clear();
             QVERIFY2(!Plugins::parseManifest(broken, &error), broken);
@@ -3785,7 +3808,7 @@ private slots:
         QCOMPARE(view.value("empty").toString(), QString("No servers"));
         const QVariantMap beta = view.value("items").toList().at(0).toMap();
         QCOMPARE(beta.value("subtitle").toString(), QString("SFTP"));
-        QCOMPARE(beta.value("details").toList().at(0).toList(), QVariantList({"Adresse", "sftp://beta/"}));
+        QCOMPARE(pairsOf({QVariantMap{{"rows", beta.value("details")}}}), QVariantList({QVariantList{"Adresse", "sftp://beta/"}}));
         QCOMPARE(plugins.item("plugin:servers/a")->name, QString("alpha"));
         QVERIFY(!plugins.item("plugin:servers/nope"));
         QCOMPARE(plugins.nameForMount(rows[1].toMap().value("root").toString()), QString("alpha"));
@@ -3891,7 +3914,8 @@ private slots:
         QTRY_COMPARE(labels({files.filePath("Dropbox/a.txt")}), QStringList({"Link", "Copy It", "Send"}));
         // Plain entries first, by plugin id, then submenus with their targets.
         const QVariantMap send = plugins.actionsFor({files.filePath("c.txt")}).last().toMap();
-        QCOMPARE(send.value("targets").toList().at(0).toMap().value("name").toString(), QString("studio"));
+        QCOMPARE(send.value("entries").toList().at(0).toMap().value("label").toString(), QString("studio"));
+        QCOMPARE(send.value("entries").toList().at(0).toMap().value("target").toString(), QString("s.example"));
         QCOMPARE(labels({files.filePath("c.txt")}), QStringList({"Copy It", "Send"}));
         QCOMPARE(labels({files.filePath("Dropbox/a.txt"), files.filePath("Dropbox/b.txt")}), QStringList({"Copy It", "Send"}));
         QCOMPARE(labels({files.filePath("Dropbox/folder")}), QStringList({"Link", "Copy It"}));
@@ -3979,12 +4003,14 @@ private slots:
         write(home.filePath("photo.png"), "x");
         writePlugin(folder.path(), "git", R"({"folio": 1, "actions": [
             {"id": "link", "label": "Copy Git Link", "types": ["text/plain"], "command": ["true"]},
+            {"id": "open", "label": "Open on GitHub", "submenu": "GitHub", "command": ["true"]},
+            {"id": "blame", "label": "Blame on GitHub", "submenu": "GitHub", "types": ["text/plain"], "command": ["true"]},
             {"id": "mail", "label": "Mail", "menu": "share", "command": ["true"]}]})");
         writePlugin(folder.path(), "hosts", R"({"folio": 1, "poll": {"command": ["./poll"], "every": 86400},
             "actions": [{"id": "copy", "label": "Copy To", "to": "items", "command": ["true"]}]})",
                     {{"poll", "#!/bin/sh\necho '{\"items\": [{\"id\": \"nas\", \"name\": \"nas\"}]}'\n"}});
         Plugins plugins("en", {folder.path()}, home.filePath("folio.conf"));
-        QTRY_COMPARE(plugins.actionsFor({home.filePath("notes.txt")}).size(), 3);
+        QTRY_COMPARE(plugins.actionsFor({home.filePath("notes.txt")}).size(), 4);
         Backend backend(home.path());
         backend.setPlugins(&plugins);
         Theme theme(home.filePath("theme"));
@@ -4011,6 +4037,14 @@ private slots:
                           "        menu.close()\n"
                           "        return shown\n"
                           "    }\n"
+                          "    function submenu(title) {\n"
+                          "        for (let i = 0; i < menu.count; ++i) {\n"
+                          "            const entry = menu.itemAt(i)\n"
+                          "            if (entry.subMenu && entry.text === title)\n"
+                          "                return Array.from({ length: entry.subMenu.count }, (_, j) => entry.subMenu.itemAt(j).text)\n"
+                          "        }\n"
+                          "        return []\n"
+                          "    }\n"
                           "}\n",
                           QUrl::fromLocalFile(sourceFolder() + "/FileMenuTest.qml"));
         std::unique_ptr<QObject> window(component.create());
@@ -4024,11 +4058,20 @@ private slots:
             const qsizetype from = all.indexOf("Compress"), to = all.indexOf("Share");
             return from < 0 || to < from ? all : all.mid(from + 1, to - from - 1);
         };
-        // Plain entries, then submenus, together after Compress and before
-        // Share, and in that order again however often the menu opens.
-        QCOMPARE(around("notes.txt", "text/plain"), QStringList({"Copy Git Link", "Copy To"}));
-        QCOMPARE(around("photo.png", "image/png"), QStringList({"Copy To"}));
-        QCOMPARE(around("notes.txt", "text/plain"), QStringList({"Copy Git Link", "Copy To"}));
+        // Plain entries, then submenus (of actions naming one, or of a
+        // plugin's items), together after Compress and before Share, and in
+        // that order again however often the menu opens.
+        QCOMPARE(around("notes.txt", "text/plain"), QStringList({"Copy Git Link", "GitHub", "Copy To"}));
+        auto submenu = [&](const QString &title) {
+            QVariant entries;
+            QMetaObject::invokeMethod(window.get(), "submenu", Q_RETURN_ARG(QVariant, entries), Q_ARG(QVariant, title));
+            return entries.toStringList();
+        };
+        QCOMPARE(submenu("GitHub"), QStringList({"Open on GitHub", "Blame on GitHub"}));
+        QCOMPARE(submenu("Copy To"), QStringList({"nas"}));
+        QCOMPARE(around("photo.png", "image/png"), QStringList({"GitHub", "Copy To"}));
+        QCOMPARE(submenu("GitHub"), QStringList({"Open on GitHub"}));
+        QCOMPARE(around("notes.txt", "text/plain"), QStringList({"Copy Git Link", "GitHub", "Copy To"}));
     }
 
     void pluginDetailsAreAskedForOnceAndKept()
@@ -4063,10 +4106,10 @@ private slots:
         // and then their rows show in plugin id order: labels translated,
         // values as they are, and what isn't a row left out.
         describe("a.txt", "text/plain", when);
-        QVERIFY(plugins.details(files.filePath("a.txt"), when).isEmpty());
+        QVERIFY(pairsOf(plugins.details(files.filePath("a.txt"), "text/plain", when)).isEmpty());
         QTRY_COMPARE(answered, 2);
         const QVariantList rows{QVariantList{"First", "yes"}, QVariantList{"Linjer", "3"}, QVariantList{"Kind", "Lines"}};
-        QCOMPARE(plugins.details(files.filePath("a.txt"), when), rows);
+        QCOMPARE(pairsOf(plugins.details(files.filePath("a.txt"), "text/plain", when)), rows);
         QCOMPARE(asked(), QStringList({files.filePath("a.txt")}));
 
         // Coming back to it runs nothing; once it's changed, it's asked again.
@@ -4081,7 +4124,7 @@ private slots:
         // inside its folders.
         describe("photo.png", "image/png", when);
         QTRY_COMPARE(answered, 5);
-        QCOMPARE(plugins.details(files.filePath("photo.png"), when), QVariantList({QVariantList{"First", "yes"}}));
+        QCOMPARE(pairsOf(plugins.details(files.filePath("photo.png"), "image/png", when)), QVariantList({QVariantList{"First", "yes"}}));
         QCOMPARE(asked().size(), 2);
 
         // One the selection has moved on from before its turn isn't run.
@@ -4098,8 +4141,8 @@ private slots:
         describe("broken.txt", "text/plain", when);
         QTRY_COMPARE_WITH_TIMEOUT(answered, 9, 4000);
         QVERIFY(clock.elapsed() < 4000);
-        QCOMPARE(plugins.details(files.filePath("slow.txt"), when), QVariantList({QVariantList{"First", "yes"}}));
-        QCOMPARE(plugins.details(files.filePath("broken.txt"), when), QVariantList({QVariantList{"First", "yes"}}));
+        QCOMPARE(pairsOf(plugins.details(files.filePath("slow.txt"), "text/plain", when)), QVariantList({QVariantList{"First", "yes"}}));
+        QCOMPARE(pairsOf(plugins.details(files.filePath("broken.txt"), "text/plain", when)), QVariantList({QVariantList{"First", "yes"}}));
         // Neither is asked again while it's as it was.
         describe("slow.txt", "text/plain", when);
         QTest::qWait(300);
@@ -4114,17 +4157,17 @@ private slots:
 
         // F5 forgets what was said, and has it asked again.
         plugins.refresh();
-        QVERIFY(plugins.details(files.filePath("a.txt"), when).isEmpty());
+        QVERIFY(pairsOf(plugins.details(files.filePath("a.txt"), "text/plain", when)).isEmpty());
         QVERIFY(read.wait(5000));
         describe("a.txt", "text/plain", when);
-        QTRY_COMPARE(plugins.details(files.filePath("a.txt"), when), rows);
+        QTRY_COMPARE(pairsOf(plugins.details(files.filePath("a.txt"), "text/plain", when)), rows);
         // An answer begun before F5 might be older than what replaces it,
         // so it's dropped.
         describe("late.txt", "text/plain", when);
         plugins.refresh();
         QVERIFY(read.wait(5000));
         QTest::qWait(1500);
-        QVERIFY(plugins.details(files.filePath("late.txt"), when).isEmpty());
+        QVERIFY(pairsOf(plugins.details(files.filePath("late.txt"), "text/plain", when)).isEmpty());
     }
 
     void pluginDetailsOfOthersSurviveAPollChange()
@@ -4151,7 +4194,7 @@ private slots:
         changed.clear();
         plugins.perform("pulse", "bump", {path}, {}, [](const Plugins::Result &) {});
         QVERIFY(changed.wait(3000));
-        QTRY_COMPARE(plugins.details(path, when), QVariantList({QVariantList{"Late", "yes"}}));
+        QTRY_COMPARE(pairsOf(plugins.details(path, "text/plain", when)), QVariantList({QVariantList{"Late", "yes"}}));
         QFile asked(folder.filePath("notes/asked"));
         QVERIFY(asked.open(QIODevice::ReadOnly));
         QCOMPARE(asked.readAll().count('\n'), 1);
@@ -4180,7 +4223,7 @@ private slots:
             return QVariantMap{{"path", home.filePath(name)}, {"kind", "text"}, {"mime", "text/plain"},
                                {"modified", QFileInfo(home.filePath(name)).lastModified()}};
         };
-        auto rows = [&] { return backend.details().value("plugins").toList(); };
+        auto rows = [&] { return pairsOf(backend.details().value("plugins").toList()); };
 
         backend.describe(item("a.txt"));
         QTRY_COMPARE(rows(), QVariantList({QVariantList{"State", "waiting"}}));
@@ -4236,7 +4279,7 @@ private slots:
         QCOMPARE(zulu.value("path").toString(), QString("plugin:servers/z"));
         QCOMPARE(zulu.value("extension").toString(), QString("SMB"));
         QCOMPARE(zulu.value("icon").toString(), QString("drive"));
-        QCOMPARE(model.get(1).value("details").toList().at(0).toList(), QVariantList({"Host", "alpha.example"}));
+        QCOMPARE(pairsOf({QVariantMap{{"rows", model.get(1).value("details")}}}), QVariantList({QVariantList{"Host", "alpha.example"}}));
         model.setQuery("ALP");
         QVERIFY(loaded.wait(3000));
         QCOMPARE(model.count(), 1);
@@ -4502,6 +4545,499 @@ private slots:
         const auto plugin = Plugins::read({copy.path()}, "da").value(0);
         QCOMPARE(Plugins::text(plugin, QJsonValue(plugin.viewLabel)), QString("Maskiner"));
         QCOMPARE(Plugins::text(plugin, QJsonArray{plugin.actions[0].busy, "studio"}), QString("Sender til studio…"));
+    }
+
+    void pluginMarksAreAskedForEachReadingOfAFolder()
+    {
+        QTemporaryDir folder, files;
+        QDir(files.path()).mkpath("repo/sub");
+        QDir(files.path()).mkpath("elsewhere");
+        const QString repo = files.filePath("repo");
+        // It marks two files and says so on the chip, counting its runs;
+        // in "sub" it takes its time.
+        writePlugin(folder.path(), "vcs", "{\"folio\": 1, \"marks\": {\"command\": [\"./marks\"], \"under\": [\""
+                                              + repo.toUtf8() + "\"]},"
+                                              " \"actions\": [{\"id\": \"web\", \"label\": \"Open Web\", \"menu\": \"none\", \"command\": [\"true\"]}]}",
+                    {{"marks", "#!/bin/sh\necho \"$1\" >> asked\ncase \"$1\" in *sub) sleep 1 ;; esac\n"
+                               "echo '{\"items\": {\"a.txt\": {\"tone\": \"modified\", \"badge\": \"M\", \"label\": \"Modified\"},"
+                               " \"new.txt\": {\"tone\": \"added\", \"badge\": \"A\", \"label\": \"New\"}},"
+                               " \"chip\": {\"text\": \"main\", \"detail\": \"↑2\", \"note\": [\"%1 changed\", 2], \"tone\": \"modified\","
+                               " \"icon\": \"branch\", \"action\": \"web\"}}'\n"},
+                     {"i18n/da.json", R"({"Modified": "Ændret", "%1 changed": "%1 ændret", "Open Web": "Åbn web"})"}});
+        // Another marks the same file otherwise; the first by id wins.
+        writePlugin(folder.path(), "zz", R"({"folio": 1, "marks": {"command": ["./marks"]}})",
+                    {{"marks", "#!/bin/sh\necho '{\"items\": {\"a.txt\": {\"tone\": \"conflict\"}, \"b.txt\": {\"tone\": \"untracked\", \"badge\": \"?\"}},"
+                               " \"chip\": {\"text\": \"other\"}}'\n"}});
+        Plugins plugins("da", {folder.path()}, files.filePath("folio.conf"));
+        QSignalSpy read(&plugins, &Plugins::detailsChanged);
+        QVERIFY(read.wait(5000));
+        auto asked = [&] {
+            QFile file(folder.filePath("vcs/asked"));
+            return file.open(QIODevice::ReadOnly) ? QString::fromUtf8(file.readAll()).split('\n', Qt::SkipEmptyParts)
+                                                  : QStringList();
+        };
+        int answered = 0;
+        auto mark = [&](const QString &path, bool wanted = true) {
+            plugins.markFolder(path, [wanted] { return wanted; }, [&] { ++answered; });
+        };
+
+        // Nothing's known until they answer; then the marks are translated,
+        // and the chip names its action.
+        mark(repo);
+        QVERIFY(plugins.folderMarks(repo).value("items").toMap().isEmpty());
+        QTRY_COMPARE(answered, 2);
+        const QVariantMap marks = plugins.folderMarks(repo);
+        const QVariantMap items = marks.value("items").toMap();
+        QCOMPARE(items.keys(), QStringList({"a.txt", "b.txt", "new.txt"}));
+        QCOMPARE(items.value("a.txt").toMap(), QVariantMap({{"tone", "modified"}, {"badge", "M"}, {"label", "Ændret"}}));
+        QCOMPARE(items.value("b.txt").toMap().value("badge").toString(), QString("?"));
+        const QVariantMap chip = marks.value("chip").toMap();
+        QCOMPARE(chip.value("plugin").toString(), QString("vcs"));
+        QCOMPARE(chip.value("text").toString(), QString("main"));
+        QCOMPARE(chip.value("detail").toString(), QString("↑2"));
+        QCOMPARE(chip.value("note").toString(), QString("2 ændret"));
+        QCOMPARE(chip.value("icon").toString(), QString("branch"));
+        QCOMPARE(chip.value("action").toString(), QString("web"));
+        QCOMPARE(chip.value("actionLabel").toString(), QString("Åbn web"));
+        // An action in no menu is for the chip alone.
+        QVERIFY(plugins.actionsFor({repo + "/a.txt"}).isEmpty());
+
+        // Asked again, it runs again, keeping what it said meanwhile.
+        mark(repo);
+        QCOMPARE(plugins.folderMarks(repo), marks);
+        QTRY_COMPARE(answered, 4);
+        QCOMPARE(asked(), QStringList({repo, repo}));
+
+        // Asked while it runs, it runs once more when it's done, not twice
+        // at once.
+        mark(repo + "/sub");
+        mark(repo + "/sub");
+        mark(repo + "/sub");
+        QTRY_COMPARE_WITH_TIMEOUT(asked().count(repo + "/sub"), 2, 5000);
+        QTest::qWait(1500);
+        QCOMPARE(asked().count(repo + "/sub"), 2);
+
+        // Only for the folders it's for; and one left before its turn isn't
+        // run.
+        const int before = asked().size();
+        mark(files.filePath("elsewhere"));
+        mark(files.filePath("repo"), false);
+        QTest::qWait(500);
+        QCOMPARE(asked().size(), before);
+        QVERIFY(!plugins.folderMarks(files.filePath("elsewhere")).value("items").toMap().contains("new.txt"));
+
+        // Output that isn't marks counts as none.
+        QVERIFY(Plugins::parseMarks(R"({"items": {"a": {"tone": "added"}}})"));
+        QVERIFY(Plugins::parseMarks("{}"));
+        QVERIFY(!Plugins::parseMarks(R"({"items": []})"));
+        QVERIFY(!Plugins::parseMarks(R"({"chip": "main"})"));
+        QVERIFY(!Plugins::parseMarks("[]"));
+    }
+
+    void pluginActionsFollowTheMarksOfTheirFolder()
+    {
+        // A plugin with marks offers its actions for the files of a folder
+        // its marks command has answered for, and then those it names.
+        QTemporaryDir folder, files;
+        for (const char *name : {"hub/a.txt", "hub/sub/x", "plain/b.txt", "unasked/c.txt", "broken/d.txt"}) {
+            QDir(files.path()).mkpath(QFileInfo(files.filePath(name)).path());
+            write(files.filePath(name), "x");
+        }
+        writePlugin(folder.path(), "vcs", R"({"folio": 1, "marks": {"command": ["./marks"]},
+            "actions": [{"id": "open", "label": "Open on Hub", "submenu": "Hub", "command": ["true"]},
+                        {"id": "blame", "label": "Blame on Hub", "submenu": "Hub", "files": true, "command": ["true"]},
+                        {"id": "local", "label": "Local Thing", "command": ["true"]}]})",
+                    {{"marks", "#!/bin/sh\ncase \"$1\" in *hub) echo '{\"actions\": [\"open\", \"blame\", \"local\"]}' ;;\n"
+                               "  *plain) echo '{\"actions\": [\"local\"]}' ;; *) echo nonsense ;; esac\n"}});
+        Plugins plugins("en", {folder.path()}, files.filePath("folio.conf"));
+        QSignalSpy read(&plugins, &Plugins::detailsChanged);
+        QVERIFY(read.wait(5000));
+        int answered = 0;
+        for (const char *name : {"hub", "plain", "broken"})
+            plugins.markFolder(files.filePath(name), [] { return true; }, [&] { ++answered; });
+        QTRY_COMPARE(answered, 3);
+        auto labels = [&](const QString &name) {
+            QStringList list;
+            for (const QVariant &v : plugins.actionsFor({files.filePath(name)})) {
+                const QVariantMap action = v.toMap();
+                QStringList entries;
+                for (const QVariant &entry : action.value("entries").toList())
+                    entries << entry.toMap().value("label").toString();
+                list << action.value("label").toString() + (entries.isEmpty() ? "" : " > " + entries.join(", "));
+            }
+            return list;
+        };
+        // Those naming a submenu go into it together, after the plain
+        // entries; a folder gets those that take folders.
+        QCOMPARE(labels("hub/a.txt"), QStringList({"Local Thing", "Hub > Open on Hub, Blame on Hub"}));
+        QCOMPARE(labels("hub/sub"), QStringList({"Local Thing", "Hub > Open on Hub"}));
+        QCOMPARE(labels("plain/b.txt"), QStringList({"Local Thing"}));
+        // Unasked, or failing, offers nothing.
+        QCOMPARE(labels("unasked/c.txt"), QStringList());
+        QCOMPARE(labels("broken/d.txt"), QStringList());
+        const QVariantMap entry = plugins.actionsFor({files.filePath("hub/a.txt")}).last().toMap()
+                                      .value("entries").toList().at(1).toMap();
+        QCOMPARE(entry.value("plugin").toString(), QString("vcs"));
+        QCOMPARE(entry.value("id").toString(), QString("blame"));
+        QCOMPARE(entry.value("target").toString(), QString());
+
+        // A submenu holds actions or items, not both.
+        QString error;
+        QVERIFY(!Plugins::parseManifest(R"({"folio": 1, "actions": [{"id": "a", "label": "A", "command": ["x"],
+                                            "to": "items", "submenu": "S"}]})", &error));
+        QVERIFY(!error.isEmpty());
+    }
+
+    void pluginDetailsCanHaveATitleTonesAndButtons()
+    {
+        QTemporaryDir folder, files;
+        write(files.filePath("a.txt"), "x");
+        QDir(files.path()).mkpath("sub");
+        const QString when = QDateTime::currentDateTime().addDays(-2).toString(Qt::ISODate);
+        writePlugin(folder.path(), "vcs", R"({"folio": 1, "marks": {"command": ["./marks"]}, "details": {"command": ["./describe"]},
+            "actions": [{"id": "open", "label": "Open on Hub", "command": ["true"]},
+                        {"id": "blame", "label": "Blame on Hub", "files": true, "command": ["true"]},
+                        {"id": "hidden", "label": "Hidden", "command": ["true"]}]})",
+                    {{"marks", "#!/bin/sh\necho '{\"actions\": [\"open\", \"blame\"]}'\n"},
+                     {"describe", "#!/bin/sh\ncat <<EOF\n{\"title\": \"Repo\", \"rows\": ["
+                                  "{\"label\": \"Status\", \"value\": [\"Modified · %1\", \"+1 −0\"], \"tone\": \"modified\"},"
+                                  "{\"label\": \"Last commit\", \"value\": \"Fix it\", \"detail\": [\"%1 · %2\", \"Ana\", {\"date\": \"" + when.toUtf8() + "\"}]},"
+                                  "[\"Branch\", \"main\"], {\"label\": \"No value\"}],"
+                                  " \"actions\": [\"open\", \"blame\", \"hidden\", \"missing\"]}\nEOF\n"},
+                     {"i18n/da.json", R"({"Repo": "Arkiv", "Modified · %1": "Ændret · %1", "Last commit": "Seneste commit"})"}});
+        Plugins plugins("da", {folder.path()}, files.filePath("folio.conf"));
+        QSignalSpy read(&plugins, &Plugins::detailsChanged);
+        QVERIFY(read.wait(5000));
+        int answered = 0;
+        plugins.markFolder(files.path(), [] { return true; }, [&] { ++answered; });
+        QTRY_COMPARE(answered, 1);
+        const QDateTime modified = QFileInfo(files.filePath("a.txt")).lastModified();
+        plugins.describe(files.filePath("a.txt"), "text/plain", modified, [] { return true; }, [&] { ++answered; });
+        QTRY_COMPARE(answered, 2);
+
+        const QVariantList sections = plugins.details(files.filePath("a.txt"), "text/plain", modified);
+        QCOMPARE(sections.size(), 1);
+        const QVariantMap section = sections.at(0).toMap();
+        QCOMPARE(section.value("title").toString(), QString("Arkiv"));
+        // Values are as printed, unless they're text to translate; a
+        // detail's date says how long ago it was; a row without a value is
+        // left out.
+        const QVariantList rows = section.value("rows").toList();
+        QCOMPARE(rows.size(), 3);
+        QCOMPARE(rows.at(0).toMap(), QVariantMap({{"label", "Status"}, {"value", "Ændret · +1 −0"}, {"tone", "modified"},
+                                                  {"detail", QString()}}));
+        QCOMPARE(rows.at(1).toMap().value("label").toString(), QString("Seneste commit"));
+        QCOMPARE(rows.at(1).toMap().value("detail").toString(), QString("Ana · 2 days ago"));
+        QCOMPARE(rows.at(2).toMap().value("value").toString(), QString("main"));
+        // Buttons for the actions it names that apply there, and that it
+        // has.
+        QStringList buttons;
+        for (const QVariant &action : section.value("actions").toList())
+            buttons << action.toMap().value("plugin").toString() + "/" + action.toMap().value("label").toString();
+        QCOMPARE(buttons, QStringList({"vcs/Open on Hub", "vcs/Blame on Hub"}));
+    }
+
+    void pluginTextSaysDatesAsHowLongAgo()
+    {
+        // In English, with its one and other forms.
+        QTemporaryDir dir;
+        write(dir.filePath("language"), "en\n");
+        Translator translator(dir.filePath("language"), sourceFolder() + "/i18n");
+        QCoreApplication::installTranslator(&translator);
+        const auto removed = qScopeGuard([&] { QCoreApplication::removeTranslator(&translator); });
+        const QDateTime now(QDate(2026, 11, 11), QTime(12, 0));
+        QCOMPARE(Plugins::ago(now.addSecs(-20), now), QString("just now"));
+        QCOMPARE(Plugins::ago(now.addSecs(600), now), QString("just now"));
+        QCOMPARE(Plugins::ago(now.addSecs(-60), now), QString("1 minute ago"));
+        QCOMPARE(Plugins::ago(now.addSecs(-3 * 3600), now), QString("3 hours ago"));
+        QCOMPARE(Plugins::ago(now.addDays(-1), now), QString("1 day ago"));
+        QCOMPARE(Plugins::ago(now.addDays(-45), now), QString("1 month ago"));
+        QCOMPARE(Plugins::ago(now.addDays(-800), now), QString("2 years ago"));
+        const Plugins::Manifest plugin;
+        QCOMPARE(Plugins::value(plugin, QJsonValue("plain")), QString("plain"));
+        QCOMPARE(Plugins::value(plugin, QJsonValue(12)), QString("12"));
+        QCOMPARE(Plugins::value(plugin, QJsonArray{"%1 of %2", 1, 2}), QString("1 of 2"));
+        QCOMPARE(Plugins::value(plugin, QJsonObject{{"date", "nonsense"}}), QString());
+        QCOMPARE(Plugins::value(plugin, QJsonObject{{"date", QDateTime::currentDateTime().addSecs(-7200).toString(Qt::ISODate)}}),
+                 QString("2 hours ago"));
+    }
+
+    void pluginResultsOpenOnlyWebPages()
+    {
+        QTemporaryDir folder, files;
+        write(files.filePath("a.txt"), "x");
+        writePlugin(folder.path(), "web", R"({"folio": 1, "actions": [{"id": "go", "label": "Go", "command": ["./go"]}]})",
+                    {{"go", "#!/bin/sh\necho \"{\\\"url\\\": \\\"$(cat url)\\\"}\"\n"}});
+        Plugins plugins("en", {folder.path()}, files.filePath("folio.conf"));
+        QTRY_COMPARE(plugins.actionsFor({files.filePath("a.txt")}).size(), 1);
+        auto opened = [&](const QByteArray &url) {
+            write(folder.filePath("web/url"), url);
+            std::optional<Plugins::Result> result;
+            plugins.perform("web", "go", {files.filePath("a.txt")}, {}, [&](const Plugins::Result &r) { result = r; });
+            [&] { QTRY_VERIFY(result); }();
+            return result ? result->url : QString("unanswered");
+        };
+        QCOMPARE(opened("https://github.com/acme/garden/blob/main/a%20b.txt"),
+                 QString("https://github.com/acme/garden/blob/main/a%20b.txt"));
+        QCOMPARE(opened("http://example.com/"), QString("http://example.com/"));
+        QCOMPARE(opened("file:///etc/passwd"), QString());
+        QCOMPARE(opened("javascript:alert(1)"), QString());
+        QCOMPARE(opened("https://"), QString());
+    }
+
+    void backendShowsPluginMarksForTheFolder()
+    {
+        QTemporaryDir folder, home;
+        QDir(home.path()).mkpath("repo");
+        QDir(home.path()).mkpath("plain");
+        for (const char *name : {"repo/a.txt", "repo/b.txt", "plain/a.txt"})
+            write(home.filePath(name), "x");
+        // It marks what the file "marked" names, in the repository only.
+        writePlugin(folder.path(), "vcs", R"({"folio": 1, "marks": {"command": ["./marks"]},
+            "actions": [{"id": "web", "label": "Open Web", "menu": "none", "command": ["./web"]}]})",
+                    {{"marks", "#!/bin/sh\ncase \"$1\" in *repo) ;; *) echo '{}'; exit ;; esac\n"
+                               "printf '{\"items\": {\"%s\": {\"tone\": \"modified\", \"badge\": \"M\", \"label\": \"Modified\"}},"
+                               " \"chip\": {\"text\": \"main\", \"action\": \"web\"}}' \"$(cat marked)\"\n"},
+                     {"marked", "a.txt"},
+                     {"web", "#!/bin/sh\necho \"$@\" > webbed\n"}});
+        Plugins plugins("en", {folder.path()}, home.filePath("folio.conf"));
+        QSignalSpy read(&plugins, &Plugins::detailsChanged);
+        QVERIFY(read.wait(5000));
+        Backend backend(home.path());
+        backend.setPlugins(&plugins);
+        FolderModel *model = backend.folder();
+        auto markOf = [&](const QString &name) {
+            const int row = model->indexOf(name);
+            return row < 0 ? QVariantMap() : model->data(model->index(row), FolderModel::MarkRole).toMap();
+        };
+
+        // Each file has its mark, and the folder its chip.
+        backend.navigate(home.filePath("repo"));
+        QTRY_COMPARE(markOf("a.txt").value("badge").toString(), QString("M"));
+        QVERIFY(markOf("b.txt").isEmpty());
+        QCOMPARE(backend.chip().value("text").toString(), QString("main"));
+        QCOMPARE(backend.chip().value("action").toString(), QString("web"));
+        // The chip's action runs on the folder.
+        backend.perform(backend.chip().value("plugin").toString(), "web", {backend.path()});
+        QTRY_VERIFY(QFileInfo::exists(folder.filePath("vcs/webbed")));
+
+        // Read again, the folder is asked about again.
+        write(folder.filePath("vcs/marked"), "b.txt");
+        model->reload();
+        QTRY_COMPARE(markOf("b.txt").value("badge").toString(), QString("M"));
+        QVERIFY(markOf("a.txt").isEmpty());
+
+        // Elsewhere, nothing; coming back shows what was said at once.
+        backend.navigate(home.filePath("plain"));
+        QTRY_VERIFY(backend.chip().isEmpty());
+        QTRY_COMPARE(model->path(), home.filePath("plain"));
+        QVERIFY(markOf("a.txt").isEmpty());
+        backend.navigate(home.filePath("repo"));
+        QCOMPARE(backend.chip().value("text").toString(), QString("main"));
+    }
+
+    void themeTonesTellApartByLightness()
+    {
+        // Each tone reads on the background as small text does, and they
+        // differ in lightness, not only in hue, on dark and light themes.
+        auto contrast = [](const QColor &a, const QColor &b) {
+            auto l = [](const QColor &c) {
+                auto linear = [](double v) { return v <= .04045 ? v / 12.92 : std::pow((v + .055) / 1.055, 2.4); };
+                return .2126 * linear(c.redF()) + .7152 * linear(c.greenF()) + .0722 * linear(c.blueF());
+            };
+            return (std::max(l(a), l(b)) + .05) / (std::min(l(a), l(b)) + .05);
+        };
+        for (const char *colors : {"background = \"#16161a\"\nforeground = \"#c8c8d0\"\norange = \"#ff9e64\"\nblue = \"#7aa2f7\"\nred = \"#f7768e\"\n",
+                                   "mode = \"light\"\nbackground = \"#fffcf0\"\nforeground = \"#100f0f\"\norange = \"#ff9e64\"\nblue = \"#7aa2f7\"\nred = \"#f7768e\"\n"}) {
+            QTemporaryDir dir;
+            QDir(dir.path()).mkpath("theme");
+            write(dir.filePath("theme/colors.toml"), colors);
+            Theme theme(dir.path());
+            const QVariantMap tones = theme.tones();
+            const QColor modified = tones.value("modified").value<QColor>(), added = tones.value("added").value<QColor>(),
+                         conflict = tones.value("conflict").value<QColor>();
+            for (const QColor &tone : {modified, added, conflict})
+                QVERIFY2(contrast(tone, theme.background()) >= 4.5, qPrintable(tone.name()));
+            QVERIFY(contrast(modified, added) > 1.4);
+            QVERIFY(contrast(modified, conflict) > 1.4);
+            QVERIFY(contrast(added, conflict) > 2);
+            // The hue stays the theme's.
+            QVERIFY(qAbs(modified.hslHue() - QColor("#ff9e64").hslHue()) <= 2);
+            QCOMPARE(tones.value("changed"), tones.value("modified"));
+            QCOMPARE(tones.value("untracked").value<QColor>(), theme.secondaryForeground());
+        }
+    }
+
+    void viewsAndPathBarShowPluginMarks()
+    {
+        // Driven as the window shows them: a letter on a file's tile, a dot
+        // on a folder's and in the list, each named in words, and the
+        // folder's chip a button the keyboard reaches.
+        QTemporaryDir home, folder;
+        QDir(home.path()).mkpath("repo/sub");
+        for (const char *name : {"repo/a.txt", "repo/b.txt", "repo/c.txt"})
+            write(home.filePath(name), "x");
+        writePlugin(folder.path(), "vcs", R"({"folio": 1, "marks": {"command": ["./marks"]},
+            "actions": [{"id": "web", "label": "Open Web", "menu": "none", "command": ["./web"]}]})",
+                    {{"marks", "#!/bin/sh\necho '{\"items\": {\"a.txt\": {\"tone\": \"modified\", \"badge\": \"M\", \"label\": \"Modified\"},"
+                               " \"c.txt\": {\"tone\": \"untracked\", \"badge\": \"?\", \"label\": \"Not tracked\"},"
+                               " \"sub\": {\"tone\": \"changed\", \"label\": \"Changes inside\"}},"
+                               " \"chip\": {\"text\": \"main\", \"detail\": \"↑2\", \"note\": \"3 changed\", \"tone\": \"modified\","
+                               " \"icon\": \"branch\", \"action\": \"web\"}}'\n"},
+                     {"web", "#!/bin/sh\necho \"$1\" > webbed\n"}});
+        Plugins plugins("en", {folder.path()}, home.filePath("folio.conf"));
+        QSignalSpy read(&plugins, &Plugins::detailsChanged);
+        QVERIFY(read.wait(5000));
+        Backend backend(home.path());
+        backend.setPlugins(&plugins);
+        backend.navigate(home.filePath("repo"));
+        QTRY_COMPARE(backend.chip().value("text").toString(), QString("main"));
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("plugins", &plugins);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 1000; height: 700; visible: true\n"
+                          "    PathBar { id: bar; width: parent.width }\n"
+                          "    FolderGrid { id: grid; y: 60; width: 600; height: 640 }\n"
+                          "    FolderList { id: list; x: 600; y: 60; width: 400; height: 640 }\n"
+                          "    readonly property bool chipActs: bar.chipActs\n"
+                          "    readonly property bool chipFocused: bar.chipFocused\n"
+                          "    function focusChip() { bar.focusChip() }\n"
+                          "    // The marks shown in a view, as name: word (letter, or dot).\n"
+                          "    function marks(view) {\n"
+                          "        const found = []\n"
+                          "        const visit = (item, name) => {\n"
+                          "            if (item.name !== undefined && item.path !== undefined) name = item.name\n"
+                          "            if (item.letter !== undefined && item.outlined !== undefined && item.visible)\n"
+                          "                found.push(name + ': ' + item.Accessible.name + ' (' + (item.letter ? item.of.badge : 'dot') + ')')\n"
+                          "            for (const child of item.children) visit(child, name)\n"
+                          "        }\n"
+                          "        visit(view, '')\n"
+                          "        return found.sort()\n"
+                          "    }\n"
+                          "    function gridMarks() { grid.forceLayout(); return marks(grid.contentItem) }\n"
+                          "    function listMarks() { list.forceLayout(); return marks(list.contentItem) }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/MarksTest.qml"));
+        std::unique_ptr<QObject> object(component.create());
+        QVERIFY2(object, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(object.get());
+        auto call = [&](const char *function) {
+            QVariant result;
+            QMetaObject::invokeMethod(window, function, Q_RETURN_ARG(QVariant, result));
+            return result.toStringList();
+        };
+        QTRY_COMPARE(call("gridMarks"), QStringList({"a.txt: Modified (M)", "c.txt: Not tracked (?)", "sub: Changes inside (dot)"}));
+        QTRY_COMPARE(call("listMarks"), QStringList({"a.txt: Modified (dot)", "c.txt: Not tracked (dot)", "sub: Changes inside (dot)"}));
+
+        // Return on the chip runs its action on the folder.
+        QVERIFY(window->property("chipActs").toBool());
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowActive(window));
+        QMetaObject::invokeMethod(window, "focusChip");
+        QVERIFY(window->property("chipFocused").toBool());
+        QTest::keyClick(window, Qt::Key_Return);
+        QTRY_VERIFY(QFileInfo::exists(folder.filePath("vcs/webbed")));
+        QFile webbed(folder.filePath("vcs/webbed"));
+        QVERIFY(webbed.open(QIODevice::ReadOnly));
+        QCOMPARE(webbed.readAll().trimmed(), QDir::cleanPath(home.filePath("repo")).toUtf8());
+    }
+
+    void detailsPaneShowsPluginSectionsAndButtons()
+    {
+        // A plugin's section under its title, its rows with their second
+        // lines, and its buttons, which Tab reaches and Return presses.
+        QTemporaryDir home, folder;
+        write(home.filePath("a.txt"), "x");
+        writePlugin(folder.path(), "vcs", R"({"folio": 1, "details": {"command": ["./describe"]},
+            "actions": [{"id": "web", "label": "Open Web", "command": ["./web"]}]})",
+                    {{"describe", "#!/bin/sh\necho '{\"title\": \"Repo\", \"rows\": [{\"label\": \"Status\", \"value\": [\"Modified\"],"
+                                  " \"tone\": \"modified\"}, {\"label\": \"Last commit\", \"value\": \"Fix it\", \"detail\": \"Ana\"}],"
+                                  " \"actions\": [\"web\"]}'\n"},
+                     {"web", "#!/bin/sh\necho \"$1\" > webbed\n"}});
+        Plugins plugins("en", {folder.path()}, home.filePath("folio.conf"));
+        QSignalSpy read(&plugins, &Plugins::detailsChanged);
+        QVERIFY(read.wait(5000));
+        Backend backend(home.path());
+        backend.setPlugins(&plugins);
+        backend.navigate(home.path());
+        QTRY_COMPARE(backend.folder()->rowCount(), 1);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        Places places(home.path());
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("places", &places);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 400; height: 900; visible: true\n"
+                          "    PreviewPane {\n"
+                          "        id: pane; anchors.fill: parent\n"
+                          "        folderPane: QtObject {\n"
+                          "            readonly property var paneBackend: backend\n"
+                          "            readonly property var paneFileOps: fileOps\n"
+                          "            readonly property bool inTrash: false\n"
+                          "            readonly property var current: backend.folder.count > 0 ? backend.folder.get(0) : ({})\n"
+                          "        }\n"
+                          "    }\n"
+                          "    // The text shown in the pane, in order.\n"
+                          "    function texts() {\n"
+                          "        const found = []\n"
+                          "        const visit = item => {\n"
+                          "            if (item.visible && item.text !== undefined && item.font !== undefined && item.text) found.push(item.text)\n"
+                          "            for (const child of item.children) if (child.visible) visit(child)\n"
+                          "        }\n"
+                          "        visit(pane)\n"
+                          "        return found\n"
+                          "    }\n"
+                          "    function takesKeyboard() { return pane.takesKeyboard() }\n"
+                          "    function focusKeyboard() { pane.focusKeyboard(1) }\n"
+                          "    function hasKeyboard() { return pane.hasKeyboard() }\n"
+                          "    function moveKeyboard() { return pane.moveKeyboard(1) }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/PaneTest.qml"));
+        std::unique_ptr<QObject> object(component.create());
+        QVERIFY2(object, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(object.get());
+        auto call = [&](const char *function) {
+            QVariant result;
+            QMetaObject::invokeMethod(window, function, Q_RETURN_ARG(QVariant, result));
+            return result;
+        };
+        auto shown = [&] {
+            const QStringList texts = call("texts").toStringList();
+            const qsizetype at = texts.indexOf("Repo");
+            return at < 0 ? texts : texts.mid(at, 7);
+        };
+        QTRY_COMPARE(shown(), QStringList({"Repo", "Status", "Modified", "Last commit", "Fix it", "Ana", "Open Web"}));
+
+        // Tab reaches the button, the details' last control (after Opens
+        // with, when the machine has apps for text); Return presses it.
+        QVERIFY(call("takesKeyboard").toBool());
+        window->requestActivate();
+        QVERIFY(QTest::qWaitForWindowActive(window));
+        call("focusKeyboard");
+        QVERIFY(call("hasKeyboard").toBool());
+        for (int stops = 0; call("moveKeyboard").toBool(); ++stops)
+            QVERIFY(stops < 2);
+        QVERIFY(call("hasKeyboard").toBool());
+        QTest::keyClick(window, Qt::Key_Return);
+        QTRY_VERIFY(QFileInfo::exists(folder.filePath("vcs/webbed")));
     }
 
     void placesListOnlyPhysicalDrives()
@@ -5934,7 +6470,8 @@ private slots:
                               view.value("title").toString(), view.value("label").toString(),
                               view.value("empty").toString()};
             for (const QJsonValue &action : manifest.value("actions").toArray())
-                shown << action.toObject().value("label").toString() << action.toObject().value("busy").toString();
+                shown << action.toObject().value("label").toString() << action.toObject().value("busy").toString()
+                      << action.toObject().value("submenu").toString();
             for (const QString &text : std::as_const(shown))
                 if (!text.isEmpty() && !english.contains(text))
                     problems << id + ": missing from en.json: " + text;

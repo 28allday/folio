@@ -2,7 +2,8 @@
 
 A plugin adds something Folio doesn't know about on its own: a section in the
 sidebar, a status on one of its rows, entries in the right-click menu, rows
-in the details pane, or a view in the main pane. Tailscale, Dropbox and LocalSend come with
+in the details pane, marks on a folder's files and a chip in its path bar, or
+a view in the main pane. Tailscale, Dropbox and LocalSend come with
 Folio as plugins, and they use nothing that isn't described here, so a plugin
 you write sits on equal footing with them.
 
@@ -142,7 +143,7 @@ repository is on and the last commit that changed the file. It has no poll:
 what it offers is worked out for the file at hand.
 
 ```
-~/.local/share/folio/plugins/git/
+~/.local/share/folio/plugins/git-link/
 ├── manifest.json
 ├── link       (executable)
 ├── details    (executable)
@@ -227,6 +228,7 @@ Unknown keys are ignored, so a manifest written for a later Folio still loads.
 | `view` | A view of all the plugin's items in the main pane (see [The view](#the-view)). |
 | `actions` | Entries in the right-click menu, in the menu itself or under Share (see [Actions](#actions)). |
 | `details` | Rows in the details pane about a file or folder (see [Details](#details)). |
+| `marks` | Marks on the files of the folder shown, and a chip for the folder in the path bar (see [Marks](#marks)). |
 
 ## Running commands
 
@@ -242,12 +244,12 @@ Every command runs in the plugin's folder, with no input, and with:
 | --- | --- |
 | `FOLIO_PLUGIN_DIR` | The plugin's folder. |
 | `FOLIO_LANGUAGE` | The language Folio is showing, as Omarchy's code: `en`, `da`, `pt-BR`. Folio translates the text you print itself (see [Translations](#translations)); this is for anything else that should follow the language. |
-| `FOLIO_TARGET`, `FOLIO_TARGET_NAME` | For an action in a submenu, the chosen item's `id` and `name`. |
+| `FOLIO_TARGET`, `FOLIO_TARGET_NAME` | For an action in a submenu of items, the chosen item's `id` and `name`. |
 
 Each command starts in a process group of its own, and when it finishes or
 Folio ends it, the whole group goes, so nothing it started lingers. What it prints on
-standard output must be one JSON object (for a details command, an array),
-at most 1 MB. What it prints on standard error goes to Folio's own standard
+standard output must be one JSON object (for a details command, it can be
+an array), at most 1 MB. What it prints on standard error goes to Folio's own standard
 error (the journal), each line marked with the plugin's id and cut short at
 1000 bytes; a failing action's last line there is also its error message.
 
@@ -257,6 +259,8 @@ How long a command may take depends on what it's for:
   failed.
 - A **details** command has 2 seconds, since the details pane waits for it.
   One that takes longer is killed and shows nothing.
+- A **marks** command has 2 seconds too, since the folder's marks wait for
+  it. One that takes longer is killed and marks nothing.
 - An **action** or an item's **run** command is work you asked for
   (sending a big file takes as long as it takes), so it has no time limit.
   While it runs, the status bar shows its `busy` text (for a run command,
@@ -280,6 +284,14 @@ Folio looks the template up in the plugin's catalog and fills in the values,
 which it doesn't translate. That way a shell script never handles languages,
 and switching language in Omarchy changes the text at once, without running
 anything again.
+
+A value can also be a date, `{"date": "2026-11-09T14:03:00+01:00"}` (ISO
+8601), which Folio says as how long ago it was, in its own language: "2
+days ago". Git's `%aI` prints a commit's date that way:
+
+```json
+{"detail": ["%1 · %2", "Ana Ortiz", {"date": "2026-11-09T14:03:00+01:00"}]}
+```
 
 ## Polling
 
@@ -416,14 +428,24 @@ An item's `open` is one of:
 Each action runs its `command` with the selected paths appended as
 arguments. With `"to": "items"` the action is a submenu with one entry per
 item instead, and the chosen item comes in `FOLIO_TARGET` and
-`FOLIO_TARGET_NAME`.
+`FOLIO_TARGET_NAME`. Actions naming the same `submenu` go together into one
+submenu of that title instead:
+
+```json
+"actions": [
+  { "id": "open", "label": "Open on GitHub", "submenu": "GitHub", "command": ["./github", "open"] },
+  { "id": "blame", "label": "Blame on GitHub", "submenu": "GitHub", "files": true,
+    "command": ["./github", "blame"] }
+]
+```
 
 | Key | Meaning |
 | --- | --- |
 | `id` | Required, unique in the plugin; what the poll's `actions` names. |
 | `label` | Required. The entry, or the submenu's title, in Title Case as Folio's own entries are. Translated. |
 | `command` | Required. |
-| `menu` | `"main"` (the default) for an entry in the menu itself, `"share"` for one under Share. |
+| `menu` | `"main"` (the default) for an entry in the menu itself, `"share"` for one under Share, `"none"` for one in no menu, only on a folder's [chip](#marks) or a [details](#details) button. |
+| `submenu` | The title of a submenu to put it in, with the plugin's other actions naming it, in Title Case. Translated. Not with `"to": "items"`, which is a submenu already. |
 | `to` | `"items"` for a submenu of the plugin's items. It only shows while there are items. |
 | `under` | Folders the selection must be inside, every item of it. `~` works. |
 | `types` | Types the selection must be of, every item of it, as MIME types: `application/pdf`, or `image/*` for every kind of picture. A type takes the types that are kinds of it, so `text/plain` takes source code too, and a folder is `inode/directory`. Folio tells a file's type by its name. |
@@ -436,7 +458,13 @@ Actions show on files and folders wherever Folio lists real ones, never in a
 view or in the trash. Those in the menu itself come together after Compress (or Extract, and
 Burn), just before Share; the others are Share's entries. Each lot comes in
 plugin id order, plain entries first and submenus after them, and Share
-itself is left out when none of its entries applies.
+itself is left out when none of its entries applies. A submenu shows only
+the entries that apply, and only while one does.
+
+A plugin with [marks](#marks) offers its actions for a file only once its
+marks command has answered for the folder the file is in, and then only
+those that answer names in its `actions`, if it names any: what a plugin
+offers can depend on where a file is (a repository on GitHub, or not).
 
 ### Results
 
@@ -448,6 +476,7 @@ next; printing nothing is fine.
 | `notice` | Shows it in the status bar for a moment. Text. |
 | `copy` | Puts it on the clipboard. Not translated. |
 | `path` | Goes to that folder, an absolute path or one starting with `~`. |
+| `url` | Opens the page in the default browser. Only `https://` and `http://` addresses; anything else is ignored. |
 | `error` | Shows it as a failure, even with a zero exit, and does none of the above. Text. |
 
 A command that exits with an error fails: Folio shows its `error` if it
@@ -471,6 +500,28 @@ is fine when there's nothing to say.
 [["Dropbox", "up to date"]]
 ```
 
+Or it prints an object with the rows, a title they go under, and the
+actions to offer as buttons below them:
+
+```json
+{
+  "title": "Git",
+  "rows": [
+    {"label": "Status", "value": ["Modified · %1", "+12 −3"], "tone": "modified"},
+    {"label": "Last commit", "value": "Fix the gate",
+     "detail": ["%1 · %2 · %3", "Ana Ortiz", {"date": "2026-11-09T14:03:00+01:00"}, "4f2c9a1"]},
+    ["Branch", "main ↑2 ↓1"]
+  ],
+  "actions": ["open"]
+}
+```
+
+| Key | Meaning |
+| --- | --- |
+| `title` | A heading over the plugin's rows. Translated. |
+| `rows` | Each `[label, value]`, or `{label, value, tone, detail}`. The label is translated. The value and the `detail`, a quieter second line under it, are shown as they are when they're strings or numbers, said as how long ago when they're a [date](#text), and translated as [text](#text) when they're an array (`["New"]`, `["Modified · %1", "+12 −3"]`). `tone` colors the value as a [mark](#marks)'s does. |
+| `actions` | Ids of the plugin's actions, shown as buttons that run on the file or folder, those that apply to it as they would in its menu. Tab reaches them. |
+
 The rows show below Folio's own, plugins in id order. Folio keeps them for
 the file as it was last modified, so going through a folder and back runs
 nothing again. It asks again about a file changed since, about everything
@@ -485,13 +536,83 @@ error, once each time the plugin goes from working to failing. Moving on to
 another item before a command's turn comes means it isn't run at all; an
 answer that comes after the selection has moved on is kept, but not shown.
 
+## Marks
+
+```json
+"marks": { "command": ["./marks"], "under": ["~/Code/"] }
+```
+
+When Folio shows a folder (a real one, not a view) that's inside `under`
+(optional, as for [actions](#actions); the folder itself counts), it runs
+`command` with the folder's path as the last argument, and marks its files
+with what the command prints:
+
+```json
+{
+  "items": {
+    "notes.md": {"tone": "modified", "badge": "M", "label": "Modified"},
+    "logo.svg": {"tone": "added", "badge": "A", "label": "New"},
+    "scratch": {"tone": "untracked", "badge": "?", "label": "Not tracked"},
+    "src": {"tone": "changed", "label": "Changes inside"}
+  },
+  "chip": {"text": "main", "detail": "↑2 ↓1", "note": ["%1 changed", 3],
+           "tone": "modified", "icon": "branch", "action": "repo"},
+  "actions": ["open", "repo"]
+}
+```
+
+**`items`** marks the folder's files and folders, by name. A file's tile in
+the grid gets a round badge with the `badge` letter in a corner (shown as it
+is); a folder's tile, and every row in the list and columns, gets a dot
+instead. `label` names the mark in words, for its tooltip and for screen
+readers; it's translated. `tone` is its color, one of:
+
+| Tone | Color |
+| --- | --- |
+| `modified`, `changed` | The theme's orange. |
+| `added` | The theme's blue. |
+| `conflict` | The theme's red. |
+| `untracked` | An outline in the quiet text color. |
+
+Folio draws each in the theme's hue at a lightness of its own, so they read
+on light and dark themes alike and tell apart by lightness, not only by
+hue. A name that isn't in the folder marks nothing. When two plugins mark
+the same name, the one whose id sorts first is shown.
+
+**`chip`** says something about the folder as a whole, in a small chip
+after the path: an [icon](#icons), `text` (in a monospace face, as it is),
+`detail` (quieter, as it is) and `note` (in the `tone`'s color,
+translated). It shows while `text` isn't empty. With `action`, the id of
+one of the plugin's actions, it's a button: a click, or Return once Tab has
+reached it, runs the action on the folder, and its label is the chip's
+tooltip. An action with `"menu": "none"` is for the chip alone. When two
+plugins give a chip, the one whose id sorts first is shown.
+
+**`actions`** names the plugin's actions offered for the folder's files (see
+[Actions](#actions)). Leave it out and every action is.
+
+Folio runs the command each time the folder is read: going there, F5, and
+when its files change. What it said last stays up meanwhile, so going back
+to a folder shows its marks at once, and they change when the new answer is
+in. One run at a time per folder: asked again while it runs, it runs once
+more when it's done. A folder left before the command's turn comes isn't
+asked about. The command runs in the background, never holding up the
+window, and has 2 seconds; one that fails, takes longer or prints something
+else marks nothing and offers no actions, and Folio writes why to its
+standard error, once each time the plugin goes from working to failing.
+
+The command is run for every folder shown, so it should be quick to say
+nothing where it has nothing to say. For a folder of many files,
+marking the first few thousand is plenty, and keeps the output under the
+1 MB a command may print.
+
 ## Icons
 
 An `icon` is either the name of one of Folio's glyphs:
 
 `folder` `documents` `downloads` `pictures` `music` `videos` `recent`
-`trash` `drive` `peer` (a computer) `tailnet` (computers joined) `open`
-`file`
+`trash` `drive` `peer` (a computer) `tailnet` (computers joined) `branch`
+(a Git branch) `open` `file`
 
 or the name of an SVG file in the plugin's folder, ending in `.svg`
 (`server.svg`, `icons/nas.svg`). Folio draws the SVG's shape in the theme's

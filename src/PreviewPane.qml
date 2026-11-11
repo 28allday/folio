@@ -33,11 +33,35 @@ Rectangle {
                 return d
         return null
     }
-    // Tab reaches the details after the panes while there's an app to pick
-    // for the file, and Escape hands the keyboard back to the files.
-    readonly property bool takesKeyboard: opensWith.visible
-    readonly property bool hasKeyboard: opensWith.activeFocus
-    function focusKeyboard() { opensWith.forceActiveFocus(Qt.TabFocusReason) }
+    // Tab reaches the details' controls after the panes, while there are
+    // any (an app to pick for the file, a plugin's buttons), one after the
+    // other; Escape hands the keyboard back to the files.
+    function controls() {
+        const list = visible && opensWith.visible ? [opensWith] : []
+        for (let i = 0; visible && i < sections.count; ++i) {
+            const buttons = sections.itemAt(i).buttons
+            for (let j = 0; j < buttons.count; ++j)
+                list.push(buttons.itemAt(j))
+        }
+        return list
+    }
+    function takesKeyboard() { return controls().length > 0 }
+    function hasKeyboard() { return controls().some(control => control.activeFocus) }
+    // The first control, or going back, the last.
+    function focusKeyboard(step) {
+        const list = controls()
+        if (list.length > 0)
+            list[step < 0 ? list.length - 1 : 0].forceActiveFocus(Qt.TabFocusReason)
+    }
+    // The next control, or false past either end, where the keyboard leaves.
+    function moveKeyboard(step) {
+        const list = controls()
+        const next = list.findIndex(control => control.activeFocus) + step
+        if (next < 0 || next >= list.length)
+            return false
+        list[next].forceActiveFocus(Qt.TabFocusReason)
+        return true
+    }
     signal finished()
     function homeless(path) { return path.startsWith(places.home + "/") ? "~" + path.slice(places.home.length) : path }
     // A picture's size or a text's opening lines once they've been read off
@@ -220,20 +244,83 @@ Rectangle {
                 color: theme.foreground
                 font.pixelSize: 12
             }
-            // Plugins' rows, label and value in turn, after Folio's own: a
-            // plugin's item's details, or what plugins say about a file.
-            Repeater {
-                model: (pane.pluginItem ? pane.item.details : pane.info.plugins || []).reduce((all, row) => all.concat([row[0], row[1]]), [])
+        }
+
+        // What plugins say, after Folio's own rows: a plugin's item's
+        // details, or each plugin's about a file or folder, under its title
+        // when it gives one, with buttons for what it offers there. A row
+        // can have a tone (a Git status's color) and a quieter second line.
+        Repeater {
+            id: sections
+            model: pane.pluginItem ? [{ rows: pane.item.details || [], actions: [] }] : pane.info.plugins || []
+            ColumnLayout {
+                id: section
+                required property var modelData
+                property alias buttons: buttons
+                Layout.fillWidth: true
+                spacing: 12
                 Text {
-                    required property string modelData
-                    required property int index
-                    readonly property bool label: index % 2 === 0
-                    Layout.fillWidth: !label
-                    horizontalAlignment: label ? Text.AlignLeft : Text.AlignRight
-                    text: modelData
-                    color: label ? theme.secondaryForeground : theme.foreground
+                    visible: !!section.modelData.title
+                    Layout.topMargin: 6
+                    text: section.modelData.title || ""
+                    color: theme.brightForeground
                     font.pixelSize: 12
-                    elide: label ? Text.ElideNone : Text.ElideMiddle
+                    font.weight: Font.DemiBold
+                }
+                Repeater {
+                    model: section.modelData.rows
+                    RowLayout {
+                        id: row
+                        required property var modelData
+                        Layout.fillWidth: true
+                        spacing: 16
+                        Text {
+                            Layout.alignment: Qt.AlignTop
+                            text: row.modelData.label
+                            color: theme.secondaryForeground
+                            font.pixelSize: 12
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 3
+                            Text {
+                                Layout.fillWidth: true
+                                horizontalAlignment: Text.AlignRight
+                                text: row.modelData.value
+                                color: (row.modelData.tone && theme.tones[row.modelData.tone]) || theme.foreground
+                                font.pixelSize: 12
+                                elide: Text.ElideMiddle
+                            }
+                            Text {
+                                visible: !!row.modelData.detail
+                                Layout.fillWidth: true
+                                horizontalAlignment: Text.AlignRight
+                                text: row.modelData.detail
+                                color: theme.secondaryForeground
+                                font.pixelSize: 11
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    visible: buttons.count > 0
+                    spacing: 8
+                    Repeater {
+                        id: buttons
+                        model: section.modelData.actions
+                        PlainButton {
+                            required property var modelData
+                            implicitHeight: 28
+                            text: modelData.label
+                            onClicked: pane.folderPane.paneBackend.perform(modelData.plugin, modelData.id, [pane.item.path])
+                            Keys.onEscapePressed: pane.finished()
+                            // Gone with the keyboard on it (another item
+                            // selected), it hands the keyboard back.
+                            Component.onDestruction: if (activeFocus) pane.finished()
+                        }
+                    }
                 }
             }
         }

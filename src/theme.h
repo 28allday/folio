@@ -5,6 +5,7 @@
 #include <QHash>
 #include <QObject>
 #include <QProcess>
+#include <QVariantMap>
 #include <QTimer>
 
 // The Omarchy palette, followed live. A file manager draws far more surface
@@ -26,6 +27,9 @@ class Theme : public QObject {
     Q_PROPERTY(QColor magenta READ magenta NOTIFY changed)
     Q_PROPERTY(QColor cyan READ cyan NOTIFY changed)
     Q_PROPERTY(QColor orange READ orange NOTIFY changed)
+    // The colors plugins' marks are drawn in, by their tone: modified,
+    // changed, added, untracked and conflict.
+    Q_PROPERTY(QVariantMap tones READ tones NOTIFY changed)
     Q_PROPERTY(bool light READ light NOTIFY changed)
     Q_PROPERTY(int radius READ radius NOTIFY changed)
 
@@ -47,6 +51,7 @@ public:
     QColor magenta() const { return color("magenta"); }
     QColor cyan() const { return color("cyan"); }
     QColor orange() const { return color("orange"); }
+    QVariantMap tones() const;
     bool light() const { return m_light; }
     int radius() const { return m_radius; }
 
