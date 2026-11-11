@@ -2816,6 +2816,31 @@ private slots:
         QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "open " + sdb}));
     }
 
+    void burningCancelledBeforeItWritesLeavesTheDriveAlone()
+    {
+        QTemporaryDir dir;
+        const QString image = dir.filePath("ubuntu.iso");
+        writeImageFile(image, 1 << 20);
+        auto fake = fakeDisks();
+        fake->device = dir.filePath("sdb");
+        std::atomic<bool> unmounting = false, release = false;
+        fake->during = [&](const QString &method) {
+            unmounting = true;
+            while (method == "unmount" && !release)
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        };
+        FileOps ops;
+        QSignalSpy notice(&ops, &FileOps::notice);
+        ops.burn(image, sanDisk().identity);
+        QTRY_VERIFY(unmounting);
+        ops.cancel();
+        release = true;
+        QTRY_COMPARE(notice.count(), 1);
+        QCOMPARE(notice.at(0).at(0).toString(), QString("Stopped before burning ubuntu.iso. Nothing on SanDisk Ultra was erased."));
+        QCOMPARE(fake->calls, QStringList{"unmount " + sanDisk().block + "1"});
+        QVERIFY(!QFile::exists(fake->device));
+    }
+
     void burningStopsAtWhatUdisksRefuses()
     {
         QTemporaryDir dir;

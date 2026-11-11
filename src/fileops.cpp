@@ -1947,6 +1947,9 @@ void FileOps::burn(const QString &image, const QString &id) {
             for (const QString &filesystem : disk.filesystems)
                 if (result.error = disks->unmount(filesystem); !result.error.isEmpty())
                     return result;
+            // Cancelled while it was let go of, nothing's erased yet.
+            if (job.cancelled)
+                return result;
             int fd = -1;
             if (result.error = disks->open(disk, &fd); !result.error.isEmpty())
                 return result;
@@ -1966,6 +1969,8 @@ void FileOps::burn(const QString &image, const QString &id) {
             emit drivesChanged();
             if (!result.error.isEmpty())
                 emit failed(tr("Couldn't burn %1 to %2. %3").arg(file, drive, result.error));
+            else if (job.cancelled && job.bytes == 0)
+                emit notice(tr("Stopped before burning %1. Nothing on %2 was erased.").arg(file, drive));
             else if (job.cancelled)
                 emit notice(tr("Stopped burning. %1 now holds only part of %2.").arg(drive, file));
             else if (!result.failures.isEmpty())
