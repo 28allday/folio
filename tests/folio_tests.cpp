@@ -349,6 +349,10 @@ private slots:
         QCOMPARE(FileOps::extensionStart("Report v1.2.pdf", false), 11);
         write(dir.filePath("Report v1.2.pdf"), "x");
         QCOMPARE(FileOps::freeName(dir.path(), "Report v1.2.pdf"), QString("Report v1.2 (copy).pdf"));
+        // A name with a placeholder of its own in it keeps it.
+        write(dir.filePath("50%2 off.pdf"), "x");
+        write(dir.filePath("50%2 off (copy).pdf"), "x");
+        QCOMPARE(FileOps::freeName(dir.path(), "50%2 off.pdf"), QString("50%2 off (copy 2).pdf"));
     }
 
     void fileOpsRenameNeverOverwrites()
@@ -914,8 +918,8 @@ private slots:
         ops.newFolder(dir.path());
         ops.newFolder(dir.path());
         QCOMPARE(done.count(), 2);
-        QCOMPARE(done.takeFirst().at(1).toString(), QString("New Folder"));
-        QCOMPARE(done.takeFirst().at(1).toString(), QString("New Folder 2"));
+        QCOMPARE(done.takeFirst().at(1).toString(), QString("Untitled Folder"));
+        QCOMPARE(done.takeFirst().at(1).toString(), QString("Untitled Folder 2"));
     }
 
     void recentsReadGtkRecentFiles()

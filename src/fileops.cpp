@@ -104,8 +104,10 @@ QString FileOps::freeName(const QString &folder, const QString &name) {
     const QString base = dot > 0 ? name.left(dot) : name;
     const QString ext = dot > 0 ? name.mid(dot) : QString();
     for (int n = 1;; ++n) {
+        // One arg() for all three: a name holding "%2" would otherwise be
+        // filled in again.
         const QString candidate = n == 1 ? QObject::tr("%1 (copy)%2").arg(base, ext)
-                                         : QObject::tr("%1 (copy %2)%3").arg(base).arg(n).arg(ext);
+                                         : QObject::tr("%1 (copy %2)%3").arg(base, QString::number(n), ext);
         if (!QFileInfo::exists(dir.filePath(candidate)))
             return candidate;
     }
@@ -699,9 +701,11 @@ void FileOps::newFolder(const QString &folder) {
         emit failed(tr("Folders can't be made here."));
         return;
     }
-    QString name = tr("New Folder");
+    // Not "New Folder", the menu's command: many languages word a command
+    // as a verb and a name as a noun.
+    QString name = tr("Untitled Folder");
     for (int n = 2; QFileInfo::exists(QDir(folder).filePath(name)); ++n)
-        name = tr("New Folder %1").arg(n);
+        name = tr("Untitled Folder %1").arg(n);
     if (!QDir(folder).mkdir(name)) {
         emit failed(tr("Couldn't create a folder here."));
         return;
