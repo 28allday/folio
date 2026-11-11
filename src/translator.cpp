@@ -11,6 +11,21 @@
 
 namespace {
 
+// Strings Qt translates with tr() of its own, which reach this translator
+// because it ignores the context. Marked here so that they're in the
+// catalog, with where they show.
+[[maybe_unused]] const char *const qtStrings[] = {
+    // The text fields' right-click menu (PlainField, from Qt Quick
+    // Controls); its Cut, Copy, Paste and Delete are the file menu's.
+    QT_TR_NOOP("Undo"), QT_TR_NOOP("Redo"), QT_TR_NOOP("Select All"),
+    // Qt PDF's errors, in lowercase after "Couldn't open this PDF: %1".
+    QT_TR_NOOP("file not found"), QT_TR_NOOP("invalid file format"), QT_TR_NOOP("incorrect password"),
+    QT_TR_NOOP("unsupported security scheme"), QT_TR_NOOP("data not yet available"), QT_TR_NOOP("unknown error"),
+    // Qt Multimedia's player errors (its FFmpeg backend), after "Couldn't
+    // play this file: %1".
+    QT_TR_NOOP("Could not open file"), QT_TR_NOOP("Could not find stream information for media file"),
+};
+
 // One registry code on the first line; anything else, or no file, is English.
 QString readLanguage(const QString &path) {
     QFile file(path);
