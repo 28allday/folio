@@ -115,8 +115,11 @@ public:
     static QString restoreOne(const QString &trashedPath, QString *error);
     static bool deleteTrashed(const QString &trashedPath);
     static int emptyTrashDir(const QString &trashDir);
+    // How transfer() takes the paths: copied, moved, or as a drop takes
+    // them, each moved from the folder's drive and copied from any other.
+    enum Mode { Copy, Move, Drop };
     // Copies or moves each path into `folder`; returns the new names.
-    static QStringList transfer(const QStringList &paths, const QString &folder, bool move, QString *error);
+    static QStringList transfer(const QStringList &paths, const QString &folder, Mode mode, QString *error);
 
 signals:
     void busyChanged();
@@ -130,7 +133,7 @@ private:
     void setBusy(const QString &busy);
     // Copies or moves off the UI thread, showing `busy` (or how many are
     // moving or copying) meanwhile.
-    void transferInBackground(const QStringList &paths, const QString &folder, bool move, bool releaseClipboard,
+    void transferInBackground(const QStringList &paths, const QString &folder, Mode mode, bool releaseClipboard,
                               const QString &busy = {});
     // Runs a helper program (bsdtar, dropbox-cli, tailscale) while showing
     // `busy`, one piece of work at a time like the rest. `missing` says

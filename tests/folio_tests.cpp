@@ -302,7 +302,7 @@ private slots:
         write(to.filePath("todo.txt"), "already here");
 
         QString error;
-        QStringList made = FileOps::transfer({from.filePath("album"), from.filePath("todo.txt")}, to.path(), false, &error);
+        QStringList made = FileOps::transfer({from.filePath("album"), from.filePath("todo.txt")}, to.path(), FileOps::Copy, &error);
         QVERIFY2(error.isEmpty(), qPrintable(error));
         QCOMPARE(made, QStringList({"album", "todo (copy).txt"}));
         QVERIFY(QFile::exists(to.filePath("album/inner/a.jpg")));
@@ -311,20 +311,20 @@ private slots:
         QCOMPARE(kept.readAll(), QByteArray("already here"));
         QVERIFY(QFile::exists(from.filePath("todo.txt"))); // copied, not moved
 
-        made = FileOps::transfer({from.filePath("todo.txt")}, to.path(), true, &error);
+        made = FileOps::transfer({from.filePath("todo.txt")}, to.path(), FileOps::Move, &error);
         QCOMPARE(made, QStringList({"todo (copy 2).txt"}));
         QVERIFY(!QFile::exists(from.filePath("todo.txt")));
 
         // A folder can't go inside itself.
         error.clear();
-        FileOps::transfer({to.filePath("album")}, to.filePath("album/inner"), true, &error);
+        FileOps::transfer({to.filePath("album")}, to.filePath("album/inner"), FileOps::Move, &error);
         QVERIFY(!error.isEmpty());
         QVERIFY(QFile::exists(to.filePath("album/inner/a.jpg")));
         // Nor through a link to a folder inside it, which would copy it into
         // its own copy until the drive was full.
         QVERIFY(QFile::link(to.filePath("album/inner"), from.filePath("inner")));
         error.clear();
-        FileOps::transfer({to.filePath("album")}, from.filePath("inner"), false, &error);
+        FileOps::transfer({to.filePath("album")}, from.filePath("inner"), FileOps::Copy, &error);
         QCOMPARE(error, QString("Can't put album inside itself."));
         QVERIFY(!QFile::exists(to.filePath("album/inner/album")));
     }
@@ -345,7 +345,7 @@ private slots:
         QVERIFY(mkfifo(pipe.constData(), 0600) == 0);
         QString error;
         QFuture<QStringList> moved = QtConcurrent::run([&] {
-            return FileOps::transfer({from.filePath("box")}, other->path(), true, &error);
+            return FileOps::transfer({from.filePath("box")}, other->path(), FileOps::Move, &error);
         });
         int writer = -1;
         // Even when a check fails, the move is let go of and finishes
@@ -368,7 +368,7 @@ private slots:
         QDir(from.path()).mkpath("album/inner");
         write(from.filePath("album/inner/a.jpg"), "picture");
         error.clear();
-        QCOMPARE(FileOps::transfer({from.filePath("album")}, other->path(), true, &error), QStringList({"album"}));
+        QCOMPARE(FileOps::transfer({from.filePath("album")}, other->path(), FileOps::Move, &error), QStringList({"album"}));
         QVERIFY2(error.isEmpty(), qPrintable(error));
         QVERIFY(!QFileInfo::exists(from.filePath("album")));
         QVERIFY(QFile::exists(other->filePath("album/inner/a.jpg")));
@@ -383,7 +383,7 @@ private slots:
         write(from.filePath("project/data.txt"), "data");
         QVERIFY(QFile::link("data.txt", from.filePath("project/link")));
         QString error;
-        QCOMPARE(FileOps::transfer({from.filePath("project")}, to.path(), false, &error), QStringList({"project"}));
+        QCOMPARE(FileOps::transfer({from.filePath("project")}, to.path(), FileOps::Copy, &error), QStringList({"project"}));
         QCOMPARE(QFileInfo(to.filePath("project/link")).readSymLink(), QString("data.txt"));
     }
 
@@ -403,7 +403,7 @@ private slots:
             QFile::setPermissions(to.filePath("locked"), all);
         });
         QString error;
-        QCOMPARE(FileOps::transfer({from.filePath("private"), from.filePath("locked")}, to.path(), false, &error),
+        QCOMPARE(FileOps::transfer({from.filePath("private"), from.filePath("locked")}, to.path(), FileOps::Copy, &error),
                  QStringList({"private", "locked"}));
         QVERIFY2(error.isEmpty(), qPrintable(error));
         QVERIFY(QFile::exists(to.filePath("locked/a.txt")));
@@ -425,7 +425,7 @@ private slots:
             QFile::setPermissions(from.filePath("secret"), QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
         });
         QString error;
-        QVERIFY(FileOps::transfer({from.filePath("secret")}, to.path(), false, &error).isEmpty());
+        QVERIFY(FileOps::transfer({from.filePath("secret")}, to.path(), FileOps::Copy, &error).isEmpty());
         QCOMPARE(error, QString("Couldn't read secret."));
         QVERIFY(!QFile::exists(to.filePath("secret")));
     }
@@ -489,9 +489,9 @@ private slots:
         write(from.filePath("album/inner/a.jpg"), "picture");
         const QStringList both{from.filePath("album"), from.filePath("album/inner/a.jpg")};
         QString error;
-        QCOMPARE(FileOps::transfer(both, copies.path(), false, &error), QStringList({"album"}));
+        QCOMPARE(FileOps::transfer(both, copies.path(), FileOps::Copy, &error), QStringList({"album"}));
         QVERIFY(!QFile::exists(copies.filePath("a.jpg")));
-        QCOMPARE(FileOps::transfer(both, moves.path(), true, &error), QStringList({"album"}));
+        QCOMPARE(FileOps::transfer(both, moves.path(), FileOps::Move, &error), QStringList({"album"}));
         QVERIFY2(error.isEmpty(), qPrintable(error));
         QVERIFY(QFile::exists(moves.filePath("album/inner/a.jpg")));
 
@@ -526,6 +526,27 @@ private slots:
         ops.paste(to.path());
         QVERIFY(done.wait(3000));
         QVERIFY(!ops.canPaste());
+    }
+
+    void fileOpsDropMovesOnlyWhatsOnTheSameDrive()
+    {
+        // Each dropped file is moved from the folder's drive and copied from
+        // any other, whichever comes first.
+        const auto other = elsewhere();
+        if (!other)
+            QSKIP("Needs a second drive.");
+        QTemporaryDir here, folder;
+        write(here.filePath("a.txt"), "a");
+        write(other->filePath("b.txt"), "b");
+        FileOps ops;
+        QSignalSpy done(&ops, &FileOps::done);
+        ops.dropInto({QUrl::fromLocalFile(here.filePath("a.txt")), QUrl::fromLocalFile(other->filePath("b.txt"))},
+                     folder.path());
+        QVERIFY(done.wait(3000));
+        QVERIFY(QFile::exists(folder.filePath("a.txt")));
+        QVERIFY(QFile::exists(folder.filePath("b.txt")));
+        QVERIFY(!QFile::exists(here.filePath("a.txt")));
+        QVERIFY(QFile::exists(other->filePath("b.txt")));
     }
 
     void fileOpsDragUriLists()
@@ -565,7 +586,7 @@ private slots:
         // Moving something into the folder it's in leaves it alone rather
         // than making a "(copy)" of it.
         QString error;
-        QVERIFY(FileOps::transfer({dir.filePath("a.txt")}, dir.path(), true, &error).isEmpty());
+        QVERIFY(FileOps::transfer({dir.filePath("a.txt")}, dir.path(), FileOps::Move, &error).isEmpty());
         QVERIFY(error.isEmpty());
         QVERIFY(QFile::exists(dir.filePath("a.txt")));
 

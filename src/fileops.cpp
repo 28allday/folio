@@ -179,7 +179,7 @@ static bool inside(const QString &folder, const QString &path) {
     return item.isDir() && !item.isSymLink() && (target == self || target.startsWith(self + '/'));
 }
 
-QStringList FileOps::transfer(const QStringList &paths, const QString &folder, bool move, QString *error) {
+QStringList FileOps::transfer(const QStringList &paths, const QString &folder, Mode mode, QString *error) {
     QStringList made;
     const QString target = QDir::cleanPath(folder);
     for (const QString &path : outermost(paths)) {
@@ -188,6 +188,7 @@ QStringList FileOps::transfer(const QStringList &paths, const QString &folder, b
             *error = QObject::tr("%1 is no longer there.").arg(info.fileName());
             break;
         }
+        const bool move = mode == Move || (mode == Drop && sameDrive(path, target));
         // Moving something into the folder it's already in does nothing.
         if (move && QDir::cleanPath(info.absolutePath()) == target)
             continue;
@@ -227,7 +228,7 @@ void FileOps::paste(const QString &folder) {
     }
     // Cut files are gone from where they were once moved; pasting them
     // again would find nothing, so the clipboard lets go of them.
-    transferInBackground(paths, folder, cut, cut);
+    transferInBackground(paths, folder, cut ? Move : Copy, cut);
 }
 
 bool FileOps::sameDrive(const QString &a, const QString &b) {
@@ -256,8 +257,7 @@ bool FileOps::canDrop(const QList<QUrl> &urls, const QString &folder) const {
 void FileOps::dropInto(const QList<QUrl> &urls, const QString &folder) {
     if (!canDrop(urls, folder) || !m_busy.isEmpty())
         return;
-    const QStringList paths = localPaths(urls);
-    transferInBackground(paths, folder, sameDrive(paths.first(), folder), false);
+    transferInBackground(localPaths(urls), folder, Drop, false);
 }
 
 QString FileOps::uriList(const QStringList &paths) const {
@@ -275,10 +275,13 @@ QStringList FileOps::localPaths(const QList<QUrl> &urls) const {
     return paths;
 }
 
-void FileOps::transferInBackground(const QStringList &paths, const QString &folder, bool move, bool releaseClipboard,
+void FileOps::transferInBackground(const QStringList &paths, const QString &folder, Mode mode, bool releaseClipboard,
                                    const QString &busy) {
+    // A drop says what its first item does; each is moved or copied by its
+    // own drive.
+    const bool moving = mode == Move || (mode == Drop && sameDrive(paths.first(), folder));
     setBusy(!busy.isEmpty() ? busy
-            : move          ? tr("Moving %n items…", "", paths.size())
+            : moving        ? tr("Moving %n items…", "", paths.size())
                             : tr("Copying %n items…", "", paths.size()));
     auto *watcher = new QFutureWatcher<QPair<QStringList, QString>>(this);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, paths, folder, releaseClipboard] {
@@ -295,9 +298,9 @@ void FileOps::transferInBackground(const QStringList &paths, const QString &fold
         if (!made.isEmpty())
             emit done(folder, made.first());
     });
-    watcher->setFuture(QtConcurrent::run([paths, folder, move] {
+    watcher->setFuture(QtConcurrent::run([paths, folder, mode] {
         QString error;
-        const QStringList made = transfer(paths, folder, move, &error);
+        const QStringList made = transfer(paths, folder, mode, &error);
         return qMakePair(made, error);
     }));
 }
@@ -306,7 +309,7 @@ void FileOps::duplicate(const QString &path) {
     if (!m_busy.isEmpty())
         return;
     const QFileInfo info(path);
-    transferInBackground({path}, info.absolutePath(), false, false, tr("Duplicating %1…").arg(info.fileName()));
+    transferInBackground({path}, info.absolutePath(), Copy, false, tr("Duplicating %1…").arg(info.fileName()));
 }
 
 QString FileOps::archiveName(const QStringList &paths, const QString &folder) {
