@@ -14,6 +14,8 @@
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQmlEngine>
+#include <QQmlPropertyMap>
+#include <QQuickWindow>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QStandardPaths>
@@ -1121,6 +1123,86 @@ private slots:
         QVERIFY(QFile::exists(folder.filePath("b.txt")));
         QVERIFY(!QFile::exists(here.filePath("a.txt")));
         QVERIFY(QFile::exists(other->filePath("b.txt")));
+    }
+
+    void fileOpsDropNothingWhereItAlreadyIs()
+    {
+        // Dropping a folder onto itself, or into the folder it's in, even by
+        // a path through a link to that folder, moves nothing and makes no
+        // "(copy)".
+        QTemporaryDir home;
+        QDir(home.path()).mkpath("project/install");
+        QVERIFY(QFile::link(home.filePath("project"), home.filePath("shortcut")));
+        const QList<QUrl> install{QUrl::fromLocalFile(home.filePath("project/install"))};
+        FileOps ops;
+        QSignalSpy done(&ops, &FileOps::done);
+        for (const QString &folder : {"project/install", "project", "shortcut"}) {
+            QVERIFY2(!ops.canDrop(install, home.filePath(folder)), qPrintable(folder));
+            ops.dropInto(install, home.filePath(folder));
+        }
+        QString error;
+        QVERIFY(FileOps::transfer({home.filePath("project/install")}, home.filePath("shortcut"), FileOps::Move, &error).isEmpty());
+        QVERIFY(error.isEmpty());
+        QTest::qWait(200);
+        QCOMPARE(done.count(), 0);
+        QCOMPARE(QDir(home.filePath("project")).entryList(QDir::AllEntries | QDir::NoDotAndDotDot), QStringList({"install"}));
+    }
+
+    void folderDropRefusesWhatAFolderOverItRefuses()
+    {
+        // The view's backdrop takes drops on empty space into its folder, ~,
+        // while a folder item over it takes drops on itself. A folder item
+        // that refuses one (here ~/project, which install is already in)
+        // mustn't let it fall through to ~, which moved install up there.
+        QTemporaryDir home;
+        QDir(home.path()).mkpath("project/install");
+        FileOps ops;
+        QQmlPropertyMap theme;
+        theme.insert("accent", QColor(Qt::blue));
+        theme.insert("radius", 0);
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("fileOps", &ops);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("home", home.path());
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    width: 200; height: 200; visible: true\n"
+                          "    FolderDrop { anchors.fill: parent; z: -1; folder: home; items: list }\n"
+                          "    ListView {\n"
+                          "        id: list; anchors.fill: parent; model: 1\n"
+                          "        delegate: DropArea {\n"
+                          "            readonly property bool isDir: true\n"
+                          "            width: 200; height: 40\n"
+                          "            onEntered: (drag) => { drag.accepted = fileOps.canDrop(drag.urls, home + '/project') }\n"
+                          "        }\n"
+                          "    }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(QFINDTESTDATA("../src/FolderDrop.qml") + ".test.qml"));
+        std::unique_ptr<QObject> root(component.create());
+        QVERIFY2(root, qPrintable(component.errorString()));
+        auto *window = qobject_cast<QQuickWindow *>(root.get());
+        QVERIFY(QTest::qWaitForWindowExposed(window));
+
+        QMimeData data;
+        data.setUrls({QUrl::fromLocalFile(home.filePath("project/install"))});
+        const auto dropAt = [&](QPointF at) {
+            QDragEnterEvent enter(at.toPoint(), Qt::MoveAction, &data, Qt::LeftButton, Qt::NoModifier);
+            QGuiApplication::sendEvent(window, &enter);
+            QDropEvent drop(at, Qt::MoveAction, &data, Qt::LeftButton, Qt::NoModifier);
+            QGuiApplication::sendEvent(window, &drop);
+            return drop.isAccepted();
+        };
+        QSignalSpy done(&ops, &FileOps::done);
+        QVERIFY(!dropAt({100, 20}));
+        QTest::qWait(200);
+        QCOMPARE(done.count(), 0);
+        QVERIFY(QFileInfo(home.filePath("project/install")).isDir());
+
+        // On empty space, it lands in ~.
+        QVERIFY(dropAt({100, 150}));
+        QVERIFY(done.wait(3000));
+        QVERIFY(QFileInfo(home.filePath("install")).isDir());
     }
 
     void fileOpsDragUriLists()
