@@ -194,7 +194,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'Update translations'
-          git push --force origin HEAD:i18n-sync
+          git push --force origin HEAD:refs/heads/i18n-sync
           # Only this repository's own sync branch: owner:branch matches
           # exactly that head, where gh pr list --head also matches forks.
           pr=$(gh api "repos/$GITHUB_REPOSITORY/pulls?head=$GITHUB_REPOSITORY_OWNER:i18n-sync&base=main&state=open" --jq '.[0].number // empty')
