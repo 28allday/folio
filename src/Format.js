@@ -71,8 +71,8 @@ function keys(text) {
 }
 
 // Whether a row asks for an item's thumbnail, as its tile does: every file but text, which a tile draws as a page and a row leaves to its icon.
-function pictured(isDir, kind) {
-    return !isDir && kind !== "text" && kind !== "item"
+function pictured(kind) {
+    return kind !== "folder" && kind !== "text" && kind !== "item"
 }
 
 // Photos and video fill their frame; a page or a cover is fitted whole.

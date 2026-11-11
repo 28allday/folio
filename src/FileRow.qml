@@ -94,7 +94,7 @@ Item {
                 }
                 asynchronous: true
                 fillMode: Format.filled(row.kind) ? Image.PreserveAspectCrop : Image.Stretch
-                source: Format.pictured(row.isDir, row.kind) ? Format.thumb(row.path, row.mime, 128, row.modified) : ""
+                source: Format.pictured(row.kind) ? Format.thumb(row.path, row.mime, 128, row.modified) : ""
                 visible: status === Image.Ready
             }
             Rectangle {
