@@ -22,12 +22,23 @@ jobs:
             qt6-base qt6-declarative qt6-imageformats qt6-multimedia qt6-svg qt6-wayland \
             poppler
 
+      - name: Set up a user and a locale like a desktop's
+        # The container runs as root, which can read any folder, so the tests
+        # about unreadable ones need an ordinary user; and names sort by the
+        # locale, which the container doesn't generate.
+        run: |
+          useradd -m tester
+          sed -i 's/^#en_US.UTF-8/en_US.UTF-8/' /etc/locale.gen
+          locale-gen
+
       - uses: actions/checkout@v4
 
       - name: Build
-        run: bin/build
+        run: |
+          chown -R tester .
+          su tester -c 'bin/build'
 
       - name: Test
         # Some tests talk to a session bus (the desktop's file manager
         # interface), which a container doesn't have.
-        run: dbus-run-session -- bin/test
+        run: su tester -c 'LANG=en_US.UTF-8 dbus-run-session -- bin/test'
