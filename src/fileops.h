@@ -152,8 +152,8 @@ public:
     // {id, name, isDefault}, the default first.
     Q_INVOKABLE QVariantList appsFor(const QString &path) const;
     Q_INVOKABLE void openWith(const QString &path, const QString &appId);
-    // Makes the app the default for the file's type, then opens it there.
-    Q_INVOKABLE void alwaysOpenWith(const QString &path, const QString &appId);
+    // Makes the app what the file's type opens with from now on.
+    Q_INVOKABLE void setDefaultApp(const QString &path, const QString &appId);
     Q_INVOKABLE void openTerminal(const QString &folder);
 
     // Drives, through udisks (see Disks). The disk a drive mounted at

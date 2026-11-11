@@ -168,6 +168,40 @@ Rectangle {
                 color: theme.foreground
                 font.pixelSize: 12
             }
+            // What the file opens with, picked from the apps that can open
+            // its type, which makes that app the type's default.
+            Text { visible: opensWith.visible; text: qsTr("Opens with"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            PlainButton {
+                id: opensWith
+                // Read again after picking one, which changes the default.
+                property int picked: 0
+                readonly property var apps: {
+                    picked
+                    return pane.hasItem && !pane.item.isDir && !pane.trashed && pane.folderPane
+                        ? pane.folderPane.paneFileOps.appsFor(pane.item.path) : []
+                }
+                readonly property var current: apps.find(app => app.isDefault)
+                visible: apps.length > 1
+                Layout.alignment: Qt.AlignRight
+                implicitHeight: 28
+                text: (current ? current.name : qsTr("Choose")) + "  ▾"
+                onClicked: appsMenu.popup(opensWith, 0, opensWith.height + 4)
+                FolioMenu {
+                    id: appsMenu
+                    Repeater {
+                        model: opensWith.apps
+                        FolioMenuItem {
+                            required property var modelData
+                            text: modelData.name
+                            keys: modelData.isDefault ? "✓" : ""
+                            onTriggered: {
+                                pane.folderPane.paneFileOps.setDefaultApp(pane.item.path, modelData.id)
+                                opensWith.picked++
+                            }
+                        }
+                    }
+                }
+            }
             Text { visible: !!pane.info.dimensions; text: qsTr("Dimensions"); color: theme.secondaryForeground; font.pixelSize: 12 }
             Text {
                 visible: !!pane.info.dimensions

@@ -1976,9 +1976,11 @@ QVariantList FileOps::appsFor(const QString &path) const {
     GList *all = g_app_info_get_all_for_type(type);
     for (GList *l = all; l; l = l->next) {
         auto *info = G_APP_INFO(l->data);
-        if (!g_app_info_should_show(info))
-            continue;
         const QString id = QString::fromUtf8(g_app_info_get_id(info));
+        // Hidden apps aren't offered, but the default is always listed,
+        // even a hidden one (Omarchy's editor handler), so it can be named.
+        if (!g_app_info_should_show(info) && id != defaultId)
+            continue;
         const QVariantMap app{{"id", id}, {"name", QString::fromUtf8(g_app_info_get_name(info))},
                               {"isDefault", id == defaultId}};
         if (id == defaultId)
@@ -2007,7 +2009,7 @@ void FileOps::openWith(const QString &path, const QString &appId) {
     g_object_unref(app);
 }
 
-void FileOps::alwaysOpenWith(const QString &path, const QString &appId) {
+void FileOps::setDefaultApp(const QString &path, const QString &appId) {
     GDesktopAppInfo *app = g_desktop_app_info_new(appId.toUtf8().constData());
     if (!app)
         return;
@@ -2024,7 +2026,6 @@ void FileOps::alwaysOpenWith(const QString &path, const QString &appId) {
         g_error_free(error);
     g_free(type);
     g_object_unref(app);
-    openWith(path, appId);
 }
 
 void FileOps::openTerminal(const QString &folder) {

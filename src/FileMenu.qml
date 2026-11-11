@@ -1,7 +1,7 @@
 import QtQuick
 
 // The right-click menu. On an item: Open, Open With (each app that can),
-// Always Open With (the same apps, to change the type's default), Preview,
+// Preview,
 // Rename, Duplicate, Copy, Cut, Paste Into, Copy Path, Compress, Extract
 // (for archives), Burn (for disk images), Share (Dropbox link,
 // Taildrop, LocalSend: whichever are available), Pin, Terminal, Delete.
@@ -38,7 +38,6 @@ FolioMenu {
     readonly property bool canOpenWith: apps.length > 1
     // A file's type only: a folder's default app is the desktop's file
     // manager, not something to change from one folder's menu.
-    readonly property bool canAlwaysOpenWith: apps.length > 0 && !forFolder
     // A selected item in the folder being shown stands for the whole
     // selection, so Copy, Compress or Delete act on all of it.
     readonly property bool forSelection: forItem && target.selected === true && backend.folder.selectedCount > 1
@@ -66,8 +65,7 @@ FolioMenu {
             const entry = itemAt(i)
             if (entry && entry.subMenu)
                 entry.shown = entry.subMenu === shareMenu ? canShare
-                            : entry.subMenu === burnMenu ? canBurn
-                            : entry.subMenu === alwaysMenu ? canAlwaysOpenWith : canOpenWith
+                            : entry.subMenu === burnMenu ? canBurn : canOpenWith
         }
         if (near)
             popup(near, Math.min(near.width / 2, 120), near.height / 2)
@@ -108,20 +106,6 @@ FolioMenu {
                 required property var modelData
                 text: modelData.isDefault ? qsTr("%1 (default)").arg(modelData.name) : modelData.name
                 onTriggered: fileOps.openWith(fileMenu.target.path, modelData.id)
-            }
-        }
-    }
-    // The same apps, to make one of them what this type always opens with.
-    FolioMenu {
-        id: alwaysMenu
-        title: qsTr("Always Open With")
-        Repeater {
-            model: fileMenu.apps
-            FolioMenuItem {
-                required property var modelData
-                text: modelData.name
-                checked: modelData.isDefault
-                onTriggered: fileOps.alwaysOpenWith(fileMenu.target.path, modelData.id)
             }
         }
     }
