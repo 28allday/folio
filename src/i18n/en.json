@@ -1,12 +1,54 @@
 {
-  "%n items": { "one": "%n item", "other": "%n items" },
-  "Folder · %n items": { "one": "Folder · %n item", "other": "Folder · %n items" },
-  "Copying %n items…": { "one": "Copying %n item…", "other": "Copying %n items…" },
-  "Moving %n items…": { "one": "Moving %n item…", "other": "Moving %n items…" },
-  "Moving %n items to the trash…": { "one": "Moving %n item to the trash…", "other": "Moving %n items to the trash…" },
-  "Restoring %n items…": { "one": "Restoring %n item…", "other": "Restoring %n items…" },
-  "Deleting %n items…": { "one": "Deleting %n item…", "other": "Deleting %n items…" },
-  "Couldn't delete %n items.": { "one": "Couldn't delete %n item.", "other": "Couldn't delete %n items." },
-  "Emptied the trash: %n items deleted.": { "one": "Emptied the trash: %n item deleted.", "other": "Emptied the trash: %n items deleted." },
-  "%n items will be deleted permanently. This can't be undone.": { "one": "%n item will be deleted permanently. This can't be undone.", "other": "%n items will be deleted permanently. This can't be undone." }
+  "%Ln items": {
+    "one": "%Ln item",
+    "other": "%Ln items"
+  },
+  "%Ln items will be deleted permanently. This can't be undone.": {
+    "one": "%Ln item will be deleted permanently. This can't be undone.",
+    "other": "%Ln items will be deleted permanently. This can't be undone."
+  },
+  "Copying %Ln items…": {
+    "one": "Copying %Ln item…",
+    "other": "Copying %Ln items…"
+  },
+  "Couldn't delete %Ln items.": {
+    "one": "Couldn't delete %Ln item.",
+    "other": "Couldn't delete %Ln items."
+  },
+  "Delete %Ln Items": {
+    "one": "Delete %Ln Item",
+    "other": "Delete %Ln Items"
+  },
+  "Deleting %Ln items…": {
+    "one": "Deleting %Ln item…",
+    "other": "Deleting %Ln items…"
+  },
+  "Emptied the trash: %Ln items deleted.": {
+    "one": "Emptied the trash: %Ln item deleted.",
+    "other": "Emptied the trash: %Ln items deleted."
+  },
+  "Folder · %Ln items": {
+    "one": "Folder · %Ln item",
+    "other": "Folder · %Ln items"
+  },
+  "Moving %Ln items to the trash…": {
+    "one": "Moving %Ln item to the trash…",
+    "other": "Moving %Ln items to the trash…"
+  },
+  "Moving %Ln items…": {
+    "one": "Moving %Ln item…",
+    "other": "Moving %Ln items…"
+  },
+  "Restore %Ln Items": {
+    "one": "Restore %Ln Item",
+    "other": "Restore %Ln Items"
+  },
+  "Restored %Ln items.": {
+    "one": "Restored %Ln item.",
+    "other": "Restored %Ln items."
+  },
+  "Restoring %Ln items…": {
+    "one": "Restoring %Ln item…",
+    "other": "Restoring %Ln items…"
+  }
 }

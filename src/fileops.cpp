@@ -328,8 +328,8 @@ void FileOps::transferInBackground(const QStringList &paths, const QString &fold
     // own drive.
     const bool moving = mode == Move || (mode == Drop && sameDrive(paths.first(), folder));
     const QString showing = !busy.isEmpty() ? busy
-                            : moving        ? tr("Moving %n items…", "", paths.size())
-                                            : tr("Copying %n items…", "", paths.size());
+                            : moving        ? tr("Moving %Ln items…", "", paths.size())
+                                            : tr("Copying %Ln items…", "", paths.size());
     inBackground(
         showing,
         [paths, folder, mode] {
@@ -463,7 +463,7 @@ void FileOps::trash(const QStringList &paths) {
     // .Trash folder, so Restore in any file manager puts things back. It
     // takes one item at a time, which on a slow drive adds up.
     inBackground(
-        tr("Moving %n items to the trash…", "", paths.size()),
+        tr("Moving %Ln items to the trash…", "", paths.size()),
         [paths] {
             QStringList failedNames;
             for (const QString &path : outermost(paths)) {
@@ -621,7 +621,7 @@ void FileOps::restore(const QStringList &paths) {
         return;
     // Restoring across drives copies, which for a folder can take a while.
     inBackground(
-        tr("Restoring %n items…", "", paths.size()),
+        tr("Restoring %Ln items…", "", paths.size()),
         [paths] {
             QStringList failures;
             QString last;
@@ -641,7 +641,7 @@ void FileOps::restore(const QStringList &paths) {
                 emit failed(failures.join(' '));
             else if (!last.isEmpty())
                 emit notice(count == 1 ? tr("Restored %1 to %2.").arg(QFileInfo(last).fileName(), QFileInfo(last).absolutePath())
-                                       : tr("Restored %n items.", "", count));
+                                       : tr("Restored %Ln items.", "", count));
         });
 }
 
@@ -649,7 +649,7 @@ void FileOps::deleteForever(const QStringList &paths) {
     if (paths.isEmpty() || !idle())
         return;
     inBackground(
-        tr("Deleting %n items…", "", paths.size()),
+        tr("Deleting %Ln items…", "", paths.size()),
         [paths] {
             int failures = 0;
             for (const QString &path : outermost(paths))
@@ -659,7 +659,7 @@ void FileOps::deleteForever(const QStringList &paths) {
         },
         [this](int failures) {
             if (failures > 0)
-                emit failed(tr("Couldn't delete %n items.", "", failures));
+                emit failed(tr("Couldn't delete %Ln items.", "", failures));
         });
 }
 
@@ -674,7 +674,7 @@ void FileOps::emptyTrash() {
                 count += emptyTrashDir(dir);
             return count;
         },
-        [this](int count) { emit notice(tr("Emptied the trash: %n items deleted.", "", count)); });
+        [this](int count) { emit notice(tr("Emptied the trash: %Ln items deleted.", "", count)); });
 }
 
 QString FileOps::rename(const QString &path, const QString &name) {

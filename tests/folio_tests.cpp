@@ -1980,11 +1980,11 @@ private slots:
     {
         QTemporaryDir dir;
         write(dir.path() + "/language", "ru\n");
-        write(dir.path() + "/en.json", R"({"%n items": {"one": "%n item", "other": "%n items"}})");
-        write(dir.path() + "/ru.json", R"({"%n items": {"one": "%n элемент", "few": "%n элемента", "many": "%n элементов", "other": "%n элемента"}})");
+        write(dir.path() + "/en.json", R"({"%Ln items": {"one": "%Ln item", "other": "%Ln items"}})");
+        write(dir.path() + "/ru.json", R"({"%Ln items": {"one": "%Ln элемент", "few": "%Ln элемента", "many": "%Ln элементов", "other": "%Ln элемента"}})");
         Translator translator(dir.path() + "/language", dir.path());
-        QCOMPARE(translator.translate("Main", "%n items", nullptr, 21), QString("%n элемент"));
-        QCOMPARE(translator.translate("Main", "%n items", nullptr, 25), QString("%n элементов"));
+        QCOMPARE(translator.translate("Main", "%Ln items", nullptr, 21), QString("%Ln элемент"));
+        QCOMPARE(translator.translate("Main", "%Ln items", nullptr, 25), QString("%Ln элементов"));
     }
 
     void translatorCountsEnglishFormsTheEnglishWay()
@@ -1994,13 +1994,25 @@ private slots:
         // Russian's "one" for 21 and Japanese's lone "other" would read
         // "21 item" and "1 items".
         QTemporaryDir dir;
-        write(dir.path() + "/en.json", R"({"%n items": {"one": "%n item", "other": "%n items"}})");
+        write(dir.path() + "/en.json", R"({"%Ln items": {"one": "%Ln item", "other": "%Ln items"}})");
         write(dir.path() + "/language", "ru\n");
         Translator russian(dir.path() + "/language", dir.path());
-        QCOMPARE(russian.translate("Main", "%n items", nullptr, 21), QString("%n items"));
+        QCOMPARE(russian.translate("Main", "%Ln items", nullptr, 21), QString("%Ln items"));
         write(dir.path() + "/language", "ja\n");
         Translator japanese(dir.path() + "/language", dir.path());
-        QCOMPARE(japanese.translate("Main", "%n items", nullptr, 1), QString("%n item"));
+        QCOMPARE(japanese.translate("Main", "%Ln items", nullptr, 1), QString("%Ln item"));
+    }
+
+    void translatorWritesCountsInTheLanguagesDigits()
+    {
+        QTemporaryDir dir;
+        write(dir.path() + "/language", "fa\n");
+        write(dir.path() + "/en.json", R"({"%Ln items": {"one": "%Ln item", "other": "%Ln items"}})");
+        Translator translator(dir.path() + "/language", dir.path());
+        QCoreApplication::installTranslator(&translator);
+        const QString text = QCoreApplication::translate("Main", "%Ln items", nullptr, 1200);
+        QCoreApplication::removeTranslator(&translator);
+        QCOMPARE(text, QString("۱۲۰۰ items"));
     }
 
     void translatorLeavesNumbersUngrouped()

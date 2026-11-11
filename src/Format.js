@@ -28,7 +28,7 @@ function when(date) {
 
 // A folder's contents; nothing until they've been counted.
 function count(n) {
-    return n === 0 ? qsTr("Empty") : n > 0 ? qsTr("%n items", "", n) : ""
+    return n === 0 ? qsTr("Empty") : n > 0 ? qsTr("%Ln items", "", n) : ""
 }
 
 // What an item is and how big, under its name in the details and the
@@ -39,7 +39,7 @@ function summary(item, type) {
     if (item.kind === "peer")
         return item.extension
     if (item.isDir)
-        return item.itemCount === 0 ? qsTr("Folder · Empty") : item.itemCount > 0 ? qsTr("Folder · %n items", "", item.itemCount) : qsTr("Folder")
+        return item.itemCount === 0 ? qsTr("Folder · Empty") : item.itemCount > 0 ? qsTr("Folder · %Ln items", "", item.itemCount) : qsTr("Folder")
     return (type || item.mime) + " · " + size(item.size)
 }
 

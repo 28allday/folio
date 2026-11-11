@@ -62,7 +62,7 @@ FolioMenu {
 
     FolioMenuItem {
         shown: fileMenu.forItem && fileMenu.trashView
-        text: fileMenu.forSelection ? qsTr("Restore %n Items", "", fileMenu.paths.length) : qsTr("Restore")
+        text: fileMenu.forSelection ? qsTr("Restore %Ln Items", "", fileMenu.paths.length) : qsTr("Restore")
         onTriggered: fileOps.restore(fileMenu.paths)
     }
     FolioMenuItem {
@@ -216,7 +216,7 @@ FolioMenu {
     FolioMenuItem {
         shown: fileMenu.forItem && fileMenu.forFiles
         text: fileMenu.trashView ? qsTr("Delete Permanently…")
-            : fileMenu.forSelection ? qsTr("Delete %n Items", "", fileMenu.paths.length) : qsTr("Delete")
+            : fileMenu.forSelection ? qsTr("Delete %Ln Items", "", fileMenu.paths.length) : qsTr("Delete")
         keys: "Delete"
         onTriggered: fileMenu.trashView ? fileMenu.deleteRequested(fileMenu.paths) : fileOps.trash(fileMenu.paths)
     }

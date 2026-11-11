@@ -12,8 +12,9 @@
 // flat JSON objects from English source text to translation, one per Omarchy
 // language code (i18n/da.json, i18n/pt-BR.json), so QML keeps plain
 // qsTr("Save") and C++ keeps tr("Save"). A counted string,
-// qsTr("%n clips", "", count), maps to an object of plural forms keyed by
-// CLDR category ({"one": "%n klip", "other": "%n klip"}).
+// qsTr("%Ln clips", "", count), maps to an object of plural forms keyed by
+// CLDR category ({"one": "%Ln klip", "other": "%Ln klip"}); %Ln rather than
+// %n writes the count in the language's own digits.
 class Translator : public QTranslator {
     Q_OBJECT
     Q_PROPERTY(QString language READ language NOTIFY changed)
