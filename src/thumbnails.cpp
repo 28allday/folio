@@ -160,7 +160,10 @@ Ran run(QProcess &process, const QString &program, const QStringList &args, int 
     const QDeadlineTimer deadline(patience);
     process.setChildProcessModifier([folio = ::getpid()] { keepInASession(folio); });
     process.start(program, args);
-    if (!process.waitForStarted(int(deadline.remainingTime()))) {
+    // In slices, so quitting doesn't wait on a program slow to start (one on a stalled network mount, say).
+    while (process.state() == QProcess::Starting && !deadline.hasExpired() && !quitting)
+        process.waitForStarted(int(qMin<qint64>(waitSlice, deadline.remainingTime())));
+    if (process.state() != QProcess::Running) {
         // One still on its way to its program after that long is stopped too, or its keeper would be killed alone.
         stop(process, process.processId());
         return Ran::Unjudged;
