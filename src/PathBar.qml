@@ -166,6 +166,8 @@ Rectangle {
                         required property var modelData
                         required property int index
                         readonly property bool last: index === backend.crumbs.length - 1
+                        // Centred on the row, which a folder's chip makes taller.
+                        anchors.verticalCenter: parent.verticalCenter
                         spacing: 10
                         Text {
                             // No separator after / itself: "/ run", not "/ / run".

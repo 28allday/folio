@@ -5241,6 +5241,13 @@ private slots:
         QCOMPARE(marks(repo + "/sub").value("items").toObject(),
                  QJsonObject({{"deep", QJsonObject{{"tone", "changed"}, {"label", "Changes inside"}}}}));
         QCOMPARE(marks(repo + "/.git"), QJsonObject({{"actions", QJsonArray()}}));
+        // A folder reached through a link is marked by where it really is,
+        // which is how Git names its changes.
+        QVERIFY(QFile::link(repo + "/sub", repo + "/shortcut"));
+        QVERIFY(QFile::link(repo + "/sub", dir.filePath("outside")));
+        QCOMPARE(marks(repo + "/shortcut").value("items"), marks(repo + "/sub").value("items"));
+        QCOMPARE(marks(dir.filePath("outside")).value("items"), marks(repo + "/sub").value("items"));
+        QFile::remove(repo + "/shortcut");
         // In a folder nothing in which is tracked, each of its files and
         // folders isn't, but not what's ignored; deeper down too.
         QDir().mkpath(repo + "/newdir/inner");

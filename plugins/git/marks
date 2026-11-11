@@ -4,10 +4,12 @@
 # inside), and puts the branch and how much has changed on the folder's
 # chip; outside a repository, nothing, and none of the GitHub actions.
 . ./remote.sh
-folder=$1
 # Not on network mounts, where looking for the repository and its status
 # would cross the network for every folder.
-case $folder in /run/user/*/gvfs/*) echo '{"actions": []}'; exit 0 ;; esac
+case $1 in /run/user/*/gvfs/*) echo '{"actions": []}'; exit 0 ;; esac
+# The folder's real path: Git names changed paths by where they really are,
+# so a folder reached through a link would otherwise match none of them.
+folder=$(cd "$1" 2>/dev/null && pwd -P) || { echo '{"actions": []}'; exit 0; }
 
 # The top of the repository, found by looking up for its .git rather than
 # by asking Git, so a folder outside one costs no git at all.

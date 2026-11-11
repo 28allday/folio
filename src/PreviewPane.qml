@@ -8,6 +8,13 @@ import "Format.js" as Format
 Rectangle {
     id: pane
 
+    // Scrolls the details so `item`, which the keyboard just reached, is in
+    // sight.
+    function reveal(item) {
+        const top = item.mapToItem(facts, 0, 0).y
+        scroller.contentY = Math.max(Math.min(scroller.contentY, top), top + item.height - scroller.height)
+    }
+
     // The pane whose selected item this shows, and whose backend and file
     // work the button acts through: in a split, the one used last.
     property var folderPane: null
@@ -83,249 +90,267 @@ Rectangle {
         spacing: 22
         visible: pane.hasItem
 
-        Item {
+        // Everything but the Open button scrolls when the window is too
+        // short for it: a file in a repository, say, adds a Git section.
+        Flickable {
+            id: scroller
             Layout.fillWidth: true
-            Layout.preferredHeight: Math.round(width * 0.75)
+            Layout.fillHeight: true
+            contentHeight: facts.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            ScrollBar.vertical: FolioScrollBar { }
 
-            Image {
-                id: big
-                anchors.fill: parent
-                asynchronous: true
-                fillMode: Image.PreserveAspectFit
-                source: pane.hasItem && !pane.item.isDir && pane.item.kind !== "text" && !pane.pluginItem ? Format.thumb(pane.item.path, pane.item.mime, 512, pane.item.modified) : ""
-                visible: status === Image.Ready
-            }
-
-            // Text files show their opening lines instead of a picture.
-            Rectangle {
-                anchors.fill: parent
-                visible: pane.hasItem && pane.item.kind === "text"
-                color: theme.background
-                border.width: 1
-                border.color: Qt.alpha(theme.foreground, 0.12)
-                clip: true
-                Text {
-                    anchors.fill: parent
-                    anchors.margins: 14
-                    text: pane.info.text || ""
-                    color: theme.foreground
-                    font.pixelSize: 10
-                    wrapMode: Text.WrapAnywhere
-                    textFormat: Text.PlainText
-                    elide: Text.ElideRight
-                }
-            }
-
-            Glyph {
-                anchors.centerIn: parent
-                visible: !big.visible && pane.hasItem && pane.item.kind !== "text"
-                name: pane.pluginItem ? pane.item.icon : pane.hasItem && pane.item.isDir ? "folder" : "file"
-                size: 72
-                stroke: 1.2
-                color: pane.hasItem && pane.item.isDir ? theme.accent : theme.secondaryForeground
-            }
-        }
-
-        ColumnLayout {
-            spacing: 4
-            Layout.fillWidth: true
-            // Aligned explicitly, so that they're mirrored: left as they
-            // are, a Latin name would stay on the left.
-            Text {
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignLeft
-                text: pane.item.name || ""
-                color: theme.brightForeground
-                font.pixelSize: 15
-                font.weight: Font.DemiBold
-                wrapMode: Text.WrapAnywhere
-                maximumLineCount: 3
-                elide: Text.ElideRight
-            }
-            Text {
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignLeft
-                text: {
-                    translator.language // The type's name comes from the system, in the language of the moment.
-                    return Format.summary(pane.item, backend.typeName(pane.item.mime || ""))
-                }
-                color: theme.secondaryForeground
-                font.pixelSize: 12
-                elide: Text.ElideRight
-            }
-        }
-
-        GridLayout {
-            Layout.fillWidth: true
-            columns: 2
-            rowSpacing: 12
-            columnSpacing: 16
-
-            Text { visible: pane.trashed; text: qsTr("Original location"); color: theme.secondaryForeground; font.pixelSize: 12 }
-            Text {
-                visible: pane.trashed
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignRight
-                text: pane.trashed ? pane.homeless(pane.origin.replace(/\/[^\/]*$/, "") || "/") : ""
-                color: theme.foreground
-                font.pixelSize: 12
-                elide: Text.ElideMiddle
-            }
-            Text { visible: !pane.pluginItem; text: pane.trashed || pane.noting ? qsTr("Deleted") : qsTr("Modified"); color: theme.secondaryForeground; font.pixelSize: 12 }
-            Text {
-                visible: !pane.pluginItem
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignRight
-                text: {
-                    translator.language // Re-read when the language (and so the default locale) changes.
-                    const when = pane.trashed ? pane.info.deleted : pane.noting ? null : pane.item.modified
-                    return pane.hasItem && when ? when.toLocaleString(Qt.locale(), Locale.ShortFormat) : ""
-                }
-                color: theme.foreground
-                font.pixelSize: 12
-            }
-            Text { visible: !!pane.drive; text: qsTr("Free space"); color: theme.secondaryForeground; font.pixelSize: 12 }
-            Text {
-                visible: !!pane.drive
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignRight
-                text: {
-                    translator.language // Re-read when the language (and so its digits) changes.
-                    return pane.drive ? Format.size(pane.drive.free) : ""
-                }
-                color: theme.foreground
-                font.pixelSize: 12
-            }
-            // What the file opens with, picked from the apps that can open
-            // its type, which makes that app the type's default.
-            Text { visible: opensWith.visible; text: qsTr("Opens with"); color: theme.secondaryForeground; font.pixelSize: 12 }
-            PlainButton {
-                id: opensWith
-                // Read again after picking one, which changes the default.
-                property int picked: 0
-                readonly property var apps: {
-                    picked
-                    return pane.hasItem && !pane.item.isDir && !pane.trashed && !pane.pluginItem && pane.folderPane
-                        ? pane.folderPane.paneFileOps.appsFor(pane.item.path) : []
-                }
-                readonly property var current: apps.find(app => app.isDefault)
-                visible: apps.length > 1
-                Layout.alignment: Qt.AlignRight
-                implicitHeight: 28
-                text: (current ? current.name : qsTr("Choose")) + "  ▾"
-                onClicked: appsMenu.popup(opensWith, 0, opensWith.height + 4)
-                Keys.onEscapePressed: pane.finished()
-                // Gone with the keyboard on it (another item selected, or the
-                // details hidden), it hands the keyboard back.
-                onVisibleChanged: if (!visible && activeFocus) pane.finished()
-                FolioMenu {
-                    id: appsMenu
-                    Repeater {
-                        model: opensWith.apps
-                        FolioMenuItem {
-                            required property var modelData
-                            text: modelData.name
-                            keys: modelData.isDefault ? "✓" : ""
-                            onTriggered: {
-                                pane.folderPane.paneFileOps.setDefaultApp(pane.item.path, modelData.id)
-                                opensWith.picked++
-                            }
-                        }
-                    }
-                }
-            }
-            Text { visible: !!pane.info.width; text: qsTr("Dimensions"); color: theme.secondaryForeground; font.pixelSize: 12 }
-            Text {
-                visible: !!pane.info.width
-                Layout.fillWidth: true
-                horizontalAlignment: Text.AlignRight
-                text: pane.info.width ? qsTr("%1 × %2").arg(pane.info.width.toLocaleString(Qt.locale(), "f", 0))
-                                                     .arg(pane.info.height.toLocaleString(Qt.locale(), "f", 0)) : ""
-                color: theme.foreground
-                font.pixelSize: 12
-            }
-        }
-
-        // What plugins say, after Folio's own rows: a plugin's item's
-        // details, or each plugin's about a file or folder, under its title
-        // when it gives one, with buttons for what it offers there. A row
-        // can have a tone (a Git status's color) and a quieter second line.
-        Repeater {
-            id: sections
-            model: pane.pluginItem ? [{ rows: pane.item.details || [], actions: [] }] : pane.info.plugins || []
             ColumnLayout {
-                id: section
-                required property var modelData
-                property alias buttons: buttons
-                Layout.fillWidth: true
-                spacing: 12
-                Text {
-                    visible: !!section.modelData.title
-                    Layout.topMargin: 6
-                    text: section.modelData.title || ""
-                    color: theme.brightForeground
-                    font.pixelSize: 12
-                    font.weight: Font.DemiBold
-                }
-                Repeater {
-                    model: section.modelData.rows
-                    RowLayout {
-                        id: row
-                        required property var modelData
-                        Layout.fillWidth: true
-                        spacing: 16
+                id: facts
+                width: scroller.width
+                spacing: 22
+
+                Item {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Math.round(width * 0.75)
+
+                    Image {
+                        id: big
+                        anchors.fill: parent
+                        asynchronous: true
+                        fillMode: Image.PreserveAspectFit
+                        source: pane.hasItem && !pane.item.isDir && pane.item.kind !== "text" && !pane.pluginItem ? Format.thumb(pane.item.path, pane.item.mime, 512, pane.item.modified) : ""
+                        visible: status === Image.Ready
+                    }
+
+                    // Text files show their opening lines instead of a picture.
+                    Rectangle {
+                        anchors.fill: parent
+                        visible: pane.hasItem && pane.item.kind === "text"
+                        color: theme.background
+                        border.width: 1
+                        border.color: Qt.alpha(theme.foreground, 0.12)
+                        clip: true
                         Text {
-                            Layout.alignment: Qt.AlignTop
-                            text: row.modelData.label
-                            color: theme.secondaryForeground
-                            font.pixelSize: 12
+                            anchors.fill: parent
+                            anchors.margins: 14
+                            text: pane.info.text || ""
+                            color: theme.foreground
+                            font.pixelSize: 10
+                            wrapMode: Text.WrapAnywhere
+                            textFormat: Text.PlainText
+                            elide: Text.ElideRight
                         }
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 3
-                            Text {
-                                Layout.fillWidth: true
-                                horizontalAlignment: Text.AlignRight
-                                text: row.modelData.value
-                                color: (row.modelData.tone && theme.tones[row.modelData.tone]) || theme.foreground
-                                font.pixelSize: 12
-                                elide: Text.ElideMiddle
-                            }
-                            Text {
-                                visible: !!row.modelData.detail
-                                Layout.fillWidth: true
-                                horizontalAlignment: Text.AlignRight
-                                text: row.modelData.detail
-                                color: theme.secondaryForeground
-                                font.pixelSize: 11
-                                elide: Text.ElideRight
+                    }
+
+                    Glyph {
+                        anchors.centerIn: parent
+                        visible: !big.visible && pane.hasItem && pane.item.kind !== "text"
+                        name: pane.pluginItem ? pane.item.icon : pane.hasItem && pane.item.isDir ? "folder" : "file"
+                        size: 72
+                        stroke: 1.2
+                        color: pane.hasItem && pane.item.isDir ? theme.accent : theme.secondaryForeground
+                    }
+                }
+
+                ColumnLayout {
+                    spacing: 4
+                    Layout.fillWidth: true
+                    // Aligned explicitly, so that they're mirrored: left as they
+                    // are, a Latin name would stay on the left.
+                    Text {
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignLeft
+                        text: pane.item.name || ""
+                        color: theme.brightForeground
+                        font.pixelSize: 15
+                        font.weight: Font.DemiBold
+                        wrapMode: Text.WrapAnywhere
+                        maximumLineCount: 3
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignLeft
+                        text: {
+                            translator.language // The type's name comes from the system, in the language of the moment.
+                            return Format.summary(pane.item, backend.typeName(pane.item.mime || ""))
+                        }
+                        color: theme.secondaryForeground
+                        font.pixelSize: 12
+                        elide: Text.ElideRight
+                    }
+                }
+
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: 2
+                    rowSpacing: 12
+                    columnSpacing: 16
+
+                    Text { visible: pane.trashed; text: qsTr("Original location"); color: theme.secondaryForeground; font.pixelSize: 12 }
+                    Text {
+                        visible: pane.trashed
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignRight
+                        text: pane.trashed ? pane.homeless(pane.origin.replace(/\/[^\/]*$/, "") || "/") : ""
+                        color: theme.foreground
+                        font.pixelSize: 12
+                        elide: Text.ElideMiddle
+                    }
+                    Text { visible: !pane.pluginItem; text: pane.trashed || pane.noting ? qsTr("Deleted") : qsTr("Modified"); color: theme.secondaryForeground; font.pixelSize: 12 }
+                    Text {
+                        visible: !pane.pluginItem
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignRight
+                        text: {
+                            translator.language // Re-read when the language (and so the default locale) changes.
+                            const when = pane.trashed ? pane.info.deleted : pane.noting ? null : pane.item.modified
+                            return pane.hasItem && when ? when.toLocaleString(Qt.locale(), Locale.ShortFormat) : ""
+                        }
+                        color: theme.foreground
+                        font.pixelSize: 12
+                    }
+                    Text { visible: !!pane.drive; text: qsTr("Free space"); color: theme.secondaryForeground; font.pixelSize: 12 }
+                    Text {
+                        visible: !!pane.drive
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignRight
+                        text: {
+                            translator.language // Re-read when the language (and so its digits) changes.
+                            return pane.drive ? Format.size(pane.drive.free) : ""
+                        }
+                        color: theme.foreground
+                        font.pixelSize: 12
+                    }
+                    // What the file opens with, picked from the apps that can open
+                    // its type, which makes that app the type's default.
+                    Text { visible: opensWith.visible; text: qsTr("Opens with"); color: theme.secondaryForeground; font.pixelSize: 12 }
+                    PlainButton {
+                        id: opensWith
+                        onActiveFocusChanged: if (activeFocus) pane.reveal(this)
+                        // Read again after picking one, which changes the default.
+                        property int picked: 0
+                        readonly property var apps: {
+                            picked
+                            return pane.hasItem && !pane.item.isDir && !pane.trashed && !pane.pluginItem && pane.folderPane
+                                ? pane.folderPane.paneFileOps.appsFor(pane.item.path) : []
+                        }
+                        readonly property var current: apps.find(app => app.isDefault)
+                        visible: apps.length > 1
+                        Layout.alignment: Qt.AlignRight
+                        implicitHeight: 28
+                        text: (current ? current.name : qsTr("Choose")) + "  ▾"
+                        onClicked: appsMenu.popup(opensWith, 0, opensWith.height + 4)
+                        Keys.onEscapePressed: pane.finished()
+                        // Gone with the keyboard on it (another item selected, or the
+                        // details hidden), it hands the keyboard back.
+                        onVisibleChanged: if (!visible && activeFocus) pane.finished()
+                        FolioMenu {
+                            id: appsMenu
+                            Repeater {
+                                model: opensWith.apps
+                                FolioMenuItem {
+                                    required property var modelData
+                                    text: modelData.name
+                                    keys: modelData.isDefault ? "✓" : ""
+                                    onTriggered: {
+                                        pane.folderPane.paneFileOps.setDefaultApp(pane.item.path, modelData.id)
+                                        opensWith.picked++
+                                    }
+                                }
                             }
                         }
                     }
+                    Text { visible: !!pane.info.width; text: qsTr("Dimensions"); color: theme.secondaryForeground; font.pixelSize: 12 }
+                    Text {
+                        visible: !!pane.info.width
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignRight
+                        text: pane.info.width ? qsTr("%1 × %2").arg(pane.info.width.toLocaleString(Qt.locale(), "f", 0))
+                                                             .arg(pane.info.height.toLocaleString(Qt.locale(), "f", 0)) : ""
+                        color: theme.foreground
+                        font.pixelSize: 12
+                    }
                 }
-                Flow {
-                    Layout.fillWidth: true
-                    visible: buttons.count > 0
-                    spacing: 8
-                    Repeater {
-                        id: buttons
-                        model: section.modelData.actions
-                        PlainButton {
-                            required property var modelData
-                            implicitHeight: 28
-                            text: modelData.label
-                            onClicked: pane.folderPane.paneBackend.perform(modelData.plugin, modelData.id, [pane.item.path])
-                            Keys.onEscapePressed: pane.finished()
-                            // Gone with the keyboard on it (another item
-                            // selected), it hands the keyboard back.
-                            Component.onDestruction: if (activeFocus) pane.finished()
+
+                // What plugins say, after Folio's own rows: a plugin's item's
+                // details, or each plugin's about a file or folder, under its title
+                // when it gives one, with buttons for what it offers there. A row
+                // can have a tone (a Git status's color) and a quieter second line.
+                Repeater {
+                    id: sections
+                    model: pane.pluginItem ? [{ rows: pane.item.details || [], actions: [] }] : pane.info.plugins || []
+                    ColumnLayout {
+                        id: section
+                        required property var modelData
+                        property alias buttons: buttons
+                        Layout.fillWidth: true
+                        spacing: 12
+                        Text {
+                            visible: !!section.modelData.title
+                            Layout.topMargin: 6
+                            text: section.modelData.title || ""
+                            color: theme.brightForeground
+                            font.pixelSize: 12
+                            font.weight: Font.DemiBold
+                        }
+                        Repeater {
+                            model: section.modelData.rows
+                            RowLayout {
+                                id: row
+                                required property var modelData
+                                Layout.fillWidth: true
+                                spacing: 16
+                                Text {
+                                    Layout.alignment: Qt.AlignTop
+                                    text: row.modelData.label
+                                    color: theme.secondaryForeground
+                                    font.pixelSize: 12
+                                }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 3
+                                    Text {
+                                        Layout.fillWidth: true
+                                        horizontalAlignment: Text.AlignRight
+                                        text: row.modelData.value
+                                        color: (row.modelData.tone && theme.tones[row.modelData.tone]) || theme.foreground
+                                        font.pixelSize: 12
+                                        elide: Text.ElideMiddle
+                                    }
+                                    Text {
+                                        visible: !!row.modelData.detail
+                                        Layout.fillWidth: true
+                                        horizontalAlignment: Text.AlignRight
+                                        text: row.modelData.detail
+                                        color: theme.secondaryForeground
+                                        font.pixelSize: 11
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                            }
+                        }
+                        Flow {
+                            Layout.fillWidth: true
+                            visible: buttons.count > 0
+                            spacing: 8
+                            Repeater {
+                                id: buttons
+                                model: section.modelData.actions
+                                PlainButton {
+                                    required property var modelData
+                                    implicitHeight: 28
+                                    text: modelData.label
+                                    onClicked: pane.folderPane.paneBackend.perform(modelData.plugin, modelData.id, [pane.item.path])
+                                    onActiveFocusChanged: if (activeFocus) pane.reveal(this)
+                                    Keys.onEscapePressed: pane.finished()
+                                    // Gone with the keyboard on it (another item
+                                    // selected), it hands the keyboard back.
+                                    Component.onDestruction: if (activeFocus) pane.finished()
+                                }
+                            }
                         }
                     }
                 }
             }
         }
-
-        Item { Layout.fillHeight: true }
 
         AbstractButton {
             id: openButton
