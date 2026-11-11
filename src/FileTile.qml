@@ -107,7 +107,7 @@ Item {
             // A folder's own date says little (it changes when anything in
             // it is added or removed), so only files show one.
             const date = tile.isDir ? "" : Format.when(tile.modified)
-            return [size, date].filter(part => part.length > 0).join(" · ")
+            return size && date ? qsTr("%1 · %2").arg(size).arg(date) : size || date
         }
         color: theme.secondaryForeground
         font.pixelSize: 10

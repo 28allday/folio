@@ -2019,6 +2019,26 @@ private slots:
         QCOMPARE(text, QString("۱۲۰۰ items"));
     }
 
+    void formatLeavesUnitsAndSeparatorsToTheLanguage()
+    {
+        // A size is one string with its number, and a file's summary keeps
+        // the separator in the catalog, as a folder's already does.
+        QTemporaryDir dir;
+        write(dir.path() + "/language", "fr\n");
+        write(dir.path() + "/fr.json", R"({"%1 · %2": "%1 ・ %2", "%1 KB": "%1\u00a0Ko"})");
+        Translator translator(dir.path() + "/language", dir.path());
+        QCoreApplication::installTranslator(&translator);
+        QQmlEngine engine;
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\nimport \"Format.js\" as Format\n"
+                          "QtObject { property string summary: Format.summary({ path: \"/x\", size: 1500 }, \"Texte\") }",
+                          QUrl::fromLocalFile(QFINDTESTDATA("../src/Format.js")));
+        std::unique_ptr<QObject> object(component.create());
+        QCoreApplication::removeTranslator(&translator);
+        QVERIFY2(object, qPrintable(component.errorString()));
+        QCOMPARE(object->property("summary").toString(), QString("Texte ・ 1,5\u00a0Ko"));
+    }
+
     void translatorLeavesNumbersUngrouped()
     {
         QTemporaryDir dir;
