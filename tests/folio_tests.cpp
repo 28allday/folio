@@ -432,6 +432,17 @@ static QString binWith(const QString &folder, const QHash<QString, QByteArray> &
     return qScopeGuard([old] { qputenv("PATH", old); });
 }
 
+// Whether a process has ended. Killed, it can stay a zombie until whoever
+// adopted it reaps it, which in a container's bare PID 1 is never.
+static bool ended(pid_t pid)
+{
+    QFile stat(QStringLiteral("/proc/%1/stat").arg(pid));
+    if (::kill(pid, 0) != 0 || !stat.open(QIODevice::ReadOnly))
+        return true;
+    const QByteArray line = stat.readAll();
+    return line.mid(line.lastIndexOf(')') + 2, 1) == "Z";
+}
+
 // The plugins that come with Folio, as their checkout has them.
 static QString bundled()
 {
@@ -3593,7 +3604,7 @@ private slots:
         QVERIFY(file.open(QIODevice::ReadOnly));
         const pid_t child = file.readAll().trimmed().toInt();
         QVERIFY(child > 0);
-        QTRY_VERIFY(::kill(child, 0) != 0);
+        QTRY_VERIFY(ended(child));
 
         // One that finishes takes what it left running with it.
         const Plugins::Run left = Plugins::execute(plugin, {"./leave", pidFile}, env, 5000);
@@ -3602,7 +3613,7 @@ private slots:
         QVERIFY(leftFile.open(QIODevice::ReadOnly));
         const pid_t helper = leftFile.readAll().trimmed().toInt();
         QVERIFY(helper > 0 && helper != child);
-        QTRY_VERIFY(::kill(helper, 0) != 0);
+        QTRY_VERIFY(ended(helper));
 
         // A program that isn't there never starts.
         QVERIFY(!Plugins::execute(plugin, {"folio-no-such-program"}, env, 1000).started);
