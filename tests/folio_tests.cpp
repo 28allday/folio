@@ -205,8 +205,11 @@ static QStringList placeholders(const QString &text)
 }
 
 // What's wrong with the translations in `folder`, measured against its
-// en.json: an unknown language, keys missing or extra, empty or broken
-// translations, and plural forms that don't fit the language's rule.
+// en.json: an unknown language, empty or broken translations, and plural
+// forms that don't fit the language's rule. A string a catalog lacks, or
+// one en.json no longer has, is work for the translation sync
+// (scripts/i18n-sync.py), not a problem: the app shows the English
+// meanwhile, so a change to the English never waits on 49 languages.
 static QStringList catalogProblems(const QString &folder)
 {
     static const QStringList codes{"ar", "bg", "bn", "ca", "cs", "da", "de", "el", "es-MX", "et", "fa", "fi", "fil",
@@ -224,17 +227,6 @@ static QStringList catalogProblems(const QString &folder)
             continue;
         }
         const QJsonObject catalog = readCatalog(file.filePath(), &problems);
-        QStringList missing, extra;
-        for (const QString &key : english.keys())
-            if (!catalog.contains(key))
-                missing << key;
-        for (const QString &key : catalog.keys())
-            if (!english.contains(key))
-                extra << key;
-        if (!missing.isEmpty())
-            problems << code + ": missing " + missing.join(" | ");
-        if (!extra.isEmpty())
-            problems << code + ": not in en.json " + extra.join(" | ");
 
         // The categories the language's rule reaches, and "other" always.
         QSet<QString> categories{"other", Translator::pluralCategory(code, 1000000)};
@@ -2353,6 +2345,9 @@ private slots:
         write(dir.filePath("da.json"), R"({"Open": "Åbn", "Open %1": "Åbn %1",
                                           "%Ln items": {"one": "ét element", "other": "%Ln elementer"},
                                           "%Ln items in %1": {"one": "%Ln element i %1", "other": "%Ln elementer i %1"}})");
+        // German hasn't caught up yet: one string still to translate and
+        // one the English has since dropped.
+        write(dir.filePath("de.json"), R"({"Open": "Öffnen", "Opened": "Geöffnet"})");
         write(dir.filePath("xx.json"), "{}");
         QStringList problems = catalogProblems(dir.path());
         problems.sort();
