@@ -14,4 +14,6 @@ ScrollBar {
         visible: bar.size < 1 && (bar.active || bar.hovered)
     }
     background: null
+    // Material fades the bar in and out of its active state; drop that.
+    transitions: []
 }
