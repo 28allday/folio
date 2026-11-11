@@ -72,7 +72,6 @@ FolioMenu {
     }
     // Every app that says it can open this type, the default first.
     FolioMenu {
-        id: openWith
         title: qsTr("Open With")
         Repeater {
             model: fileMenu.apps
