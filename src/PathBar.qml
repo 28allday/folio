@@ -160,8 +160,9 @@ Rectangle {
                                 anchors.fill: parent
                                 anchors.margins: -4
                                 hoverEnabled: true
-                                cursorShape: crumb.last ? Qt.ArrowCursor : Qt.PointingHandCursor
-                                onClicked: if (!crumb.last) backend.navigate(crumb.modelData.path)
+                                // The folder you're in opens the path for typing, as Ctrl+L does.
+                                cursorShape: crumb.last ? Qt.IBeamCursor : Qt.PointingHandCursor
+                                onClicked: crumb.last ? bar.editPath() : backend.navigate(crumb.modelData.path)
                             }
                         }
                     }
