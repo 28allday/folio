@@ -1,4 +1,5 @@
 #include "thumbnails.h"
+#include "rawembed.h"
 
 #include <QBuffer>
 #include <QCryptographicHash>
@@ -194,6 +195,12 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
 }
 
 QImage Thumbnails::generate(const QString &path, const QString &mime, int pixels, bool &attempted) const {
+    // A camera RAW with no installed thumbnailer, the desktop's own answer, shows the JPEG the camera embedded.
+    if (RawEmbed::handles(mime) && !m_thumbnailers.contains(mime)) {
+        attempted = true;
+        if (const QImage image = RawEmbed::thumbnail(path, pixels); !image.isNull())
+            return image;
+    }
     // Common photo formats decode fastest in-process; anything Qt can't read
     // (HEIC, JPEG XL) falls through to the installed thumbnailers.
     if (mime.startsWith("image/")) {
