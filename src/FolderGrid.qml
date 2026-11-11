@@ -61,7 +61,16 @@ GridView {
     WheelHandler {
         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
         acceptedModifiers: Qt.ControlModifier
-        onWheel: (event) => grid.zoomRequested(event.angleDelta.y > 0 ? 1 : -1)
+        // A touchpad sends many small deltas: a step per notch's worth
+        // (120), and nothing for an event that doesn't move up or down.
+        property real pending: 0
+        onWheel: (event) => {
+            pending += event.angleDelta.y
+            if (Math.abs(pending) < 120)
+                return
+            grid.zoomRequested(pending > 0 ? 1 : -1)
+            pending = 0
+        }
     }
     // The rows reflow, so bring the cursor's tile back into view.
     onTileZoomChanged: Qt.callLater(() => { if (currentIndex >= 0) { forceLayout(); positionViewAtIndex(currentIndex, GridView.Contain) } })
