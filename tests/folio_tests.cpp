@@ -139,6 +139,18 @@ private slots:
         QVERIFY(model.query().isEmpty());
     }
 
+    void folderSearchSkipsSymlinkedFolders()
+    {
+        // A link back up the tree would otherwise be walked round and round.
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("real");
+        write(dir.filePath("real/match.txt"), "x");
+        QVERIFY(QFile::link(dir.path(), dir.filePath("loop")));
+        const auto found = FolderModel::search(dir.path(), "match", false, "name");
+        QCOMPARE(found.size(), 1);
+        QCOMPARE(found.first().name, QString("real/match.txt"));
+    }
+
     void folderModelSwapsFoldersWithoutAnEmptyFrame()
     {
         QTemporaryDir a, b;
@@ -375,6 +387,48 @@ private slots:
         QCOMPARE(ops.localPaths(data.urls()), paths);
         // Only local files are dropped as paths.
         QCOMPARE(ops.localPaths({QUrl("https://example.com/a"), QUrl::fromLocalFile("/tmp/x")}), QStringList({"/tmp/x"}));
+    }
+
+    void fileOpsGuardDropsRenamesAndNames()
+    {
+        QTemporaryDir dir;
+        QDir(dir.path()).mkpath("album/inner");
+        write(dir.filePath("a.txt"), "a");
+        write(dir.filePath("b.txt"), "b");
+        write(dir.filePath("c.txt"), "c");
+        const auto urls = [&](const QString &name) { return QList<QUrl>{QUrl::fromLocalFile(dir.filePath(name))}; };
+        FileOps ops;
+
+        // A drop has to take something somewhere new: not where it already
+        // is, not onto or into itself, and not onto a file.
+        QVERIFY(ops.canDrop(urls("a.txt"), dir.filePath("album")));
+        QVERIFY(!ops.canDrop(urls("a.txt"), dir.path()));
+        QVERIFY(!ops.canDrop(urls("album"), dir.filePath("album")));
+        QVERIFY(!ops.canDrop(urls("album"), dir.filePath("album/inner")));
+        QVERIFY(!ops.canDrop(urls("album"), dir.filePath("a.txt")));
+        // Moving something into the folder it's in leaves it alone rather
+        // than making a "(copy)" of it.
+        QString error;
+        QVERIFY(FileOps::transfer({dir.filePath("a.txt")}, dir.path(), true, &error).isEmpty());
+        QVERIFY(error.isEmpty());
+        QVERIFY(QFile::exists(dir.filePath("a.txt")));
+
+        // A slash would move the file elsewhere, so it's refused; the same
+        // name changes nothing, and spaces around a name are dropped.
+        QVERIFY(!ops.rename(dir.filePath("a.txt"), "x/y").isEmpty());
+        QCOMPARE(ops.rename(dir.filePath("a.txt"), "a.txt"), QString());
+        QCOMPARE(ops.rename(dir.filePath("c.txt"), " d.txt "), QString());
+        QVERIFY(QFile::exists(dir.filePath("d.txt")));
+
+        QCOMPARE(FileOps::archiveName({dir.filePath("d.txt")}, dir.path()), QString("d.txt.zip"));
+        QCOMPARE(FileOps::archiveName({dir.filePath("a.txt"), dir.filePath("b.txt")}, dir.path()), QString("Archive.zip"));
+
+        QSignalSpy done(&ops, &FileOps::done);
+        ops.newFolder(dir.path());
+        ops.newFolder(dir.path());
+        QCOMPARE(done.count(), 2);
+        QCOMPARE(done.takeFirst().at(1).toString(), QString("New Folder"));
+        QCOMPARE(done.takeFirst().at(1).toString(), QString("New Folder 2"));
     }
 
     void recentsReadGtkRecentFiles()
