@@ -41,7 +41,7 @@ private:
     void rememberFailure(const QString &path, const QDateTime &modified) const;
     bool failedBefore(const QString &path, const QDateTime &modified) const;
     void save(QImage image, const QString &target, const QString &path, const QDateTime &modified) const;
-    static bool madeFor(const QImage &image, const QDateTime &modified);
+    static bool madeFor(const QImage &image, const QString &path, const QDateTime &modified);
 
     QString m_cache;
     QHash<QString, QString> m_thumbnailers;

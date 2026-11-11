@@ -5038,6 +5038,48 @@ private slots:
         QCOMPARE(Thumbnails::bucketFor(512), QString("x-large"));
     }
 
+    void thumbnailsRejectACacheEntryForAnotherFile()
+    {
+        QTemporaryDir dir;
+        QImage picture(800, 400, QImage::Format_RGB32);
+        picture.fill(Qt::red);
+        const QString file = dir.filePath("wide.png");
+        QVERIFY(picture.save(file));
+
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("none")});
+        thumbnails.load(file, "image/png", 256);
+        const QString cached = dir.filePath("cache/large/" + Thumbnails::cacheKey(file));
+
+        // A fresh entry tagged for another file, or for none, is made again.
+        for (const QString &uri : {QString("file:///elsewhere/wide.png"), QString()}) {
+            QImage foreign(cached);
+            foreign.fill(Qt::blue);
+            foreign.setText("Thumb::URI", uri);
+            QVERIFY(foreign.save(cached));
+            QCOMPARE(thumbnails.load(file, "image/png", 256).pixelColor(0, 0), QColor(Qt::red));
+            QCOMPARE(QImage(cached).text("Thumb::URI"), QUrl::fromLocalFile(file).toString(QUrl::FullyEncoded));
+        }
+    }
+
+    void thumbnailsRejectAFailureMarkerForAnotherFile()
+    {
+        QTemporaryDir dir;
+        Thumbnails thumbnails(dir.filePath("cache"), {dir.filePath("none")});
+
+        // A marker with the file's time but another file's URI, or none, doesn't stop its thumbnail.
+        for (const QString &uri : {QString("file:///elsewhere/photo.png"), QString()}) {
+            const QString file = dir.filePath(uri.isEmpty() ? "unnamed.png" : "named.png");
+            QVERIFY(QImage(64, 32, QImage::Format_RGB32).save(file));
+            const QString marker = dir.filePath("cache/fail/folio/" + Thumbnails::cacheKey(file));
+            QVERIFY(QDir().mkpath(QFileInfo(marker).absolutePath()));
+            QImage foreign(1, 1, QImage::Format_ARGB32);
+            foreign.setText("Thumb::URI", uri);
+            foreign.setText("Thumb::MTime", QString::number(QFileInfo(file).lastModified().toSecsSinceEpoch()));
+            QVERIFY(foreign.save(marker));
+            QVERIFY(!thumbnails.load(file, "image/png", 128).isNull());
+        }
+    }
+
     void thumbnailsFollowAPictureSavedOver()
     {
         // Qt keeps the images it has shown by their URL, and a re-read makes

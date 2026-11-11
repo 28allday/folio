@@ -157,7 +157,7 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
         return {};
 
     const QDateTime modified = info.lastModified();
-    if (const QImage image(cachePath(path, size)); madeFor(image, modified))
+    if (const QImage image(cachePath(path, size)); madeFor(image, path, modified))
         return image;
     if (failedBefore(path, modified))
         return {};
@@ -317,7 +317,7 @@ void Thumbnails::rememberFailure(const QString &path, const QDateTime &modified)
 }
 
 bool Thumbnails::failedBefore(const QString &path, const QDateTime &modified) const {
-    return madeFor(QImage(failPath(path)), modified);
+    return madeFor(QImage(failPath(path)), path, modified);
 }
 
 // Whether a cached thumbnail (or failure marker) was made from the file as it
@@ -326,9 +326,11 @@ bool Thumbnails::failedBefore(const QString &path, const QDateTime &modified) co
 // the milliseconds. One another app made goes by the seconds alone.
 // QImageReader::text() splits keys at ':', so these are only readable from
 // the decoded image.
-bool Thumbnails::madeFor(const QImage &image, const QDateTime &modified) {
+bool Thumbnails::madeFor(const QImage &image, const QString &path, const QDateTime &modified) {
     const QString exact = image.text("X-Folio::MTime");
-    return !image.isNull() && image.text("Thumb::MTime") == QString::number(modified.toSecsSinceEpoch())
+    // The spec asks a reader to check that Thumb::URI names the file too.
+    return !image.isNull() && image.text("Thumb::URI") == fileUri(path)
+        && image.text("Thumb::MTime") == QString::number(modified.toSecsSinceEpoch())
         && (exact.isEmpty() || exact == QString::number(modified.toMSecsSinceEpoch()));
 }
 
