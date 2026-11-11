@@ -130,6 +130,13 @@ FocusScope {
     // details pane follow.
     onActiveFocusChanged: if (activeFocus && host) host.activePane = pane
     function focusView() { if (view.item) view.item.focusView() }
+    // Nothing under the cursor and nothing selected, as after a click on
+    // empty space.
+    function letGo() {
+        backend.folder.clearSelection()
+        if (view.item)
+            view.item.letGo()
+    }
 
     // Pins a folder to the sidebar, or unpins it when it's pinned already.
     function togglePin(target) {

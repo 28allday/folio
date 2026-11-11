@@ -153,8 +153,16 @@ QVariantMap Chooser::step(const QString &folder, const QStringList &picked, cons
     if (mode() == "folder")
         return answer(folders);
     QStringList paths;
-    for (const QString &file : m_request.files)
-        paths << QDir(folders.first()).filePath(file);
+    for (const QString &file : m_request.files) {
+        // A folder of that name can't be written over: the file goes beside
+        // it under the next free name, "notes (2).txt".
+        QString path = QDir(folders.first()).filePath(file);
+        const QFileInfo named(path);
+        for (int n = 2; QFileInfo(path).isDir(); ++n)
+            path = QDir(folders.first()).filePath(named.suffix().isEmpty() ? QString("%1 (%2)").arg(file).arg(n)
+                : QString("%1 (%2).%3").arg(named.completeBaseName()).arg(n).arg(named.suffix()));
+        paths << path;
+    }
     return answer(paths);
 }
 
@@ -215,7 +223,9 @@ bool ChooserPortal::handleMessage(const QDBusMessage &message, const QDBusConnec
     // The portal gave up on a request (its app went away): the dialog goes,
     // which answers the call it was opened for.
     if (message.interface() == "org.freedesktop.impl.portal.Request" && message.member() == "Close") {
-        if (const Asked asked = m_asked.value(message.path()); asked.chooser)
+        // Only for whoever asked: another program on the bus that knows the
+        // request's path doesn't get to close someone else's dialog.
+        if (const Asked asked = m_asked.value(message.path()); asked.chooser && asked.call.service() == message.service())
             asked.chooser->cancel();
         connection.send(message.createReply());
         return true;
@@ -262,6 +272,11 @@ Chooser::Request ChooserPortal::requestFor(const QString &method, const QString 
     request.acceptLabel = options.value("accept_label").toString();
     request.multiple = options.value("multiple").toBool();
     request.choices = unpacked<QList<Chooser::Choice>>(options.value("choices"), "a(ssa(ss)s)");
+    // An app may leave what a choice starts on to the dialog: the first of
+    // its options, or a checkbox unticked.
+    for (Chooser::Choice &choice : request.choices)
+        if (choice.value.isEmpty())
+            choice.value = choice.options.isEmpty() ? "false" : choice.options.first().first;
     request.name = bareName(options.value("current_name").toString());
     for (const QByteArray &file : unpacked<QList<QByteArray>>(options.value("files"), "aay"))
         if (const QString name = bareName(bytePath(file)); !name.isEmpty())

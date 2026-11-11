@@ -813,6 +813,22 @@ private slots:
         QVERIFY(names({"text/plain"}).contains("LICENSE"));
         QVERIFY(!names({"image/*"}).contains("LICENSE"));
 
+        // A search names what it finds by its path from the folder searched;
+        // a pattern is still for the name. And only what fits counts toward
+        // a search's limit, so files left out can't use it up.
+        QDir(dir.path()).mkdir("deep");
+        write(dir.filePath("deep/photo2.png"), "x");
+        for (int i = 0; i < 6; ++i)
+            write(dir.filePath(QString("photo-note-%1.txt").arg(i)), "x");
+        QStringList found;
+        for (const auto &entry : FolderModel::search(dir.path(), "photo", false, "name", {}, 3, QLocale(), {"ph?to*.png"}))
+            found << entry.name;
+        QCOMPARE(found, QStringList({"deep/photo2.png", "photo.png"}));
+        for (int i = 0; i < 6; ++i)
+            QFile::remove(dir.filePath(QString("photo-note-%1.txt").arg(i)));
+        QFile::remove(dir.filePath("deep/photo2.png"));
+        QDir(dir.path()).rmdir("deep");
+
         // The model lists what fits, and lists again when the filter changes.
         FolderModel model;
         model.setFilter({"*.txt"});
@@ -881,6 +897,16 @@ private slots:
             QByteArray("dir/\0", 5), QByteArray("\0", 1)})}}, &folder, &select);
         QCOMPARE(request.mode, QString("saveInto"));
         QCOMPARE(request.files, QStringList({"one.txt", "two.txt"}));
+        // A choice the app leaves unset starts on its first option, and a
+        // checkbox unticked, so the answer always says something.
+        Chooser::Choice encoding{"enc", "Encoding", {{"utf8", "UTF-8"}, {"latin1", "Latin-1"}}, ""};
+        Chooser::Choice readOnly{"ro", "Read-only", {}, ""};
+        Chooser::Choice kept{"eol", "Line endings", {{"lf", "LF"}, {"crlf", "CRLF"}}, "crlf"};
+        request = ChooserPortal::requestFor("OpenFile", "", {{"choices", QVariant::fromValue(QList<Chooser::Choice>{encoding, readOnly, kept})}}, &folder, &select);
+        QCOMPARE(request.choices.at(0).value, QString("utf8"));
+        QCOMPARE(request.choices.at(1).value, QString("false"));
+        QCOMPARE(request.choices.at(2).value, QString("crlf"));
+
         // The name a save starts under is a name too: the app says where
         // with the folder, and only the user types a path.
         request = ChooserPortal::requestFor("SaveFile", "", {{"current_name", "../../.config/autostart/x.desktop"}}, &folder, &select);
@@ -958,6 +984,13 @@ private slots:
         QCOMPARE(into.step(here, {}, {}).value("replaces").toStringList(), QStringList({"a.png"}));
         QCOMPARE(paths(into.step(here, {album}, {})), QStringList({album + "/a.png", album + "/c.png"}));
         QVERIFY(into.step(here, {album, other}, {}).isEmpty());
+        // A folder already under a file's name isn't written over: the file
+        // goes beside it, under the next free name.
+        QDir(dir.path()).mkpath("other/c.png");
+        QDir(dir.path()).mkpath("other/c (2).png");
+        const QVariantMap beside = into.step(here, {other}, {});
+        QCOMPARE(paths(beside), QStringList({other + "/a.png", other + "/c (3).png"}));
+        QVERIFY(beside.value("replaces").toStringList().isEmpty());
     }
 
     void chooserAnswersOnce()
