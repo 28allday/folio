@@ -73,10 +73,13 @@ QString Previewer::readText(const QString &path, qint64 limit) {
 QString Previewer::markdownOpening(const QString &text, int cells) {
     // A table cell is counted by its | (a row has one more than its cells,
     // which errs on the safe side). Code in fences is shown as it is, never
-    // laid out as a table, so its | don't count. A fence is indented less
-    // than four spaces (more is indented code) and closes with its own mark.
+    // laid out as a table, so its | don't count. As Markdown reads them, a
+    // fence is three or more ` or ~, indented less than four spaces (more is
+    // indented code), and only a run of the same mark at least as long, with
+    // nothing after it, closes it.
     qsizetype at = 0;
-    QStringView fence;
+    QChar fence;
+    qsizetype fenceLength = 0;
     while (at < text.size()) {
         qsizetype end = text.indexOf('\n', at);
         end = end < 0 ? text.size() : end + 1;
@@ -84,11 +87,19 @@ QString Previewer::markdownOpening(const QString &text, int cells) {
         qsizetype indent = 0;
         while (indent < 4 && indent < line.size() && line.at(indent) == ' ')
             ++indent;
-        const QStringView mark = line.mid(indent, 3);
-        if (indent < 4 && (mark == u"```" || mark == u"~~~") && (fence.isEmpty() || fence == mark))
-            fence = fence.isEmpty() ? mark : QStringView();
-        else if (fence.isEmpty())
+        const QChar mark = indent < line.size() ? line.at(indent) : QChar();
+        qsizetype run = 0;
+        while (indent < 4 && indent + run < line.size() && line.at(indent + run) == mark && (mark == '`' || mark == '~'))
+            ++run;
+        const QStringView rest = line.mid(indent + run).trimmed();
+        if (fence.isNull() && run >= 3 && !(mark == '`' && rest.contains('`'))) {
+            fence = mark;
+            fenceLength = run;
+        } else if (!fence.isNull() && mark == fence && run >= fenceLength && rest.isEmpty()) {
+            fence = QChar();
+        } else if (fence.isNull()) {
             cells -= line.count('|');
+        }
         // One line is a paragraph, however many | it has.
         if (cells < 0)
             return text.left(at > 0 ? at : end);

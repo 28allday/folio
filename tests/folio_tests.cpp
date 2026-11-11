@@ -2060,6 +2060,13 @@ private slots:
         const QString read = Previewer::readText(unicode.filePath("one-line.txt"), 131072);
         QVERIFY(!read.contains(QChar::ReplacementCharacter));
         QCOMPARE(read.size(), 131072 / 3);
+
+        // A longer fence holds shorter ones as code, and only its own length
+        // closes it: the table after it still counts.
+        QString longFence = "````\n```\nnot a close\n````\n\n";
+        for (int i = 0; i < 400; ++i)
+            longFence += "| a | b | c |\n";
+        QVERIFY(Previewer::markdownOpening(longFence, 600).count('|') <= 600 + 4);
     }
 
     void previewerStepsThroughTheFolder()
