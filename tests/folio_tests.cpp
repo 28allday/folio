@@ -1293,24 +1293,25 @@ private slots:
         Backend backend(dir.path());
         backend.describe({{"path", photo}, {"kind", "image"}, {"mime", "image/png"}});
         QVERIFY(backend.details().isEmpty());
-        QTRY_COMPARE(backend.details().value("dimensions").toString(), QString("40 × 30"));
+        QTRY_COMPARE(backend.details().value("width").toInt(), 40);
+        QCOMPARE(backend.details().value("height").toInt(), 30);
 
         // The next item starts with nothing, and what was read for one left
         // behind is dropped.
         backend.describe({{"path", photo}, {"kind", "image"}, {"mime", "image/png"}});
         backend.describe({{"path", notes}, {"kind", "text"}, {"mime", "text/plain"}});
-        QVERIFY(!backend.details().contains("dimensions"));
+        QVERIFY(!backend.details().contains("width"));
         QTRY_COMPARE(backend.details().value("text").toString(), QString("hello"));
         QThreadPool::globalInstance()->waitForDone();
         QCoreApplication::processEvents();
-        QVERIFY(!backend.details().contains("dimensions"));
+        QVERIFY(!backend.details().contains("width"));
 
         // A picture replaced by a folder of the same name doesn't keep the
         // picture's size.
         backend.describe({{"path", photo}, {"kind", "image"}, {"mime", "image/png"}});
-        QTRY_VERIFY(backend.details().contains("dimensions"));
+        QTRY_VERIFY(backend.details().contains("width"));
         backend.describe({{"path", photo}, {"kind", "folder"}, {"mime", "inode/directory"}});
-        QVERIFY(!backend.details().contains("dimensions"));
+        QVERIFY(!backend.details().contains("width"));
     }
 
     void backendReadsTrashNotesOffTheUiThread()

@@ -272,8 +272,12 @@ void Backend::describe(const QVariantMap &item, bool inTrash) {
             QImageReader reader(path);
             reader.setAutoTransform(true);
             const QSize size = reader.size();
-            if (size.isValid())
-                read.insert("dimensions", QString("%1 × %2").arg(size.width()).arg(size.height()));
+            // Numbers, not text: the pane writes them in the language's
+            // digits, and again when the language changes.
+            if (size.isValid()) {
+                read.insert("width", size.width());
+                read.insert("height", size.height());
+            }
         } else if (kind == "text") {
             // Enough of the top of the file to recognize it, never the whole
             // thing: a log can be gigabytes.

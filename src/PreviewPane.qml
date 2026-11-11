@@ -151,12 +151,13 @@ Rectangle {
                 color: theme.foreground
                 font.pixelSize: 12
             }
-            Text { visible: !!pane.info.dimensions; text: qsTr("Dimensions"); color: theme.secondaryForeground; font.pixelSize: 12 }
+            Text { visible: !!pane.info.width; text: qsTr("Dimensions"); color: theme.secondaryForeground; font.pixelSize: 12 }
             Text {
-                visible: !!pane.info.dimensions
+                visible: !!pane.info.width
                 Layout.fillWidth: true
                 horizontalAlignment: Text.AlignRight
-                text: pane.info.dimensions || ""
+                text: pane.info.width ? qsTr("%1 × %2").arg(pane.info.width.toLocaleString(Qt.locale(), "f", 0))
+                                                     .arg(pane.info.height.toLocaleString(Qt.locale(), "f", 0)) : ""
                 color: theme.foreground
                 font.pixelSize: 12
             }
