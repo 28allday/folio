@@ -61,10 +61,10 @@ QtObject {
         view.positionViewAtIndex(index, ListView.Contain)
     }
 
-    // No cursor and nothing selected: what a click on empty space leaves.
+    // No cursor, as a click on empty space leaves it. What's selected (by
+    // Ctrl+A or the rubber band since) stays selected.
     function letGo() {
         moveTo(-1)
-        backend.folder.clearSelection()
         anchor = -1
     }
 
