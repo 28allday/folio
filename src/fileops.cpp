@@ -451,15 +451,32 @@ static bool inside(const QString &folder, const QString &path) {
     return item.isDir() && !item.isSymLink() && (target == self || target.startsWith(self + '/'));
 }
 
-// A rename that never replaces what's there. A drive that can't promise
-// that (some network ones) gets the check first, as QFile::rename does.
+// A rename that never replaces what's there, failing with EEXIST when the
+// name is taken. On a drive that can't promise that (some network ones), a
+// file or link is linked under the new name, which can't replace either,
+// then let go of under the old. A folder can't be, nor anything where links
+// can't be made: that fails with EXDEV, to be copied as if across drives.
 static bool renameNoReplace(const QString &from, const QString &to) {
     const QByteArray source = QFile::encodeName(from), target = QFile::encodeName(to);
-    if (renameat2(AT_FDCWD, source.constData(), AT_FDCWD, target.constData(), RENAME_NOREPLACE) == 0)
+    if (!FileOps::drivesRefuseNoReplace
+        && renameat2(AT_FDCWD, source.constData(), AT_FDCWD, target.constData(), RENAME_NOREPLACE) == 0)
         return true;
-    if (errno != EINVAL)
+    if (!FileOps::drivesRefuseNoReplace && errno != EINVAL)
         return false;
-    return !taken(to) && ::rename(source.constData(), target.constData()) == 0;
+    struct stat item;
+    if (::lstat(source.constData(), &item) != 0)
+        return false;
+    if (S_ISDIR(item.st_mode) || ::linkat(AT_FDCWD, source.constData(), AT_FDCWD, target.constData(), 0) != 0) {
+        if (S_ISDIR(item.st_mode) || errno != EEXIST)
+            errno = EXDEV;
+        return false;
+    }
+    if (::unlink(source.constData()) == 0)
+        return true;
+    const int why = errno;
+    ::unlink(target.constData());
+    errno = why;
+    return false;
 }
 
 // Puts one item at `to`. A rename is instant on the same drive; across

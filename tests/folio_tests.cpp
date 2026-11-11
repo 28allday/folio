@@ -2143,6 +2143,41 @@ private slots:
         QCOMPARE(FileOps::originalPath(trashed), elsewhere.filePath("a.txt"));
     }
 
+    void renamesNeverReplaceWhereDrivesCantPromiseIt()
+    {
+        // A drive that can't rename without replacing still never replaces:
+        // a file or link is linked under its new name, a name that's taken
+        // is passed over for the next, and a folder is copied.
+        QTemporaryDir data, dir, to;
+        const auto restore = dataHomeAt(data.path());
+        FileOps::drivesRefuseNoReplace = true;
+        const auto reset = qScopeGuard([] { FileOps::drivesRefuseNoReplace = false; });
+        write(dir.filePath("a.txt"), "mine");
+        QDir(data.path()).mkpath("Trash/files");
+        write(data.filePath("Trash/files/a.txt"), "left behind");
+        QString error;
+        QCOMPARE(FileOps::trashOne(dir.filePath("a.txt"), &error), data.filePath("Trash/files/a.txt.2"));
+        QCOMPARE(error, QString());
+        QCOMPARE(contents(data.filePath("Trash/files/a.txt")), QByteArray("left behind"));
+        QCOMPARE(contents(data.filePath("Trash/files/a.txt.2")), QByteArray("mine"));
+        QVERIFY(!QFileInfo::exists(dir.filePath("a.txt")));
+
+        QVERIFY(QFile::link("nowhere", dir.filePath("link")));
+        QCOMPARE(FileOps::trashOne(dir.filePath("link"), &error), data.filePath("Trash/files/link"));
+        QCOMPARE(QFileInfo(data.filePath("Trash/files/link")).readSymLink(), QString("nowhere"));
+
+        QDir(dir.path()).mkdir("box");
+        write(dir.filePath("box/b.txt"), "b");
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.cut({dir.filePath("box")});
+        ops.paste(to.path());
+        QTRY_VERIFY(ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 0);
+        QCOMPARE(contents(to.filePath("box/b.txt")), QByteArray("b"));
+        QVERIFY(!QFileInfo::exists(dir.filePath("box")));
+    }
+
     void fileOpsTakeAnItemChosenTwiceOnce()
     {
         // The same item can be handed over twice (from another app's

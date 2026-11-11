@@ -203,6 +203,9 @@ public:
     static void forgetHistory();
 
     // Building blocks, kept static for tests.
+    // Has every rename go as on a drive that can't rename without
+    // replacing (some network ones), for tests.
+    static inline bool drivesRefuseNoReplace = false;
     static QMimeData *mimeDataFor(const QStringList &paths, bool cut);
     // The paths on the clipboard and whether they were cut.
     static QStringList pathsFrom(const QMimeData *data, bool *cut);
