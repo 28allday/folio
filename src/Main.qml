@@ -26,7 +26,8 @@ ApplicationWindow {
 
     property bool helpVisible: false
     property bool previewVisible: true
-    property string viewMode: "grid"
+    // Columns on a first launch; after that, whichever view was used last.
+    property string viewMode: "columns"
     property real zoom: 1
 
     // The pane keys, the sidebar and the details go to.

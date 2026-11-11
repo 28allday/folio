@@ -25,7 +25,7 @@ FocusScope {
     // Each pane has its own view. The window's own pane is the one
     // remembered between launches; the right pane of a split starts with
     // the view of the pane it was split from.
-    property string viewMode: host ? host.viewMode : "grid"
+    property string viewMode: host ? host.viewMode : "columns"
     onViewModeChanged: if (host && !closable) host.viewMode = viewMode
     // How big the grid's tiles are, in steps (Ctrl+= / Ctrl+- / Ctrl+0, or
     // Ctrl+scroll), shared and remembered the same way as the view.
