@@ -183,7 +183,7 @@ FolioMenu {
     }
     FolioMenuItem {
         shown: !fileMenu.trashView && fileMenu.forItem && fileMenu.forFiles && fileOps.canExtract(fileMenu.paths)
-        text: qsTr("Extract Here")
+        text: qsTr("Extract")
         onTriggered: fileOps.extract(fileMenu.paths)
     }
     // Each USB stick or SD card the image could go on, those too small for

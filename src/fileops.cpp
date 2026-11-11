@@ -946,8 +946,10 @@ void FileOps::compress(const QStringList &selected) {
 }
 
 bool FileOps::canExtract(const QStringList &paths) const {
-    // A lone compressed file (notes.txt.gz) is no archive to bsdtar.
-    static const QStringList single{"application/gzip", "application/x-xz", "application/zstd"};
+    // A lone compressed file (notes.txt.gz) is no archive to bsdtar, and a
+    // disk image is for burning, not unpacking.
+    static const QStringList single{"application/gzip", "application/x-xz", "application/zstd",
+                                    "application/x-iso9660-image", "application/x-cd-image"};
     for (const QString &path : paths) {
         const QFileInfo info(path);
         const QString mime = QMimeDatabase().mimeTypeForFile(info).name();

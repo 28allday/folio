@@ -1956,9 +1956,13 @@ private slots:
         QCOMPARE(contents(dir.filePath("notes/b.txt")), QByteArray("b"));
         QCOMPARE(contents(dir.filePath("more/b.txt")), QByteArray("b"));
         QCOMPARE(everything(dir.path()), QStringList({"more", "more.zip", "notes", "notes.tar.xz"}));
-        // Only archives are offered: not a lone compressed file, nor a
-        // folder.
+        // Only archives are offered: not a lone compressed file, a disk
+        // image (that's for burning), a document, nor a folder.
         write(dir.filePath("single.txt.gz"), "x");
+        write(dir.filePath("installer.iso"), QByteArray(64 * 1024, '\0'));
+        write(dir.filePath("notes.txt"), "text");
+        QVERIFY(!ops.canExtract({dir.filePath("installer.iso")}));
+        QVERIFY(!ops.canExtract({dir.filePath("notes.txt")}));
         QVERIFY(ops.canExtract({dir.filePath("notes.tar.xz"), dir.filePath("more.zip")}));
         QVERIFY(!ops.canExtract({dir.filePath("notes.tar.xz"), dir.filePath("single.txt.gz")}));
         QVERIFY(!ops.canExtract({dir.filePath("notes")}));
