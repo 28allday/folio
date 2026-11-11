@@ -12,6 +12,7 @@
 #include <QJsonObject>
 #include <QProcess>
 #include <QQmlComponent>
+#include <QQmlContext>
 #include <QQmlEngine>
 #include <QSettings>
 #include <QSignalSpy>
@@ -2100,6 +2101,60 @@ private slots:
         previewer.start(dir.filePath("album"), false, "name");
         QTRY_COMPARE(previewer.item().value("peek").toStringList(), QStringList({dir.filePath("album/a.jpg")}));
         QVERIFY(!FolderModel::toMap(FolderModel::Entry()).contains("peek"));
+    }
+
+    void gridBandHitsTheTilesBothWays()
+    {
+        // The rubber band's hit areas sit where the grid put the tiles, also
+        // mirrored with a width the columns don't divide evenly.
+        QTemporaryDir home;
+        for (const char *name : {"a", "b", "c", "d", "e", "f", "g"})
+            write(home.filePath(name), "x");
+        Backend backend(home.path());
+        backend.navigate(home.path());
+        QTRY_COMPARE(backend.folder()->rowCount(), 7);
+        Theme theme(home.filePath("theme"));
+        FileOps fileOps;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty("backend", &backend);
+        engine.rootContext()->setContextProperty("theme", &theme);
+        engine.rootContext()->setContextProperty("fileOps", &fileOps);
+        engine.rootContext()->setContextProperty("translator", QVariantMap{{"language", "en"}});
+        Thumbnails thumbnails(home.filePath("cache"), {home.filePath("none")});
+        engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\n"
+                          "Window {\n"
+                          "    property bool mirrored\n"
+                          "    width: 1003; height: 600; visible: true\n"
+                          "    Item { anchors.fill: parent\n"
+                          "        LayoutMirroring.enabled: mirrored; LayoutMirroring.childrenInherit: true\n"
+                          "        FolderGrid { id: grid; anchors.fill: parent } }\n"
+                          "    function misplaced() {\n"
+                          "        grid.forceLayout()\n"
+                          "        const band = Array.from(grid.children).concat(Array.from(grid.contentItem.children))\n"
+                          "                          .find(child => child.rectOf !== undefined)\n"
+                          "        const off = []\n"
+                          "        for (let i = 0; i < grid.count; ++i) {\n"
+                          "            if (!grid.itemAtIndex(i)) return 'no tile ' + i\n"
+                          "            const at = grid.itemAtIndex(i).mapToItem(band, 20, 12)\n"
+                          "            if (band.rectOf(i).x !== at.x || band.rectOf(i).y !== at.y)\n"
+                          "                off.push(i + ': ' + band.rectOf(i).x + ',' + band.rectOf(i).y + ' not ' + at.x + ',' + at.y)\n"
+                          "        }\n"
+                          "        return grid.count + (off.length ? ' ' + off.join('; ') : '')\n"
+                          "    }\n"
+                          "}\n",
+                          QUrl::fromLocalFile(sourceFolder() + "/GridBandTest.qml"));
+        for (const bool mirrored : {false, true}) {
+            std::unique_ptr<QObject> window(component.createWithInitialProperties({{"mirrored", mirrored}}));
+            QVERIFY2(window, qPrintable(component.errorString()));
+            auto misplaced = [&] {
+                QVariant result;
+                QMetaObject::invokeMethod(window.get(), "misplaced", Q_RETURN_ARG(QVariant, result));
+                return result.toString();
+            };
+            QTRY_COMPARE(misplaced(), QString("7"));
+        }
     }
 
     void themeFallsBack()
