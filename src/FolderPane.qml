@@ -182,17 +182,23 @@ FocusScope {
         target: backend.folder
         // A folder arriving selects where we came from (or the first item);
         // the same folder re-read (a remembered listing refreshed, or files
-        // changing on disk) keeps what was selected.
+        // changing on disk) keeps what was selected, and the cursor on its
+        // item. When that's gone (trashed, or moved away), the cursor stays
+        // on its row, so Delete pressed again takes the next item, not the
+        // first.
         function onLoaded() {
             if (!view.item)
                 return
             const pending = backend.takeSelection()
             const same = backend.folder.path === pane.loadedPath
             pane.loadedPath = backend.folder.path
+            const row = backend.folder.indexOfPath(pane.lastPath)
             if (pending)
                 view.item.select(backend.folder.indexOf(pending), false)
+            else if (same)
+                view.item.select(row >= 0 ? row : Math.min(view.item.currentIndex, backend.folder.count - 1), true)
             else
-                view.item.select(same ? backend.folder.indexOfPath(pane.lastPath) : -1, same)
+                view.item.select(-1, false)
         }
     }
 
