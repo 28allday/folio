@@ -16,9 +16,10 @@ Rectangle {
     readonly property var item: visible && folderPane ? folderPane.current : ({})
     readonly property bool hasItem: item !== undefined && item.path !== undefined
     // An item in the trash shows where it came from and when it was
-    // deleted, and offers Restore rather than Open.
-    readonly property string origin: hasItem && folderPane.inTrash ? fileOps.originalPath(item.path) : ""
-    readonly property bool trashed: origin.length > 0
+    // deleted, and offers Restore rather than Open. Until its note has been
+    // read, it's taken to have one; what's inside a trashed folder has none.
+    readonly property string origin: info.origin || ""
+    readonly property bool trashed: hasItem && folderPane.inTrash && info.origin !== ""
     function homeless(path) { return path.startsWith(places.home + "/") ? "~" + path.slice(places.home.length) : path }
     // Its type's name, and a picture's size or a text's opening lines once
     // they've been read off the UI thread.
@@ -27,7 +28,7 @@ Rectangle {
     // item: a re-read leaves another item on the cursor's row for a moment,
     // and describing that would drop what's been read of this one.
     onItemChanged: Qt.callLater(describe)
-    function describe() { backend.describe(item) }
+    function describe() { backend.describe(item, !!folderPane && folderPane.inTrash) }
 
     color: theme.darkBackground
 
@@ -126,8 +127,8 @@ Rectangle {
                 horizontalAlignment: Text.AlignRight
                 text: {
                     translator.language // Re-read when the language (and so the default locale) changes.
-                    return !pane.hasItem ? ""
-                        : (pane.trashed ? fileOps.deletedAt(pane.item.path) : pane.item.modified).toLocaleString(Qt.locale(), Locale.ShortFormat)
+                    const when = pane.trashed ? pane.info.deleted : pane.item.modified
+                    return pane.hasItem && when ? when.toLocaleString(Qt.locale(), Locale.ShortFormat) : ""
                 }
                 color: theme.foreground
                 font.pixelSize: 12

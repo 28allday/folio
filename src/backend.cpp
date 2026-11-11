@@ -209,7 +209,7 @@ QString Backend::takeSelection() {
     return name;
 }
 
-void Backend::describe(const QVariantMap &item) {
+void Backend::describe(const QVariantMap &item, bool inTrash) {
     const QString path = item.value("path").toString();
     const QString kind = item.value("kind").toString();
     const QString mime = item.value("mime").toString();
@@ -223,7 +223,7 @@ void Backend::describe(const QVariantMap &item) {
         m_details = details;
         emit detailsChanged();
     }
-    if (kind != "image" && kind != "text")
+    if (kind != "image" && kind != "text" && !inTrash)
         return;
 
     // Reading the file waits on its disk, which for a slow mount would hold
@@ -237,15 +237,21 @@ void Backend::describe(const QVariantMap &item) {
         m_details = details;
         emit detailsChanged();
     });
-    watcher->setFuture(QtConcurrent::run([path, kind] {
+    watcher->setFuture(QtConcurrent::run([path, kind, inTrash] {
         QVariantMap read;
+        // A trashed item's note: finding it looks over every mounted drive,
+        // and one that's hung would hold up the window.
+        if (inTrash) {
+            read.insert("origin", FileOps::originalPath(path));
+            read.insert("deleted", FileOps::deletedAt(path));
+        }
         if (kind == "image") {
             QImageReader reader(path);
             reader.setAutoTransform(true);
             const QSize size = reader.size();
             if (size.isValid())
                 read.insert("dimensions", QString("%1 × %2").arg(size.width()).arg(size.height()));
-        } else {
+        } else if (kind == "text") {
             // Enough of the top of the file to recognize it, never the whole
             // thing: a log can be gigabytes.
             read.insert("text", Previewer::readText(path, 6000).section('\n', 0, 40));

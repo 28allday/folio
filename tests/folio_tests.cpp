@@ -1241,6 +1241,24 @@ private slots:
         QVERIFY(!backend.details().contains("dimensions"));
     }
 
+    void backendReadsTrashNotesOffTheUiThread()
+    {
+        // Finding a trashed item's note looks over every mounted drive, so
+        // it's read with the rest of the details.
+        QTemporaryDir home;
+        const auto restore = dataHomeAt(home.path());
+        QDir().mkpath(home.filePath("Trash/files"));
+        QDir().mkpath(home.filePath("Trash/info"));
+        write(home.filePath("Trash/files/old.pdf"), "x");
+        write(home.filePath("Trash/info/old.pdf.trashinfo"),
+              "[Trash Info]\nPath=" + home.filePath("Docs/old.pdf").toUtf8() + "\nDeletionDate=2026-11-10T12:00:00\n");
+        Backend backend(home.path());
+        backend.describe({{"path", home.filePath("Trash/files/old.pdf")}, {"kind", "pdf"}, {"mime", "application/pdf"}}, true);
+        QVERIFY(!backend.details().contains("origin"));
+        QTRY_COMPARE(backend.details().value("origin").toString(), home.filePath("Docs/old.pdf"));
+        QCOMPARE(backend.details().value("deleted").toDateTime(), QDateTime(QDate(2026, 11, 10), QTime(12, 0)));
+    }
+
     void mounterOutlivedByGiosReply()
     {
         // A local folder can't be mounted, so GIO answers with an error on
