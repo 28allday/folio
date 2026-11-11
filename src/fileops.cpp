@@ -205,6 +205,12 @@ static bool inside(const QString &folder, const QString &path) {
     return item.isDir() && !item.isSymLink() && (target == self || target.startsWith(self + '/'));
 }
 
+// Whether `path` is already in `folder`, wherever links lead, so a drop
+// into a link to the folder it's in is no move either.
+static bool alreadyIn(const QString &path, const QString &folder) {
+    return QFileInfo(QFileInfo(path).absolutePath()).canonicalFilePath() == QFileInfo(folder).canonicalFilePath();
+}
+
 QStringList FileOps::transfer(const QStringList &paths, const QString &folder, Mode mode, QString *error) {
     QStringList made;
     const QString target = QDir::cleanPath(folder);
@@ -216,7 +222,7 @@ QStringList FileOps::transfer(const QStringList &paths, const QString &folder, M
         }
         const bool move = mode == Move || (mode == Drop && sameDrive(path, target));
         // Moving something into the folder it's already in does nothing.
-        if (move && QDir::cleanPath(info.absolutePath()) == target)
+        if (move && alreadyIn(path, target))
             continue;
         if (inside(target, path)) {
             *error = QObject::tr("Can't put %1 inside itself.").arg(info.fileName());
@@ -286,7 +292,7 @@ bool FileOps::canDrop(const QList<QUrl> &urls, const QString &folder) const {
         if (path == target || inside(target, path))
             return false;
         // Already there: nothing would happen.
-        if (QFileInfo(path).absolutePath() != target)
+        if (!alreadyIn(path, target))
             any = true;
     }
     return any;

@@ -1076,6 +1076,29 @@ private slots:
         QVERIFY(QFile::exists(other->filePath("b.txt")));
     }
 
+    void fileOpsDropNothingWhereItAlreadyIs()
+    {
+        // Dropping a folder onto itself, or into the folder it's in, even by
+        // a path through a link to that folder, moves nothing and makes no
+        // "(copy)".
+        QTemporaryDir home;
+        QDir(home.path()).mkpath("project/install");
+        QVERIFY(QFile::link(home.filePath("project"), home.filePath("shortcut")));
+        const QList<QUrl> install{QUrl::fromLocalFile(home.filePath("project/install"))};
+        FileOps ops;
+        QSignalSpy done(&ops, &FileOps::done);
+        for (const QString &folder : {"project/install", "project", "shortcut"}) {
+            QVERIFY2(!ops.canDrop(install, home.filePath(folder)), qPrintable(folder));
+            ops.dropInto(install, home.filePath(folder));
+        }
+        QString error;
+        QVERIFY(FileOps::transfer({home.filePath("project/install")}, home.filePath("shortcut"), FileOps::Move, &error).isEmpty());
+        QVERIFY(error.isEmpty());
+        QTest::qWait(200);
+        QCOMPARE(done.count(), 0);
+        QCOMPARE(QDir(home.filePath("project")).entryList(QDir::AllEntries | QDir::NoDotAndDotDot), QStringList({"install"}));
+    }
+
     void fileOpsDragUriLists()
     {
         // Names holding what means something in a URI ("#", "?", "%") are
