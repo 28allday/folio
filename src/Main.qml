@@ -125,6 +125,7 @@ ApplicationWindow {
                 target: win.activePane ? win.activePane.paneBackend : backend
                 onFinished: win.activePane.focusView()
                 onHelpRequested: win.helpVisible = !win.helpVisible
+                onFormatRequested: (disk) => win.activePane.formatDrive(disk)
                 Layout.topMargin: parent.parent.barHeight
                 Layout.preferredWidth: 190
                 Layout.fillHeight: true

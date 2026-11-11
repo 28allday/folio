@@ -54,6 +54,9 @@ public:
     // or card is safe to pull out), otherwise unmounts it. Off the UI
     // thread, in GIO; `failed` says why when it can't.
     Q_INVOKABLE void eject(const QString &path);
+    // Whatever shows a folder on the drive mounted at `root` leaves it,
+    // before the drive is let go of or changed.
+    Q_INVOKABLE void leave(const QString &root);
     // The hosts recorded, most recently opened first.
     QStringList opened() const;
     // The peers among `opened`, in its order, at most `limit` of them.

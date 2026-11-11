@@ -50,7 +50,7 @@ FocusScope {
     property bool cursorLetGo: false
     // While a text field has the keyboard (renaming, a password), single-key
     // and clipboard shortcuts stand aside so typing works.
-    readonly property bool typing: rename.visible || confirm.visible || clash.visible || backend.mounter.asking || pathBar.editing || pathBar.searchFocused || (!!host && host.helpVisible)
+    readonly property bool typing: rename.visible || confirm.visible || clash.visible || formatDialog.visible || backend.mounter.asking || pathBar.editing || pathBar.searchFocused || (!!host && host.helpVisible)
     readonly property bool keys: active && !typing
     // What file actions act on: everything selected, or the item under
     // the cursor when nothing is.
@@ -106,6 +106,9 @@ FocusScope {
                     qsTr("%n items will be deleted permanently. This can't be undone.", "", count),
                     qsTr("Empty Trash"), () => fileOps.emptyTrash())
     }
+
+    // Format… from a drive's menu in the sidebar.
+    function formatDrive(disk) { formatDialog.open(disk) }
 
     // Whichever pane has the keyboard is the one keys, the sidebar and the
     // details pane follow.
@@ -236,6 +239,10 @@ FocusScope {
         }
         function onFailed(message) { backend.showMessage(message) }
         function onNotice(notice) { backend.showNotice(notice) }
+        // A drive about to be formatted is left first, by every pane, and
+        // the sidebar shows it as it is afterwards.
+        function onReleasing(root) { places.leave(root) }
+        function onDrivesChanged() { places.refresh() }
     }
 
     Connections {
@@ -429,6 +436,12 @@ FocusScope {
 
     ConfirmDialog {
         id: confirm
+        anchors.fill: parent
+        onVisibleChanged: if (!visible) pane.focusView()
+    }
+
+    FormatDialog {
+        id: formatDialog
         anchors.fill: parent
         onVisibleChanged: if (!visible) pane.focusView()
     }

@@ -133,6 +133,15 @@ public:
     Q_INVOKABLE void alwaysOpenWith(const QString &path, const QString &appId);
     Q_INVOKABLE void openTerminal(const QString &folder);
 
+    // Drives, through udisks (see Disks). The disk a drive mounted at
+    // `root` is on, for its menu and the format dialog: {id, title, label},
+    // or empty when udisks doesn't know it or it holds the system.
+    Q_INVOKABLE QVariantMap driveAt(const QString &root) const;
+    // Erases the disk to one exFAT partition named `label` (at most
+    // Disks::labelLimit characters), as Omarchy's format-drive does, and
+    // mounts it again.
+    Q_INVOKABLE void format(const QString &id, const QString &label);
+
     // Stops the work under way at the next file; what's done stays done.
     Q_INVOKABLE void cancel();
 
@@ -216,6 +225,11 @@ signals:
     void notice(const QString &notice);
     void clashChanged();
     void historyChanged();
+    // A drive mounted at `root` is about to be changed: whatever shows a
+    // folder on it leaves.
+    void releasing(const QString &root);
+    // Drives were formatted, mounted or ejected.
+    void drivesChanged();
     // Work finished in `folder`, which now holds `name` (to select it).
     void done(const QString &folder, const QString &name);
 

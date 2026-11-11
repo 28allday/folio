@@ -404,6 +404,14 @@ void Places::refreshDevices() {
     m_devices = physicalDrives(mounts, QString::fromUtf8(QStorageInfo::root().device()));
 }
 
+void Places::leave(const QString &root) {
+    emit releasing(root);
+    // The process's own working directory follows the folder shown, and
+    // would hold the drive too.
+    if (const QString here = QDir::currentPath(); here == root || here.startsWith(root + "/"))
+        QDir::setCurrent(m_home);
+}
+
 void Places::eject(const QString &path) {
     QVariantMap drive;
     for (const QVariant &d : m_devices)
@@ -413,11 +421,7 @@ void Places::eject(const QString &path) {
     GMount *mount = release.isEmpty() ? nullptr : mountAt(path);
     if (!mount)
         return;
-    emit releasing(path);
-    // The process's own working directory follows the folder shown, and
-    // would hold the drive too.
-    if (const QString here = QDir::currentPath(); here == path || here.startsWith(path + "/"))
-        QDir::setCurrent(m_home);
+    leave(path);
     // Without a mount operation, a drive in use is reported as busy rather
     // than put to a question nobody here would answer, which GIO takes as a
     // cancel. Qt runs on GLib's main loop, so the answer comes back on the

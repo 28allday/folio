@@ -40,7 +40,7 @@ Rectangle {
         ["Delete", qsTr("Move to the trash")],
         ["Ctrl+Z / Ctrl+Shift+Z", qsTr("Undo / redo the last change to files (or Ctrl+Y)")],
         ["Escape", qsTr("Stop the file work under way")],
-        ["Right-click / Alt+⏎", qsTr("Everything else")],
+        ["Right-click / Alt+⏎", qsTr("Everything else, for files and for drives in the sidebar")],
         ["S / Shift+S", qsTr("Sort: name, kind, newest, oldest, size")],
         ["Ctrl+H", qsTr("Show hidden files")],
         ["F5", qsTr("Reload")],

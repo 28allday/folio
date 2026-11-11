@@ -1,4 +1,5 @@
 #include "fileops.h"
+#include "disks.h"
 #include "foldermodel.h"
 
 #include <QClipboard>
@@ -1780,6 +1781,73 @@ QProcess *FileOps::runTool(const QString &program, const QStringList &args, cons
     });
     process->start(program, args);
     return process;
+}
+
+// The disk udisks lists under `id` now, if it's still there.
+static std::optional<Disk> diskWithId(Disks &disks, const QString &id) {
+    for (const Disk &disk : disks.list())
+        if (disk.block == id)
+            return disk;
+    return std::nullopt;
+}
+
+QVariantMap FileOps::driveAt(const QString &root) const {
+    for (const Disk &disk : Disks::instance()->list())
+        if (disk.mounts.contains(root) && !Disks::holdsSystem(disk))
+            return {{"id", disk.block}, {"title", Disks::title(disk)}, {"label", disk.label}};
+    return {};
+}
+
+void FileOps::format(const QString &id, const QString &label) {
+    const QString name = label.trimmed();
+    if (!Disks::labelFits(name)) {
+        emit failed(tr("A drive's name can have at most %1 characters.").arg(Disks::labelLimit));
+        return;
+    }
+    if (!idle())
+        return;
+    const auto disks = Disks::instance();
+    const std::optional<Disk> disk = diskWithId(*disks, id);
+    if (!disk || Disks::holdsSystem(*disk)) {
+        emit failed(tr("That drive is gone."));
+        return;
+    }
+    for (const QString &root : disk->mounts)
+        emit releasing(root);
+    const QString drive = Disks::name(*disk);
+    inBackground(
+        [drive](const Job &) { return tr("Formatting %1…").arg(drive); },
+        [disks, disk = *disk, name](Job &job) {
+            Outcome result;
+            for (const QString &filesystem : disk.filesystems)
+                if (result.error = disks->unmount(filesystem); !result.error.isEmpty())
+                    return result;
+            // Cancelled while it was let go of, nothing's erased yet. Once
+            // udisks is formatting, it can't be stopped.
+            if (job.cancelled)
+                return result;
+            QString partition;
+            if (result.error = disks->makeTable(disk); !result.error.isEmpty())
+                return result;
+            if (result.error = disks->addExfat(disk, name, &partition); !result.error.isEmpty())
+                return result;
+            result.made << partition;
+            // Mounted again, it's back in the sidebar, ready to fill.
+            if (const QString error = disks->mount(partition); !error.isEmpty())
+                result.failures << error;
+            return result;
+        },
+        [this, drive](const Outcome &result, const Job &) {
+            emit drivesChanged();
+            if (!result.error.isEmpty())
+                emit failed(tr("Couldn't format %1. %2").arg(drive, result.error));
+            else if (result.made.isEmpty())
+                emit notice(tr("Stopped before formatting %1. Nothing on it was erased.").arg(drive));
+            else if (!result.failures.isEmpty())
+                emit failed(tr("Formatted %1, but couldn't mount it. %2").arg(drive, result.failures.first()));
+            else
+                emit notice(tr("Formatted %1.").arg(drive));
+        });
 }
 
 bool FileOps::idle() {

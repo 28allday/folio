@@ -18,6 +18,8 @@ Rectangle {
     signal finished()
     // The ? in the corner: show or hide the shortcuts.
     signal helpRequested()
+    // Format… in a drive's menu, with what udisks knows of the drive.
+    signal formatRequested(var disk)
     property int cursor: 0
     // The pane the sidebar acts on: the one used last.
     property var target: backend
@@ -66,10 +68,34 @@ Rectangle {
 
     Keys.onUpPressed: cursor = Math.max(0, cursor - 1)
     Keys.onDownPressed: cursor = Math.min(rows.length - 1, cursor + 1)
-    Keys.onReturnPressed: activate(cursor)
-    Keys.onEnterPressed: activate(cursor)
+    Keys.onReturnPressed: (event) => { if (!openDriveMenu(event)) activate(cursor) }
+    Keys.onEnterPressed: (event) => { if (!openDriveMenu(event)) activate(cursor) }
     Keys.onRightPressed: activate(cursor)
     Keys.onEscapePressed: finished()
+
+    // Alt+⏎ (or the Menu key) on a drive opens its menu beside it; the
+    // files' menu stands aside for it.
+    readonly property var keyedDrive: activeFocus && cursor >= devicesAt && cursor < peersAt
+                                      ? driveRows.itemAt(cursor - devicesAt) : null
+    function menuKey(event) {
+        return ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.AltModifier))
+            || event.key === Qt.Key_Menu || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))
+    }
+    Keys.onShortcutOverride: (event) => event.accepted = menuKey(event) && keyedDrive !== null
+    // Return has its own handler, which Keys calls before this one.
+    Keys.onPressed: (event) => event.accepted = openDriveMenu(event)
+    function openDriveMenu(event) {
+        if (!menuKey(event) || !keyedDrive)
+            return false
+        driveMenu.show(keyedDrive.modelData, keyedDrive)
+        return true
+    }
+
+    DriveMenu {
+        id: driveMenu
+        onOpenRequested: (path) => { sidebar.target.navigate(path); sidebar.finished() }
+        onFormatRequested: (disk) => sidebar.formatRequested(disk)
+    }
 
     // The deepest place the current folder sits under.
     readonly property string activePath: {
@@ -317,8 +343,10 @@ Rectangle {
 
             // Each drive says how much is free under its name, where there's
             // room for it, and on hover shows the button that ejects it.
+            // Right-clicked, it has a menu of what else can be done to it.
             SectionLabel { text: qsTr("Devices"); visible: places.devices.length > 0 }
             Repeater {
+                id: driveRows
                 model: places.devices
                 PlaceRow {
                     id: driveRow
@@ -337,6 +365,10 @@ Rectangle {
                         return modelData.free < 0 ? "" : Format.free(modelData.free)
                     }
                     rightPadding: eject.visible ? eject.implicitWidth + 6 : 14
+                    TapHandler {
+                        acceptedButtons: Qt.RightButton
+                        onTapped: driveMenu.show(driveRow.modelData, null)
+                    }
                     IconButton {
                         id: eject
                         anchors.right: parent.right

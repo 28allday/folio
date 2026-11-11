@@ -2497,6 +2497,76 @@ private slots:
         QCOMPARE(Disks::size(250'148'290'560), QString("250 GB"));
     }
 
+    void formattingNamesDrivesAsExfatAllows()
+    {
+        QVERIFY(Disks::labelFits("PHOTOS 2026"));
+        QVERIFY(!Disks::labelFits("PHOTOS 20266"));
+        auto fake = fakeDisks();
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.format(sanDisk().block, "Holiday Photos");
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(failed.at(0).at(0).toString(), QString("A drive's name can have at most 11 characters."));
+        QVERIFY(fake->calls.isEmpty());
+        QVERIFY(ops.busy().isEmpty());
+    }
+
+    void formattingUnmountsThenMakesOneExfatPartition()
+    {
+        auto fake = fakeDisks();
+        FileOps ops;
+        QSignalSpy notice(&ops, &FileOps::notice), releasing(&ops, &FileOps::releasing), changed(&ops, &FileOps::drivesChanged);
+        QStringList busy;
+        connect(&ops, &FileOps::busyChanged, this, [&] { busy << ops.busy(); });
+        ops.format(sanDisk().block, " Photos ");
+        QTRY_COMPARE(notice.count(), 1);
+        QCOMPARE(notice.at(0).at(0).toString(), QString("Formatted SanDisk Ultra."));
+        QCOMPARE(releasing.count(), 1);
+        QCOMPARE(releasing.at(0).at(0).toString(), QString("/run/media/me/STICK"));
+        QCOMPARE(busy.value(0), QString("Formatting SanDisk Ultra…"));
+        QCOMPARE(changed.count(), 1);
+        const QString sdb = sanDisk().block;
+        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "makeTable " + sdb, "addExfat " + sdb + " Photos",
+                                           "mount " + sdb + "1"}));
+    }
+
+    void formattingStopsAtWhatUdisksRefuses()
+    {
+        auto fake = fakeDisks();
+        fake->refuse["makeTable"] = "Permission was refused.";
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.format(sanDisk().block, "Photos");
+        QTRY_COMPARE(failed.count(), 1);
+        QCOMPARE(failed.at(0).at(0).toString(), QString("Couldn't format SanDisk Ultra. Permission was refused."));
+        const QString sdb = sanDisk().block;
+        QCOMPARE(fake->calls, (QStringList{"unmount " + sdb + "1", "makeTable " + sdb}));
+
+        // A disk gone from udisks' list isn't touched.
+        fake->calls.clear();
+        fake->disks.clear();
+        ops.format(sdb, "Photos");
+        QCOMPARE(failed.count(), 2);
+        QCOMPARE(failed.at(1).at(0).toString(), QString("That drive is gone."));
+        QVERIFY(fake->calls.isEmpty());
+    }
+
+    void drivesAreFoundByWhereTheyreMounted()
+    {
+        Disk system = sanDisk();
+        system.block = "/org/freedesktop/UDisks2/block_devices/nvme0n1";
+        system.mounts = {"/", "/run/media/me/Spare"};
+        fakeDisks({sanDisk(), system});
+        FileOps ops;
+        const QVariantMap stick = ops.driveAt("/run/media/me/STICK");
+        QCOMPARE(stick.value("id").toString(), sanDisk().block);
+        QCOMPARE(stick.value("title").toString(), QString("SanDisk Ultra · 32 GB"));
+        QCOMPARE(stick.value("label").toString(), QString("STICK"));
+        // Nothing on the system's own disk can be formatted from here.
+        QVERIFY(ops.driveAt("/run/media/me/Spare").isEmpty());
+        QVERIFY(ops.driveAt("/run/media/me/Elsewhere").isEmpty());
+    }
+
     void drivesSayWhatsFreeInTheLanguagesDigits()
     {
         QQmlEngine engine;
