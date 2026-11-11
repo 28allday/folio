@@ -65,9 +65,10 @@ FocusScope {
     }
     // An open preview stays on the selected item, followed once the
     // folder's loaded has put the cursor back on it: a re-read leaves
-    // another item on the cursor's row for a moment.
+    // another item on the cursor's row for a moment. A tailnet machine
+    // isn't a file: the preview keeps what it showed last.
     onCurrentChanged: Qt.callLater(follow)
-    function follow() { if (backend.previewing && current.path) backend.followSelection(current.path) }
+    function follow() { if (backend.previewing && current.path && current.kind !== "peer") backend.followSelection(current.path) }
 
     // In the trash, Delete means for good (after asking), and there's
     // Restore and Empty Trash. Nothing is renamed or made there: an item
