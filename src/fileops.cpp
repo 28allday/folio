@@ -110,7 +110,7 @@ QString FileOps::freeName(const QString &folder, const QString &name) {
     }
 }
 
-bool FileOps::copyRecursively(const QString &from, const QString &to, QString *error) {
+bool FileOps::copyRecursively(const QString &from, const QString &to, QString *error, bool move) {
     const QFileInfo info(from);
     if (info.isSymLink()) {
         // Links are copied as links, not followed, and as written: one
@@ -119,6 +119,8 @@ bool FileOps::copyRecursively(const QString &from, const QString &to, QString *e
             *error = QObject::tr("Couldn't copy the link %1.").arg(info.fileName());
             return false;
         }
+        if (move)
+            QFile::remove(from);
         return true;
     }
     if (!info.isDir()) {
@@ -126,6 +128,8 @@ bool FileOps::copyRecursively(const QString &from, const QString &to, QString *e
             *error = QObject::tr("Couldn't copy %1.").arg(info.fileName());
             return false;
         }
+        if (move)
+            QFile::remove(from);
         return true;
     }
     // A folder that can't be read would list as empty and be copied empty.
@@ -140,11 +144,15 @@ bool FileOps::copyRecursively(const QString &from, const QString &to, QString *e
     const QDir source(from);
     const auto entries = source.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System);
     for (const QFileInfo &entry : entries)
-        if (!copyRecursively(entry.filePath(), QDir(to).filePath(entry.fileName()), error))
+        if (!copyRecursively(entry.filePath(), QDir(to).filePath(entry.fileName()), error, move))
             return false;
     // A folder keeps its permissions, as QFile::copy keeps a file's, and gets
     // them once it's filled, so a read-only one can be.
     QFile::setPermissions(to, info.permissions());
+    // Only once it's empty: what turned up in it while the rest moved was
+    // never copied, so it stays where it is, and the folder with it.
+    if (move)
+        QDir().rmdir(from);
     return true;
 }
 
@@ -176,22 +184,19 @@ QStringList FileOps::transfer(const QStringList &paths, const QString &folder, b
         const QString name = freeName(target, info.fileName());
         const QString destination = QDir(target).filePath(name);
         // A rename is instant on the same drive; across drives a move is a
-        // copy, then removing the original only once the copy is complete.
+        // copy that removes each original once it's copied.
         if (move && QFile::rename(path, destination)) {
             made << name;
             continue;
         }
-        if (!copyRecursively(path, destination, error))
+        if (!copyRecursively(path, destination, error, move))
             break;
-        if (move) {
-            const bool removed = info.isDir() && !info.isSymLink() ? QDir(path).removeRecursively() : QFile::remove(path);
-            if (!removed) {
-                *error = QObject::tr("Copied %1, but couldn't remove the original.").arg(info.fileName());
-                made << name;
-                break;
-            }
-        }
         made << name;
+        const QFileInfo left(path);
+        if (move && (left.exists() || left.isSymLink())) {
+            *error = QObject::tr("Copied %1, but couldn't remove the original.").arg(info.fileName());
+            break;
+        }
     }
     return made;
 }

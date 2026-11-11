@@ -10,7 +10,10 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QUrl>
+#include <QtConcurrent>
 #include <QtTest>
+#include <fcntl.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "backend.h"
@@ -34,6 +37,17 @@
         else
             qputenv("XDG_DATA_HOME", old);
     });
+}
+
+// A temporary folder on another drive than QTemporaryDir's, for what has to
+// cross drives: beside the tests, when they're on another drive. Null when
+// they aren't.
+static std::unique_ptr<QTemporaryDir> elsewhere()
+{
+    auto dir = std::make_unique<QTemporaryDir>(QDir::current().filePath("drive-XXXXXX"));
+    if (!dir->isValid() || FileOps::sameDrive(dir->path(), QDir::tempPath()))
+        return {};
+    return dir;
 }
 
 class FolioTests : public QObject {
@@ -313,6 +327,51 @@ private slots:
         FileOps::transfer({to.filePath("album")}, from.filePath("inner"), false, &error);
         QCOMPARE(error, QString("Can't put album inside itself."));
         QVERIFY(!QFile::exists(to.filePath("album/inner/album")));
+    }
+
+    void fileOpsMoveAcrossDrivesLeavesWhatArrivesMeanwhile()
+    {
+        // Across drives, a move copies, then removes the original. What
+        // turns up in a folder while the rest of it copies was never copied,
+        // so it stays where it is.
+        const auto other = elsewhere();
+        if (!other)
+            QSKIP("Needs a second drive.");
+        QTemporaryDir from;
+        QDir(from.path()).mkdir("box");
+        // Copying a pipe waits until whoever writes to it is done, which
+        // holds the move after it has looked in the folder.
+        const QByteArray pipe = QFile::encodeName(from.filePath("box/pipe"));
+        QVERIFY(mkfifo(pipe.constData(), 0600) == 0);
+        QString error;
+        QFuture<QStringList> moved = QtConcurrent::run([&] {
+            return FileOps::transfer({from.filePath("box")}, other->path(), true, &error);
+        });
+        int writer = -1;
+        // Even when a check fails, the move is let go of and finishes
+        // before what it uses is gone.
+        const auto finish = qScopeGuard([&] {
+            if (writer >= 0)
+                close(writer);
+            moved.waitForFinished();
+        });
+        QVERIFY(QTest::qWaitFor([&] { return (writer = open(pipe.constData(), O_WRONLY | O_NONBLOCK)) >= 0; }));
+        write(from.filePath("box/new.txt"), "new");
+        close(std::exchange(writer, -1));
+        QCOMPARE(moved.result(), QStringList({"box"}));
+        QVERIFY(QFile::exists(from.filePath("box/new.txt")));
+        QCOMPARE(error, QString("Copied box, but couldn't remove the original."));
+        QVERIFY(!QFileInfo::exists(from.filePath("box/pipe")));
+        QVERIFY(QFileInfo::exists(other->filePath("box/pipe")));
+
+        // With nothing new, all of it goes.
+        QDir(from.path()).mkpath("album/inner");
+        write(from.filePath("album/inner/a.jpg"), "picture");
+        error.clear();
+        QCOMPARE(FileOps::transfer({from.filePath("album")}, other->path(), true, &error), QStringList({"album"}));
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QVERIFY(!QFileInfo::exists(from.filePath("album")));
+        QVERIFY(QFile::exists(other->filePath("album/inner/a.jpg")));
     }
 
     void fileOpsCopyLinksAsWritten()

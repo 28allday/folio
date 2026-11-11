@@ -97,7 +97,10 @@ public:
     // A name in `folder` that isn't taken: the name itself, or
     // "name (copy).ext", "name (copy 2).ext"...
     static QString freeName(const QString &folder, const QString &name);
-    static bool copyRecursively(const QString &from, const QString &to, QString *error);
+    // Copies `from` to `to`, a folder with all it holds. Moving, each file
+    // is removed once it's copied and each folder once it's empty; what
+    // can't be removed is left where it is.
+    static bool copyRecursively(const QString &from, const QString &to, QString *error, bool move = false);
     // The archive name for compressing these into `folder`: "name.zip" for
     // one item, "Archive.zip" for several; never one that exists.
     static QString archiveName(const QStringList &paths, const QString &folder);
