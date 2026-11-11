@@ -2692,6 +2692,20 @@ private slots:
         QVERIFY(ops.burnTargets(image).isEmpty());
     }
 
+    void burningNeverOffersTheDriveTheImageIsOn()
+    {
+        // Erasing it would erase the image too, half way through.
+        const QString image = "/run/media/me/STICK/isos/ubuntu.iso";
+        const Disk holder = sanDisk();
+        auto fake = fakeDisks({holder});
+        FileOps ops;
+        QVERIFY(ops.burnTargets(image).isEmpty());
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.burn(image, holder.identity);
+        QCOMPARE(failed.count(), 1);
+        QVERIFY(fake->calls.isEmpty());
+    }
+
     void burningWritesTheImageThenEjects()
     {
         QTemporaryDir dir;

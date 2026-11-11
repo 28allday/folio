@@ -1799,6 +1799,16 @@ static QString unchanged(Disks &disks, const Disk &disk) {
     return diskWithId(disks, disk.identity) ? QString() : FileOps::tr("The drive was changed or removed.");
 }
 
+// Whether the file at `path` is on the disk, which burning it would erase
+// half way through reading it.
+static bool holds(const Disk &disk, const QString &path) {
+    const QFileInfo info(path);
+    return std::any_of(disk.mounts.begin(), disk.mounts.end(), [&](const QString &root) {
+        const QString under = root.endsWith('/') ? root : root + '/';
+        return info.absoluteFilePath().startsWith(under) || info.canonicalFilePath().startsWith(under);
+    });
+}
+
 QVariantMap FileOps::driveAt(const QString &root) const {
     for (const Disk &disk : Disks::instance()->list())
         if (disk.mounts.contains(root) && Disks::fit(disk, 0) == Disks::Fits)
@@ -1875,7 +1885,7 @@ QVariantList FileOps::burnTargets(const QString &image) const {
     QVariantList targets;
     for (const Disk &disk : Disks::instance()->list()) {
         const Disks::Fit fit = Disks::fit(disk, size);
-        if (fit == Disks::Unfit)
+        if (fit == Disks::Unfit || holds(disk, image))
             continue;
         const QString title = Disks::title(disk);
         targets << QVariantMap{{"id", disk.identity},
@@ -1892,7 +1902,7 @@ void FileOps::burn(const QString &image, const QString &id) {
     const QFileInfo info(image);
     const auto disks = Disks::instance();
     const std::optional<Disk> disk = diskWithId(*disks, id);
-    if (!disk || Disks::fit(*disk, info.size()) != Disks::Fits) {
+    if (!disk || Disks::fit(*disk, info.size()) != Disks::Fits || holds(*disk, image)) {
         emit failed(tr("%1 can't be burned onto that drive.").arg(info.fileName()));
         return;
     }
