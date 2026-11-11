@@ -2045,6 +2045,14 @@ private slots:
         code += "```\n\nThe end.\n";
         QCOMPARE(Previewer::markdownOpening(code, 600), code);
 
+        // Four spaces before ``` make indented code, not a fence, and ~~~
+        // doesn't close a ``` fence: the table after either still counts.
+        QString rows;
+        for (int i = 0; i < 400; ++i)
+            rows += "| a | b |\n";
+        for (const QString &example : {QString("    ```\n\n"), QString("```\n~~~\n```\n\n")})
+            QVERIFY(Previewer::markdownOpening(example + rows, 600).count('|') <= 600);
+
         // A single line of three-byte characters is cut between characters,
         // never inside one.
         QTemporaryDir unicode;

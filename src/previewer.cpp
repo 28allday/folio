@@ -73,17 +73,21 @@ QString Previewer::readText(const QString &path, qint64 limit) {
 QString Previewer::markdownOpening(const QString &text, int cells) {
     // A table cell is counted by its | (a row has one more than its cells,
     // which errs on the safe side). Code in fences is shown as it is, never
-    // laid out as a table, so its | don't count.
+    // laid out as a table, so its | don't count. A fence is indented less
+    // than four spaces (more is indented code) and closes with its own mark.
     qsizetype at = 0;
-    bool fenced = false;
+    QStringView fence;
     while (at < text.size()) {
         qsizetype end = text.indexOf('\n', at);
         end = end < 0 ? text.size() : end + 1;
         const QStringView line = QStringView(text).mid(at, end - at);
-        const QStringView trimmed = line.trimmed();
-        if (trimmed.startsWith(u"```") || trimmed.startsWith(u"~~~"))
-            fenced = !fenced;
-        else if (!fenced)
+        qsizetype indent = 0;
+        while (indent < 4 && indent < line.size() && line.at(indent) == ' ')
+            ++indent;
+        const QStringView mark = line.mid(indent, 3);
+        if (indent < 4 && (mark == u"```" || mark == u"~~~") && (fence.isEmpty() || fence == mark))
+            fence = fence.isEmpty() ? mark : QStringView();
+        else if (fence.isEmpty())
             cells -= line.count('|');
         // One line is a paragraph, however many | it has.
         if (cells < 0)
