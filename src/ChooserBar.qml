@@ -42,23 +42,10 @@ FocusScope {
                      qsTr("Replace"), () => chooser.accept(now.paths))
         }
     }
-    // A folder is being picked: arriving in one, nothing in it is selected,
-    // so the answer is the folder shown until one inside it is picked on
-    // purpose. (Elsewhere the first item is selected on arrival, which would
-    // make it the answer unasked.)
+    // A folder is being picked: arriving in one, the pane selects nothing
+    // in it (see FolderPane), so the answer is the folder shown until one
+    // inside it is picked on purpose.
     readonly property bool pickingFolder: chooser.mode === "folder" || chooser.mode === "saveInto"
-    property string arrivedIn: ""
-    Connections {
-        target: bar.pane ? bar.pane.paneBackend.folder : null
-        enabled: bar.pickingFolder
-        function onLoaded() {
-            const here = bar.pane.paneBackend.path
-            if (here === bar.arrivedIn)
-                return
-            bar.arrivedIn = here
-            Qt.callLater(bar.pane.letGo)
-        }
-    }
 
     // Replace turned down, the name is what there is to change: the
     // keyboard goes back to it, not to the files.

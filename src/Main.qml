@@ -102,6 +102,10 @@ ApplicationWindow {
             rightPane.zoom = activePane.zoom
             rightPane.barExtension = Qt.binding(() => win.detailsWidth)
             rightPane.closeRequested.connect(closeSplit)
+            // It listed its folder before it was in the window, so before
+            // it could know a folder is being picked (see FolderPane).
+            if (bar && bar.pickingFolder)
+                rightPane.letGo()
         }
         rightPane.focusView()
     }

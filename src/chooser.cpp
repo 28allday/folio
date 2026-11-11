@@ -152,16 +152,18 @@ QVariantMap Chooser::step(const QString &folder, const QStringList &picked, cons
         return {};
     if (mode() == "folder")
         return answer(folders);
+    // Each file under its own name. A folder of that name can't be written
+    // over, so the file goes beside it under the next free name ("notes
+    // (2).txt"): one no folder has, and no other file here is being saved as.
+    const QDir into(folders.first());
     QStringList paths;
-    for (const QString &file : m_request.files) {
-        // A folder of that name can't be written over: the file goes beside
-        // it under the next free name, "notes (2).txt".
-        QString path = QDir(folders.first()).filePath(file);
+    for (const QString &file : m_request.files)
+        paths << into.filePath(file);
+    for (QString &path : paths) {
         const QFileInfo named(path);
-        for (int n = 2; QFileInfo(path).isDir(); ++n)
-            path = QDir(folders.first()).filePath(named.suffix().isEmpty() ? QString("%1 (%2)").arg(file).arg(n)
+        for (int n = 2; QFileInfo(path).isDir() || paths.count(path) > 1; ++n)
+            path = into.filePath(named.suffix().isEmpty() ? QString("%1 (%2)").arg(named.fileName()).arg(n)
                 : QString("%1 (%2).%3").arg(named.completeBaseName()).arg(n).arg(named.suffix()));
-        paths << path;
     }
     return answer(paths);
 }

@@ -298,7 +298,13 @@ FocusScope {
             const row = backend.folder.indexOfPath(pane.lastPath)
             if (pending || !same)
                 pane.cursorLetGo = false
-            if (pending)
+            // A file chooser picking a folder answers with what's selected,
+            // or else the folder shown: arriving somewhere selects nothing,
+            // so the first item (or the folder just come up out of) isn't
+            // the answer unasked.
+            if ((pending || !same) && pane.host && pane.host.bar && pane.host.bar.pickingFolder)
+                pane.letGo()
+            else if (pending)
                 view.item.select(backend.folder.indexOf(pending), false)
             else if (!same)
                 view.item.select(-1, false)

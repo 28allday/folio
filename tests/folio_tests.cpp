@@ -991,6 +991,12 @@ private slots:
         const QVariantMap beside = into.step(here, {other}, {});
         QCOMPARE(paths(beside), QStringList({other + "/a.png", other + "/c (3).png"}));
         QVERIFY(beside.value("replaces").toStringList().isEmpty());
+        // Nor under a name another of the files is being saved as, and the
+        // same name asked for twice is two files.
+        request.files = {"c.png", "c (3).png", "a.png", "a.png"};
+        const QStringList apart = paths(Chooser(request).step(here, {other}, {}));
+        QCOMPARE(apart, QStringList({other + "/c (4).png", other + "/c (3).png", other + "/a (2).png", other + "/a.png"}));
+        QCOMPARE(QSet<QString>(apart.begin(), apart.end()).size(), 4);
     }
 
     void chooserAnswersOnce()
