@@ -120,9 +120,15 @@ int FileOps::extensionStart(const QString &name, bool isDir) {
     return dot;
 }
 
+// Whether something is at `path`, a link that leads nowhere included.
+static bool taken(const QString &path) {
+    const QFileInfo info(path);
+    return info.exists() || info.isSymLink();
+}
+
 QString FileOps::freeName(const QString &folder, const QString &name) {
     const QDir dir(folder);
-    if (!QFileInfo::exists(dir.filePath(name)))
+    if (!taken(dir.filePath(name)))
         return name;
     const QFileInfo info(dir.filePath(name));
     const int dot = extensionStart(name, info.isDir());
@@ -131,15 +137,9 @@ QString FileOps::freeName(const QString &folder, const QString &name) {
     for (int n = 1;; ++n) {
         const QString candidate = n == 1 ? QObject::tr("%1 (copy)%2").arg(base, ext)
                                          : QObject::tr("%1 (copy %2)%3").arg(base).arg(n).arg(ext);
-        if (!QFileInfo::exists(dir.filePath(candidate)))
+        if (!taken(dir.filePath(candidate)))
             return candidate;
     }
-}
-
-// Whether something is at `path`, a link that leads nowhere included.
-static bool taken(const QString &path) {
-    const QFileInfo info(path);
-    return info.exists() || info.isSymLink();
 }
 
 static bool isFolder(const QString &path) {
@@ -211,8 +211,11 @@ static bool copyFile(const QString &from, const QString &to, FileOps::Job *job) 
     return ok;
 }
 
-bool FileOps::copyRecursively(const QString &from, const QString &to, QString *error, bool move, Job *job) {
+bool FileOps::copyRecursively(const QString &from, const QString &to, QString *error, bool move, Job *job,
+                              bool *made) {
     const QFileInfo info(from);
+    if (made)
+        *made = false;
     if (info.isSymLink()) {
         // Links are copied as links, not followed, and as written: one
         // relative to its folder points into the copy, not at the original.
@@ -220,6 +223,8 @@ bool FileOps::copyRecursively(const QString &from, const QString &to, QString *e
             *error = QObject::tr("Couldn't copy the link %1.").arg(info.fileName());
             return false;
         }
+        if (made)
+            *made = true;
         if (move)
             QFile::remove(from);
         return true;
@@ -231,6 +236,8 @@ bool FileOps::copyRecursively(const QString &from, const QString &to, QString *e
                 *error = QObject::tr("Couldn't copy %1.").arg(info.fileName());
             return false;
         }
+        if (made)
+            *made = true;
         if (move)
             QFile::remove(from);
         return true;
@@ -248,6 +255,8 @@ bool FileOps::copyRecursively(const QString &from, const QString &to, QString *e
         *error = QObject::tr("Couldn't create %1.").arg(QFileInfo(to).fileName());
         return false;
     }
+    if (made)
+        *made = true;
     const QDir source(from);
     const auto entries = source.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System);
     const bool counting = job && !job->countIn.isEmpty() && job->countIn == QDir::cleanPath(from);
@@ -332,12 +341,17 @@ static bool renameNoReplace(const QString &from, const QString &to) {
 // Puts one item at `to`. A rename is instant on the same drive; across
 // drives a move is a copy that removes each original once it's copied. A
 // link is made again rather than renamed, which across drives would copy
-// what it leads to.
-static bool put(const QString &from, const QString &to, bool move, QString *error, FileOps::Job *job) {
+// what it leads to. `made` says whether anything arrived at `to`, even when
+// it didn't all.
+static bool put(const QString &from, const QString &to, bool move, QString *error, FileOps::Job *job,
+                bool *made = nullptr) {
     const QFileInfo info(from);
-    if (move && !info.isSymLink() && renameNoReplace(from, to))
+    if (move && !info.isSymLink() && renameNoReplace(from, to)) {
+        if (made)
+            *made = true;
         return true;
-    if (!FileOps::copyRecursively(from, to, error, move, job)) {
+    }
+    if (!FileOps::copyRecursively(from, to, error, move, job, made)) {
         // Each original went as it was copied, so what arrived is now the
         // only copy of it: it's said to be only part.
         if (move && taken(to) && !error->isEmpty())
@@ -352,14 +366,16 @@ static bool put(const QString &from, const QString &to, bool move, QString *erro
 }
 
 // Notes what putting `from` at `to` changed, for undo: a move that finished
-// can be moved back, and a copy (even one that stopped partway) can go to
-// the trash.
-static void note(QList<FileOps::Step> *steps, const QString &from, const QString &to, bool move, bool finished) {
+// can be moved back, and a copy that made something (even one that stopped
+// partway) can go to the trash. What was at `to` already, and stayed when
+// the copy failed, was never the copy's.
+static void note(QList<FileOps::Step> *steps, const QString &from, const QString &to, bool move, bool finished,
+                 bool made) {
     if (!steps)
         return;
     if (move && finished)
         *steps << FileOps::Step{false, to, from};
-    else if (!move && taken(to))
+    else if (!move && made)
         *steps << FileOps::Step{true, to, {}};
 }
 
@@ -368,7 +384,7 @@ static void note(QList<FileOps::Step> *steps, const QString &from, const QString
 // read, a full drive, a cancel), what was there is put back, so a replace
 // that fails never leaves the place empty.
 static bool putReplacing(const QString &from, const QString &to, bool move, bool replacing, QString *error,
-                         FileOps::Job *job, QList<FileOps::Step> *steps) {
+                         FileOps::Job *job, QList<FileOps::Step> *steps, bool *made = nullptr) {
     QString trashed;
     if (replacing) {
         QString why;
@@ -381,8 +397,11 @@ static bool putReplacing(const QString &from, const QString &to, bool move, bool
         if (!trashed.isEmpty() && steps)
             *steps << FileOps::Step{true, to, trashed};
     }
-    const bool finished = put(from, to, move, error, job);
-    note(steps, from, to, move, finished);
+    bool arrived = false;
+    const bool finished = put(from, to, move, error, job, &arrived);
+    note(steps, from, to, move, finished, arrived);
+    if (made)
+        *made = arrived;
     if (!finished && !trashed.isEmpty() && !taken(to)) {
         QString why;
         if (!FileOps::restoreOne(trashed, &why).isEmpty() && steps)
@@ -507,11 +526,12 @@ QStringList FileOps::transfer(const QStringList &paths, const QString &folder, M
         // A single folder counts what's in it, so there's more to count.
         if (job && outer.size() == 1 && isFolder(path))
             job->countIn = QDir::cleanPath(path);
-        const bool finished = putReplacing(path, destination, move, replacing, error, job, steps);
+        bool arrived = false;
+        const bool finished = putReplacing(path, destination, move, replacing, error, job, steps, &arrived);
         if (!finished) {
             // What arrived of a move is now the only copy of it, and what was
             // copied before a cancel stays: either is shown.
-            if (taken(destination) && (move || error->isEmpty()))
+            if (arrived && (move || error->isEmpty()))
                 made << name;
             break;
         }

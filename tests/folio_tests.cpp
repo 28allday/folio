@@ -1432,6 +1432,30 @@ private slots:
         QCOMPARE(steps[0].other, trashed);
     }
 
+    void fileOpsKeepBothBesideALinkThatLeadsNowhere()
+    {
+        // A link that leads nowhere takes its name: Keep Both copies beside
+        // it, and the link, never the copy's, is never noted for undo to
+        // send to the trash.
+        QTemporaryDir from, to;
+        write(from.filePath("a.txt"), "a");
+        QVERIFY(QFile::link(to.filePath("gone"), to.filePath("a.txt")));
+        QCOMPARE(FileOps::freeName(to.path(), "a.txt"), QString("a (copy).txt"));
+        QString error;
+        QList<FileOps::Step> steps;
+        QCOMPARE(FileOps::transfer({from.filePath("a.txt")}, to.path(), FileOps::Copy, &error, {}, nullptr, &steps),
+                 QStringList({"a (copy).txt"}));
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QCOMPARE(steps.size(), 1);
+        QCOMPARE(steps[0].path, to.filePath("a (copy).txt"));
+        QVERIFY(QFileInfo(to.filePath("a.txt")).isSymLink());
+
+        // A copy that can't make its item says it made nothing.
+        bool made = true;
+        QVERIFY(!FileOps::copyRecursively(from.filePath("a.txt"), to.filePath("a.txt"), &error, false, nullptr, &made));
+        QVERIFY(!made);
+    }
+
     void fileOpsReplaceThatFailsPutsTheOldOneBack()
     {
         // What's replaced goes to the trash first; when nothing takes its
