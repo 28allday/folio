@@ -391,23 +391,33 @@ void FileOps::shareTaildrop(const QStringList &paths, const QString &host) {
 }
 
 void FileOps::trash(const QStringList &paths) {
-    if (paths.isEmpty())
+    if (paths.isEmpty() || !m_busy.isEmpty())
         return;
+    setBusy(tr("Moving %n items to the trash…", "", paths.size()));
+    auto *watcher = new QFutureWatcher<QStringList>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher] {
+        watcher->deleteLater();
+        setBusy({});
+        if (const QStringList failedNames = watcher->result(); !failedNames.isEmpty())
+            emit failed(tr("Couldn't move to the trash: %1").arg(failedNames.join(", ")));
+    });
     // GIO follows the freedesktop Trash spec, including each drive's own
-    // .Trash folder, so Restore in any file manager puts things back.
-    QStringList failedNames;
-    for (const QString &path : outermost(paths)) {
-        GFile *file = g_file_new_for_path(path.toUtf8().constData());
-        GError *error = nullptr;
-        if (!g_file_trash(file, nullptr, &error)) {
-            failedNames << QFileInfo(path).fileName() + (error ? QStringLiteral(" (") + QString::fromUtf8(error->message) + ")" : QString());
-            if (error)
-                g_error_free(error);
+    // .Trash folder, so Restore in any file manager puts things back. It
+    // takes one item at a time, which on a slow drive adds up.
+    watcher->setFuture(QtConcurrent::run([paths] {
+        QStringList failedNames;
+        for (const QString &path : outermost(paths)) {
+            GFile *file = g_file_new_for_path(path.toUtf8().constData());
+            GError *error = nullptr;
+            if (!g_file_trash(file, nullptr, &error)) {
+                failedNames << QFileInfo(path).fileName() + (error ? QStringLiteral(" (") + QString::fromUtf8(error->message) + ")" : QString());
+                if (error)
+                    g_error_free(error);
+            }
+            g_object_unref(file);
         }
-        g_object_unref(file);
-    }
-    if (!failedNames.isEmpty())
-        emit failed(tr("Couldn't move to the trash: %1").arg(failedNames.join(", ")));
+        return failedNames;
+    }));
 }
 
 QString FileOps::homeTrash() {
@@ -536,21 +546,34 @@ int FileOps::trashCount() const {
 }
 
 void FileOps::restore(const QStringList &paths) {
-    QStringList failures;
-    QString last;
-    for (const QString &path : paths) {
-        QString error;
-        const QString to = restoreOne(path, &error);
-        if (to.isEmpty())
-            failures << error;
-        else
-            last = to;
-    }
-    if (!failures.isEmpty())
-        emit failed(failures.join(' '));
-    else if (!last.isEmpty())
-        emit notice(paths.size() == 1 ? tr("Restored %1 to %2.").arg(QFileInfo(last).fileName(), QFileInfo(last).absolutePath())
-                                      : tr("Restored %n items.", "", paths.size()));
+    if (paths.isEmpty() || !m_busy.isEmpty())
+        return;
+    // Restoring across drives copies, which for a folder can take a while.
+    setBusy(tr("Restoring %n items…", "", paths.size()));
+    auto *watcher = new QFutureWatcher<QPair<QStringList, QString>>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, count = paths.size()] {
+        watcher->deleteLater();
+        setBusy({});
+        const auto [failures, last] = watcher->result();
+        if (!failures.isEmpty())
+            emit failed(failures.join(' '));
+        else if (!last.isEmpty())
+            emit notice(count == 1 ? tr("Restored %1 to %2.").arg(QFileInfo(last).fileName(), QFileInfo(last).absolutePath())
+                                   : tr("Restored %n items.", "", count));
+    });
+    watcher->setFuture(QtConcurrent::run([paths] {
+        QStringList failures;
+        QString last;
+        for (const QString &path : paths) {
+            QString error;
+            const QString to = restoreOne(path, &error);
+            if (to.isEmpty())
+                failures << error;
+            else
+                last = to;
+        }
+        return qMakePair(failures, last);
+    }));
 }
 
 void FileOps::deleteForever(const QStringList &paths) {

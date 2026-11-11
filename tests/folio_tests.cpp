@@ -810,6 +810,37 @@ private slots:
         QVERIFY(QFile::exists(trash + "/files/info/a.trashinfo"));
     }
 
+    void trashAndRestoreRunInTheBackground()
+    {
+        // Trashing asks GIO about each item, and restoring can copy a whole
+        // folder from another drive, so neither holds up the window: each
+        // shows that it's busy, and says how it went once it's done.
+        QTemporaryDir data;
+        const auto restore = dataHomeAt(data.path());
+        const QString trash = data.filePath("Trash");
+        QDir().mkpath(trash + "/files");
+        QDir().mkpath(trash + "/info");
+        write(trash + "/files/a.txt", "a");
+        write(trash + "/info/a.txt.trashinfo", "[Trash Info]\nPath=" + data.filePath("a.txt").toUtf8() + "\n");
+        FileOps ops;
+        QSignalSpy notice(&ops, &FileOps::notice), failed(&ops, &FileOps::failed);
+        ops.restore({trash + "/files/a.txt"});
+        QVERIFY(!ops.busy().isEmpty());
+        QCOMPARE(notice.count(), 0);
+        QTRY_COMPARE(notice.count(), 1);
+        QVERIFY(ops.busy().isEmpty());
+        QCOMPARE(notice.first().first().toString(), QString("Restored a.txt to %1.").arg(data.path()));
+        QVERIFY(QFile::exists(data.filePath("a.txt")));
+
+        // What's no longer there fails before GIO goes near a trash.
+        ops.trash({data.filePath("gone.txt")});
+        QVERIFY(!ops.busy().isEmpty());
+        QCOMPARE(failed.count(), 0);
+        QTRY_COMPARE(failed.count(), 1);
+        QVERIFY(ops.busy().isEmpty());
+        QVERIFY(failed.first().first().toString().startsWith("Couldn't move to the trash: gone.txt ("));
+    }
+
     void trashTakesNothingButDeletes()
     {
         // A paste or a drop into the trash would leave items with no note

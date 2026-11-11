@@ -3,6 +3,8 @@
   "Folder · %n items": { "one": "Folder · %n item", "other": "Folder · %n items" },
   "Copying %n items…": { "one": "Copying %n item…", "other": "Copying %n items…" },
   "Moving %n items…": { "one": "Moving %n item…", "other": "Moving %n items…" },
+  "Moving %n items to the trash…": { "one": "Moving %n item to the trash…", "other": "Moving %n items to the trash…" },
+  "Restoring %n items…": { "one": "Restoring %n item…", "other": "Restoring %n items…" },
   "Deleting %n items…": { "one": "Deleting %n item…", "other": "Deleting %n items…" },
   "Couldn't delete %n items.": { "one": "Couldn't delete %n item.", "other": "Couldn't delete %n items." },
   "Emptied the trash: %n items deleted.": { "one": "Emptied the trash: %n item deleted.", "other": "Emptied the trash: %n items deleted." },
