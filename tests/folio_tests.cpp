@@ -667,6 +667,26 @@ private slots:
         QVERIFY(QFile::exists(copies.filePath("restored/a.jpg")));
     }
 
+    void fileOpsKeepWhatsChosenBeyondALink()
+    {
+        // A link is copied as a link, not gone into, so something chosen
+        // through it (Recents lists both) is still copied in its own right.
+        QTemporaryDir from, to;
+        QDir(from.path()).mkpath("real/inner");
+        write(from.filePath("real/inner/a.txt"), "a");
+        QVERIFY(QFile::link("real", from.filePath("link")));
+        QDir(from.path()).mkdir("box");
+        QVERIFY(QFile::link("../real", from.filePath("box/through")));
+        QString error;
+        const QStringList chosen{from.filePath("link"), from.filePath("link/inner/a.txt"),
+                                 from.filePath("box"), from.filePath("box/through/inner/a.txt")};
+        QCOMPARE(FileOps::transfer(chosen, to.path(), FileOps::Copy, &error),
+                 QStringList({"link", "a.txt", "box", "a (copy).txt"}));
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QVERIFY(QFileInfo(to.filePath("link")).isSymLink());
+        QVERIFY(QFileInfo(to.filePath("box/through")).isSymLink());
+    }
+
     void fileOpsWeedOutWhatsInsideQuickly()
     {
         // Select All in a big folder hands over every item. Comparing each
