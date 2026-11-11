@@ -3126,6 +3126,20 @@ private slots:
         QVERIFY(fake->calls.isEmpty());
     }
 
+    void formattingNeedsWhatMakesTheFilesystem()
+    {
+        // Without mkfs.exfat, the drive would be erased and left empty.
+        auto fake = fakeDisks();
+        fake->missing = {"exfat"};
+        FileOps ops;
+        QSignalSpy failed(&ops, &FileOps::failed);
+        ops.format(sanDisk().identity, "Photos");
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(failed.at(0).at(0).toString(), QString("This computer can't make exFAT drives."));
+        QVERIFY(ops.busy().isEmpty());
+        QVERIFY(fake->calls.isEmpty());
+    }
+
     void formattingExt4HandsTheDriveToItsOwner()
     {
         // A new ext4 filesystem belongs to root unless udisks is told to

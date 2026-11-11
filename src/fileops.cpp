@@ -2108,9 +2108,15 @@ void FileOps::format(const QString &id, const QString &label, const QString &typ
         emit failed(tr("%1 keeps at most %2 characters of a drive's name.").arg(QString::fromLatin1(fs->name)).arg(fs->labelLimit));
         return;
     }
+    // Asked before anything's erased: without its mkfs, the drive would be
+    // left with no partition at all.
+    const auto disks = Disks::instance();
+    if (!disks->canFormat(type)) {
+        emit failed(tr("This computer can't make %1 drives.").arg(QString::fromLatin1(fs->name)));
+        return;
+    }
     if (!idle(Lane::Drive))
         return;
-    const auto disks = Disks::instance();
     const std::optional<Disk> disk = diskWithId(*disks, id);
     if (!disk || Disks::fit(*disk, 0) != Disks::Fits) {
         emit failed(tr("That drive is gone."));
