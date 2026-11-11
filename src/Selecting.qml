@@ -41,7 +41,16 @@ QtObject {
         moveTo(index)
     }
 
-    // Shift+arrow: extend from the anchor to where the cursor goes.
+    // Shift+arrow, `step` items on (0 for any other key): extends the
+    // selection from the anchor.
+    function extendBy(event, step) {
+        if (!(event.modifiers & Qt.ShiftModifier) || step === 0)
+            return
+        extendTo(view.currentIndex + step)
+        event.accepted = true
+    }
+
+    // Extends from the anchor to where the cursor goes.
     function extendTo(index) {
         if (index < 0 || index >= view.count)
             return
@@ -52,11 +61,17 @@ QtObject {
         view.positionViewAtIndex(index, ListView.Contain)
     }
 
-    // Puts the cursor on `name` (or the first item). `keep` leaves a
+    // No cursor, as a click on empty space leaves it. What's selected (by
+    // Ctrl+A or the rubber band since) stays selected.
+    function letGo() {
+        moveTo(-1)
+        anchor = -1
+    }
+
+    // Puts the cursor on `row` (or, for -1, the first item). `keep` leaves a
     // selection of several alone, for a folder that was only re-read.
-    function select(name, keep) {
-        const found = name ? backend.folder.indexOf(name) : -1
-        const index = found >= 0 ? found : (view.count > 0 ? 0 : -1)
+    function select(row, keep) {
+        const index = row >= 0 ? row : (view.count > 0 ? 0 : -1)
         moveTo(index)
         if (!(keep && backend.folder.selectedCount > 0)) {
             backend.folder.selectOnly(index)
@@ -67,9 +82,12 @@ QtObject {
     }
 
     // Right-click on an item outside the selection selects just it, so
-    // the menu acts on what was clicked.
-    function menuAt(index) {
+    // the menu acts on what was clicked. Returns the item, or null for
+    // empty space.
+    function menuAt(point) {
+        const index = view.indexAt(point.position.x + view.contentX, point.position.y + view.contentY)
         if (index >= 0 && !backend.folder.isSelected(index))
             click(index, 0)
+        return index >= 0 ? backend.folder.get(index) : null
     }
 }

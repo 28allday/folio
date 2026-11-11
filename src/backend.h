@@ -19,12 +19,15 @@ class Backend : public QObject {
     Q_PROPERTY(QString path READ path NOTIFY pathChanged)
     Q_PROPERTY(QString title READ title NOTIFY pathChanged)
     Q_PROPERTY(QVariantList crumbs READ crumbs NOTIFY pathChanged)
-    Q_PROPERTY(bool canBack READ canBack NOTIFY pathChanged)
-    Q_PROPERTY(bool canForward READ canForward NOTIFY pathChanged)
     Q_PROPERTY(QString message READ message NOTIFY messageChanged)
     Q_PROPERTY(QString notice READ notice NOTIFY noticeChanged)
     Q_PROPERTY(QString busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(bool previewing READ previewing NOTIFY previewingChanged)
+    // What the details pane shows beyond the listing, for the item last
+    // given to describe(): its type's name, and once they've been read in
+    // the background, a picture's dimensions, a text's opening lines, or a
+    // trashed item's origin and deletion time.
+    Q_PROPERTY(QVariantMap details READ details NOTIFY detailsChanged)
 
 public:
     explicit Backend(const QString &home = {}, QObject *parent = nullptr);
@@ -55,7 +58,8 @@ public:
     Q_INVOKABLE void showNotice(const QString &notice);
     // Selects `name` the next time the folder loads (after file work).
     Q_INVOKABLE void expectSelection(const QString &name) { m_pendingSelection = name; }
-    Q_INVOKABLE QVariantMap details(const QString &path, const QString &kind, const QString &mime) const;
+    QVariantMap details() const { return m_details; }
+    Q_INVOKABLE void describe(const QVariantMap &item, bool inTrash = false);
     // The item to select once the folder has loaded (where we came from, or
     // what "Show in folder" asked for); empty means the first item.
     Q_INVOKABLE QString takeSelection();
@@ -78,8 +82,6 @@ public:
     void showFolder(const QString &path);
     void showItem(const QString &path);
 
-    static QString gvfsRoot();
-    QString trashPath() const;
     static QString expandTyped(const QString &text, const QString &home, const QString &current);
     static QString complete(const QString &text, const QString &home, const QString &current);
 
@@ -89,12 +91,17 @@ signals:
     void noticeChanged();
     void busyChanged();
     void previewingChanged();
+    void detailsChanged();
     void newWindowRequested(const QString &path);
     void selectRequested(const QString &name);
     void activateRequested();
 
 private:
-    void go(const QString &path, bool record);
+    static QString gvfsRoot();
+    QString trashPath() const;
+    // False when `path` isn't a folder (any more), which is said in the
+    // window and leaves everything as it was.
+    bool go(const QString &path, bool record);
     void setMessage(const QString &message);
     void setBusy(const QString &busy);
 
@@ -110,5 +117,13 @@ private:
     Mounter m_mounter;
     QString m_mountHost;
     QProcess m_preview;
+    // Set while Folio closes the preview itself, which isn't a crash.
+    bool m_closingPreview = false;
     QString m_previewed;
+    QVariantMap m_details;
+    // Whose details they are (the path and its type, as a file can be
+    // replaced by a folder of the same name), and the newest describe(),
+    // which a reading has to match to be shown.
+    QString m_described;
+    quint64 m_describing = 0;
 };

@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Controls.Material
 import QtQuick.Layouts
 
 // One folder pane: its path bar, problems banner and the files (grid,
@@ -15,6 +14,7 @@ FocusScope {
     readonly property var host: ApplicationWindow.window
     readonly property bool active: !!host && host.activePane === pane
     readonly property var paneBackend: backend
+    readonly property var paneFileOps: fileOps
     property bool closable: false
     signal closeRequested()
     // How far this pane's path bar reaches right, over the details column,
@@ -22,50 +22,61 @@ FocusScope {
     property int barExtension: 0
     property int barLeft: 0
 
+    // Each pane has its own view. The window's own pane is the one
+    // remembered between launches; the right pane of a split starts with
+    // the view of the pane it was split from.
     property string viewMode: host ? host.viewMode : "grid"
-    onViewModeChanged: if (host && active) host.viewMode = viewMode
+    onViewModeChanged: if (host && !closable) host.viewMode = viewMode
     function cycleView() {
         viewMode = viewMode === "grid" ? "list" : viewMode === "list" ? "columns" : "grid"
     }
 
-    // The selected name, carried across a switch of view.
-    property string lastName: ""
+    // The cursor's item, carried across a switch of view and a re-read of
+    // the folder. By path: Recents can list two files of the same name.
+    property string lastPath: ""
     property string loadedPath: ""
+    // Set when a click on empty space lets go of the cursor: a re-read or a
+    // switch of view leaves it let go of, until it moves again or another
+    // folder arrives.
+    property bool cursorLetGo: false
     // While a text field has the keyboard (renaming, a password), single-key
     // and clipboard shortcuts stand aside so typing works.
     readonly property bool typing: rename.visible || confirm.visible || backend.mounter.asking || pathBar.editing || pathBar.searchFocused || (!!host && host.helpVisible)
     readonly property bool keys: active && !typing
     // What file actions act on: everything selected, or the item under
     // the cursor when nothing is.
-    readonly property var selectedPaths: backend.folder.selectedCount > 0 ? backend.folder.selectedPaths()
-                                       : (current.path ? [current.path] : [])
+    function selectedPaths() {
+        return backend.folder.selectedCount > 0 ? backend.folder.selectedPaths() : (current.path ? [current.path] : [])
+    }
     readonly property var current: {
         // Re-read when the folder changes underneath the selection.
         backend.folder.count
         const index = view.item ? view.item.currentIndex : -1
         return index >= 0 ? backend.folder.get(index) : ({})
     }
-    onCurrentChanged: {
-        if (current.name)
-            lastName = current.name
-        // An open preview stays on the selected item.
-        if (backend.previewing && current.path)
-            backend.followSelection(current.path)
-    }
+    // An open preview stays on the selected item, followed once the
+    // folder's loaded has put the cursor back on it: a re-read leaves
+    // another item on the cursor's row for a moment.
+    onCurrentChanged: Qt.callLater(follow)
+    function follow() { if (backend.previewing && current.path) backend.followSelection(current.path) }
 
     // In the trash, Delete means for good (after asking), and there's
-    // Restore and Empty Trash.
+    // Restore and Empty Trash. Nothing is renamed or made there: an item
+    // without its note (or under another name) can't be restored.
     readonly property bool inTrash: fileOps.inTrash(backend.path)
     function deleteSelected() {
-        const paths = pane.selectedPaths
+        const paths = pane.selectedPaths()
+        if (pane.inTrash)
+            confirmDelete(paths)
+        else
+            fileOps.trash(paths)
+    }
+    function confirmDelete(paths) {
         if (paths.length === 0)
             return
-        if (!pane.inTrash) {
-            fileOps.trash(paths)
-            return
-        }
+        const name = paths[0].slice(paths[0].lastIndexOf("/") + 1)
         confirm.ask(qsTr("Delete for good?"),
-                    paths.length === 1 ? qsTr("%1 will be deleted permanently. This can't be undone.").arg(pane.current.name)
+                    paths.length === 1 ? qsTr("%1 will be deleted permanently. This can't be undone.").arg(name)
                                        : qsTr("%n items will be deleted permanently. This can't be undone.", "", paths.length),
                     qsTr("Delete"), () => fileOps.deleteForever(paths))
     }
@@ -83,20 +94,8 @@ FocusScope {
     onActiveFocusChanged: if (activeFocus && host) host.activePane = pane
     function focusView() { if (view.item) view.item.focusView() }
 
-    function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
-
-    function formatSize(bytes) {
-        const units = [qsTr("B"), qsTr("KB"), qsTr("MB"), qsTr("GB"), qsTr("TB")]
-        let i = 0
-        let value = bytes
-        while (value >= 1000 && i < units.length - 1) { value /= 1000; ++i }
-        return value.toLocaleString(Qt.locale(), "f", i === 0 ? 0 : 1) + " " + units[i]
-    }
-
-    // Pins the selected folder, or the folder being shown when a file is
-    // selected; pressed again, unpins it.
-    function togglePin() {
-        const target = current.isDir ? current.path : backend.path
+    // Pins a folder to the sidebar, or unpins it when it's pinned already.
+    function togglePin(target) {
         if (places.isPinned(target)) {
             places.unpin(target)
             return
@@ -107,13 +106,13 @@ FocusScope {
     }
 
     Shortcut { sequence: "Space"; enabled: pane.keys; onActivated: backend.togglePreview(pane.current.path || "") }
-    Shortcut { sequences: [StandardKey.Copy]; enabled: pane.keys; onActivated: fileOps.copy(pane.selectedPaths) }
-    Shortcut { sequences: [StandardKey.Cut]; enabled: pane.keys; onActivated: fileOps.cut(pane.selectedPaths) }
+    Shortcut { sequences: [StandardKey.Copy]; enabled: pane.keys; onActivated: fileOps.copy(pane.selectedPaths()) }
+    Shortcut { sequences: [StandardKey.Cut]; enabled: pane.keys; onActivated: fileOps.cut(pane.selectedPaths()) }
     Shortcut { sequences: [StandardKey.Paste]; enabled: pane.keys; onActivated: fileOps.paste(backend.path) }
     // "Yank": the selected path (or the folder's) as text, for a terminal.
-    Shortcut { sequence: "Ctrl+Shift+C"; enabled: pane.keys; onActivated: fileOps.yank(pane.selectedPaths.length > 0 ? pane.selectedPaths : [backend.path]) }
+    Shortcut { sequence: "Ctrl+Shift+C"; enabled: pane.keys; onActivated: { const paths = pane.selectedPaths(); fileOps.yank(paths.length > 0 ? paths : [backend.path]) } }
     Shortcut { sequence: "Delete"; enabled: pane.keys; onActivated: pane.deleteSelected() }
-    Shortcut { sequence: "F2"; enabled: pane.keys; onActivated: if (pane.current.path) rename.open(pane.current) }
+    Shortcut { sequence: "F2"; enabled: pane.keys && !pane.inTrash; onActivated: if (pane.current.path) rename.open(pane.current) }
     Shortcut { sequences: [StandardKey.SelectAll]; enabled: pane.keys; onActivated: backend.folder.selectAll() }
     // Escape narrows a selection of several back to the cursor, then ends
     // a search.
@@ -137,46 +136,65 @@ FocusScope {
             fileMenu.show(pane.current.path ? pane.current : null, backend.path, anchor)
         }
     }
-    Shortcut { sequence: "Ctrl+Shift+D"; enabled: pane.keys; onActivated: if (pane.current.path) fileOps.duplicate(pane.current.path) }
+    Shortcut { sequence: "Ctrl+Shift+D"; enabled: pane.keys && !pane.inTrash; onActivated: if (pane.current.path) fileOps.duplicate(pane.current.path) }
     Shortcut { sequences: [StandardKey.New]; enabled: pane.keys; onActivated: backend.newWindow() }
-    Shortcut { sequence: "Ctrl+Shift+N"; enabled: pane.keys; onActivated: fileOps.newFolder(backend.path) }
+    Shortcut { sequence: "Ctrl+Shift+N"; enabled: pane.keys && !pane.inTrash; onActivated: fileOps.newFolder(backend.path) }
     Shortcut { sequences: ["Ctrl+L", "Alt+D"]; enabled: pane.keys; onActivated: pathBar.editPath() }
-    Shortcut { sequence: "Ctrl+D"; enabled: pane.active; onActivated: pane.togglePin() }
+    // Pins the selected folder, or the folder being shown when a file is
+    // selected; pressed again, unpins it.
+    Shortcut { sequence: "Ctrl+D"; enabled: pane.active; onActivated: pane.togglePin(pane.current.isDir ? pane.current.path : backend.path) }
     Shortcut { sequence: "Ctrl+1"; enabled: pane.active; onActivated: pane.viewMode = "grid" }
     Shortcut { sequence: "Ctrl+2"; enabled: pane.active; onActivated: pane.viewMode = "list" }
     Shortcut { sequence: "Ctrl+3"; enabled: pane.active; onActivated: pane.viewMode = "columns" }
     Shortcut { sequences: ["Return", "Enter"]; enabled: pane.keys && pane.activeFocus; onActivated: if (pane.current.path) backend.open(pane.current.path) }
     Shortcut { sequences: ["Backspace", "Alt+Up"]; enabled: pane.keys; onActivated: backend.goUp() }
-    Shortcut { sequences: ["Alt+Left", StandardKey.Back]; enabled: pane.active; onActivated: backend.back() }
-    Shortcut { sequences: ["Alt+Right", StandardKey.Forward]; enabled: pane.active; onActivated: backend.forward() }
+    Shortcut { sequences: ["Alt+Left", "Back"]; enabled: pane.active; onActivated: backend.back() }
+    Shortcut { sequences: ["Alt+Right", "Forward"]; enabled: pane.active; onActivated: backend.forward() }
     Shortcut { sequence: "Alt+Home"; enabled: pane.active; onActivated: backend.navigate(places.home) }
     Shortcut { sequence: "Ctrl+H"; enabled: pane.active; onActivated: backend.folder.showHidden = !backend.folder.showHidden }
     // S steps through the sort orders, Shift+S back.
-    function stepSort(by) {
-        const modes = ["name", "kind", "modified", "oldest", "size"]
-        backend.folder.sortMode = modes[(modes.indexOf(backend.folder.sortMode) + by + modes.length) % modes.length]
-    }
-    Shortcut { sequence: "S"; enabled: pane.keys; onActivated: pane.stepSort(1) }
-    Shortcut { sequence: "Shift+S"; enabled: pane.keys; onActivated: pane.stepSort(-1) }
-    Shortcut { sequences: ["F5", StandardKey.Refresh]; enabled: pane.active; onActivated: { backend.folder.reload(); places.refresh() } }
+    Shortcut { sequence: "S"; enabled: pane.keys; onActivated: pathBar.stepSort(1) }
+    Shortcut { sequence: "Shift+S"; enabled: pane.keys; onActivated: pathBar.stepSort(-1) }
+    Shortcut { sequences: ["F5", "Refresh"]; enabled: pane.active; onActivated: { backend.folder.reload(); places.refresh() } }
 
     Connections {
         target: backend
-        function onSelectRequested(name) { if (view.item) view.item.select(name, false) }
+        function onSelectRequested(name) { if (view.item) view.item.select(backend.folder.indexOf(name), false) }
         function onActivateRequested() { if (pane.host) { pane.host.raise(); pane.host.requestActivate() } }
     }
 
     Connections {
         target: view.item
-        ignoreUnknownSignals: true
         function onContextMenu(item, folder) { fileMenu.show(item, folder) }
+        function onCursorLetGo() { pane.cursorLetGo = true }
+        // The cursor's item is remembered as the cursor moves, and once the
+        // folder's loaded has placed it. Not when a re-read leaves the cursor
+        // on its row while a new file pushes its item down: loaded then puts
+        // it back on the item.
+        function onCurrentIndexChanged() {
+            const path = backend.folder.get(view.item.currentIndex).path
+            if (path) {
+                pane.lastPath = path
+                pane.cursorLetGo = false
+            }
+        }
     }
 
     // Finished file work selects what it made (the pasted file, the new
-    // folder, the new name) once the folder has re-read.
+    // folder, the new name): right away when the folder already lists it
+    // (a long move's folder arrived long before the move was done),
+    // otherwise once the folder has re-read.
     Connections {
         target: fileOps
-        function onDone(folder, name) { if (folder === backend.path) backend.expectSelection(name) }
+        function onDone(folder, name) {
+            if (folder !== backend.path)
+                return
+            const row = backend.folder.indexOf(name)
+            if (row >= 0 && view.item)
+                view.item.select(row, false)
+            else
+                backend.expectSelection(name)
+        }
         function onFailed(message) { backend.showMessage(message) }
         function onNotice(notice) { backend.showNotice(notice) }
     }
@@ -185,23 +203,38 @@ FocusScope {
         target: backend.folder
         // A folder arriving selects where we came from (or the first item);
         // the same folder re-read (a remembered listing refreshed, or files
-        // changing on disk) keeps what was selected.
+        // changing on disk) keeps what was selected, and the cursor on its
+        // item. When that's gone (trashed, or moved away), the cursor stays
+        // on its row, so Delete pressed again takes the next item, not the
+        // first.
         function onLoaded() {
             if (!view.item)
                 return
             const pending = backend.takeSelection()
             const same = backend.folder.path === pane.loadedPath
             pane.loadedPath = backend.folder.path
-            view.item.select(pending || (same ? pane.lastName : ""), same && !pending)
+            const row = backend.folder.indexOfPath(pane.lastPath)
+            if (pending || !same)
+                pane.cursorLetGo = false
+            if (pending)
+                view.item.select(backend.folder.indexOf(pending), false)
+            else if (!same)
+                view.item.select(-1, false)
+            else if (!pane.cursorLetGo)
+                view.item.select(row >= 0 ? row : Math.min(view.item.currentIndex, backend.folder.count - 1), true)
+            // Remembered here too: put on the row it was already on, the
+            // cursor doesn't signal a move, and an item from the folder
+            // before would stay remembered.
+            pane.lastPath = backend.folder.get(view.item.currentIndex).path || ""
         }
     }
 
     FileMenu {
         id: fileMenu
-        objectName: "fileMenu"
         onRenameRequested: (target) => rename.open(target)
-        onDeleteRequested: pane.deleteSelected()
+        onDeleteRequested: (paths) => pane.confirmDelete(paths)
         onEmptyTrashRequested: pane.emptyTrash()
+        onPinRequested: (path) => pane.togglePin(path)
     }
 
     ColumnLayout {
@@ -215,13 +248,14 @@ FocusScope {
         Rectangle {
             Layout.fillWidth: true
             implicitHeight: 40
-            visible: backend.message.length > 0 || backend.busy.length > 0 || fileOps.busy.length > 0 || backend.folder.error.length > 0 || backend.notice.length > 0
-            color: backend.message.length > 0 || backend.folder.error.length > 0 ? pane.tint(theme.red, 0.14) : pane.tint(theme.accent, 0.10)
+            visible: bannerText.text.length > 0
+            color: backend.message.length > 0 || backend.folder.error.length > 0 ? Qt.alpha(theme.red, 0.14) : Qt.alpha(theme.accent, 0.10)
             RowLayout {
                 anchors.fill: parent
                 anchors.leftMargin: 24
                 anchors.rightMargin: 12
                 Text {
+                    id: bannerText
                     Layout.fillWidth: true
                     text: backend.message || backend.folder.error || backend.busy || fileOps.busy || backend.notice
                     color: theme.brightForeground
@@ -241,7 +275,7 @@ FocusScope {
             Layout.fillWidth: true
             implicitHeight: 48
             visible: pane.inTrash && backend.folder.count > 0
-            color: pane.tint(theme.foreground, 0.04)
+            color: Qt.alpha(theme.foreground, 0.04)
             PlainButton {
                 anchors.centerIn: parent
                 text: qsTr("Empty Trash")
@@ -263,7 +297,13 @@ FocusScope {
                            : pane.viewMode === "columns" ? columnsView
                            : gridView
             // A new view picks up the selection the old one had.
-            onLoaded: { item.select(pane.lastName, true); item.focusView() }
+            onLoaded: {
+                if (pane.cursorLetGo)
+                    item.letGo()
+                else
+                    item.select(backend.folder.indexOfPath(pane.lastPath), true)
+                item.focusView()
+            }
 
             // Files dropped on empty space land in this folder; folders
             // inside take drops on themselves first.
@@ -278,7 +318,7 @@ FocusScope {
                     anchors.fill: parent
                     anchors.margins: 2
                     visible: viewDrop.containsDrag
-                    color: pane.tint(theme.accent, 0.05)
+                    color: Qt.alpha(theme.accent, 0.05)
                     border.width: 2
                     border.color: theme.accent
                     radius: Math.min(6, theme.radius)
@@ -308,7 +348,7 @@ FocusScope {
 
     // With two panes, a line along the top marks the one keys go to.
     Rectangle {
-        visible: pane.closable || (pane.host && pane.host.split)
+        visible: !!pane.host && pane.host.split
         y: pathBar.height - 1
         width: parent.width
         height: 2
@@ -324,17 +364,22 @@ FocusScope {
         onPressed: mouse => mouse.button === Qt.BackButton ? backend.back() : backend.forward()
     }
 
+    // A dialog takes the keyboard while it's open; closing only hides it,
+    // so the keyboard is handed back to the files.
     MountPrompt {
         anchors.fill: parent
+        onVisibleChanged: if (!visible) pane.focusView()
     }
 
     RenameDialog {
         id: rename
         anchors.fill: parent
+        onVisibleChanged: if (!visible) pane.focusView()
     }
 
     ConfirmDialog {
         id: confirm
         anchors.fill: parent
+        onVisibleChanged: if (!visible) pane.focusView()
     }
 }

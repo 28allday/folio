@@ -17,8 +17,11 @@
 // the item it steps to, and each side follows the other.
 class Previewer : public QObject {
     Q_OBJECT
-    Q_PROPERTY(int count READ count NOTIFY changed)
-    Q_PROPERTY(int index READ index NOTIFY changed)
+    // Listing the folder only changes where the item sits among its
+    // siblings, so it has a signal of its own: re-reading the item would set
+    // a playing video's source again, which stops it.
+    Q_PROPERTY(int count READ count NOTIFY listed)
+    Q_PROPERTY(int index READ index NOTIFY listed)
     Q_PROPERTY(QVariantMap item READ item NOTIFY changed)
     Q_PROPERTY(QString viewer READ viewer NOTIFY changed)
     Q_PROPERTY(QString url READ url NOTIFY changed)
@@ -33,6 +36,8 @@ public:
     void start(const QString &path, bool showHidden, const QString &sort);
     // Reads paths from stdin and reports steps on stdout.
     void connectToFolio();
+    // Shows another file; one in the same folder keeps the list.
+    void show(const QString &path);
 
     int count() const { return m_entries.size(); }
     int index() const { return m_index; }
@@ -45,18 +50,16 @@ public:
     Q_INVOKABLE void next();
     Q_INVOKABLE void previous();
     Q_INVOKABLE void open();
-    // Shows another file; one in the same folder keeps the list.
-    Q_INVOKABLE void show(const QString &path);
 
     // Which view shows a type: image, animated, thumbnail, video, audio,
     // pdf, markdown, text, folder or other.
     static QString viewerFor(const QString &mime, bool isDir);
-    static FolderModel::Entry entryFor(const QString &path);
     // The opening part of a text file, or nothing when it looks binary.
     static QString readText(const QString &path, qint64 limit = 512 * 1024);
 
 signals:
     void changed();
+    void listed();
 
 private:
     void setIndex(int index, bool report);
@@ -68,6 +71,8 @@ private:
     bool m_showHidden = false;
     QString m_sort = "name";
     quint64 m_generation = 0;
+    // The newest item read in the background; older readings are dropped.
+    quint64 m_reading = 0;
     bool m_reporting = false;
     QSocketNotifier *m_stdin = nullptr;
     QByteArray m_pending;

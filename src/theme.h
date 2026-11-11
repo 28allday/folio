@@ -21,7 +21,6 @@ class Theme : public QObject {
     Q_PROPERTY(QColor brightForeground READ brightForeground NOTIFY changed)
     Q_PROPERTY(QColor secondaryForeground READ secondaryForeground NOTIFY changed)
     Q_PROPERTY(QColor red READ red NOTIFY changed)
-    Q_PROPERTY(QColor green READ green NOTIFY changed)
     Q_PROPERTY(QColor yellow READ yellow NOTIFY changed)
     Q_PROPERTY(QColor blue READ blue NOTIFY changed)
     Q_PROPERTY(QColor magenta READ magenta NOTIFY changed)
@@ -43,7 +42,6 @@ public:
     QColor brightForeground() const { return color("bright_foreground"); }
     QColor secondaryForeground() const;
     QColor red() const { return color("red"); }
-    QColor green() const { return color("green"); }
     QColor yellow() const { return color("yellow"); }
     QColor blue() const { return color("blue"); }
     QColor magenta() const { return color("magenta"); }
@@ -51,12 +49,6 @@ public:
     QColor orange() const { return color("orange"); }
     bool light() const { return m_light; }
     int radius() const { return m_radius; }
-
-    struct Palette {
-        QHash<QString, QColor> colors;
-        bool light = false;
-    };
-    static Palette readPalette(const QString &path);
 
 signals:
     void changed();

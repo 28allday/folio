@@ -4,6 +4,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
@@ -23,7 +24,6 @@ const QHash<QString, QColor> &fallbackColors() {
         {"foreground", QColor("#c8c8d0")},
         {"bright_foreground", QColor("#ececf1")},
         {"red", QColor("#f7768e")},
-        {"green", QColor("#9ece6a")},
         {"yellow", QColor("#e0af68")},
         {"blue", QColor("#7aa2f7")},
         {"magenta", QColor("#bb9af7")},
@@ -36,6 +36,34 @@ const QHash<QString, QColor> &fallbackColors() {
 double luminance(const QColor &c) {
     auto linear = [](double v) { return v <= .04045 ? v / 12.92 : std::pow((v + .055) / 1.055, 2.4); };
     return .2126 * linear(c.redF()) + .7152 * linear(c.greenF()) + .0722 * linear(c.blueF());
+}
+
+QColor mix(const QColor &a, const QColor &b, double t) {
+    return QColor::fromRgbF(a.redF() * (1 - t) + b.redF() * t, a.greenF() * (1 - t) + b.greenF() * t,
+                            a.blueF() * (1 - t) + b.blueF() * t);
+}
+
+struct Palette {
+    QHash<QString, QColor> colors;
+    bool light = false;
+};
+
+Palette readPalette(const QString &path) {
+    Palette palette;
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return palette;
+    const QString text = QString::fromUtf8(file.readAll());
+    static const QRegularExpression colorLine(R"re(^\s*([a-z_]+)\s*=\s*["'](#[0-9a-fA-F]{6})["'])re",
+                                              QRegularExpression::MultilineOption);
+    for (auto it = colorLine.globalMatch(text); it.hasNext();) {
+        const auto match = it.next();
+        palette.colors.insert(match.captured(1), QColor(match.captured(2)));
+    }
+    static const QRegularExpression modeLine(R"re(^\s*mode\s*=\s*["']light["'])re",
+                                             QRegularExpression::MultilineOption);
+    palette.light = modeLine.match(text).hasMatch();
+    return palette;
 }
 
 } // namespace
@@ -71,8 +99,19 @@ Theme::Theme(const QString &directory, QObject *parent, const QString &hyprctl)
     });
     m_roundingPoll.setInterval(1000);
     connect(&m_roundingPoll, &QTimer::timeout, this, &Theme::refreshRounding);
-    if (!m_hyprctl.isEmpty())
+    if (!m_hyprctl.isEmpty()) {
         m_roundingPoll.start();
+        // The rounding only needs following while Folio is in use, and it's
+        // read again the moment Folio is back.
+        connect(qGuiApp, &QGuiApplication::applicationStateChanged, this, [this](Qt::ApplicationState state) {
+            if (state == Qt::ApplicationActive) {
+                refreshRounding();
+                m_roundingPoll.start();
+            } else {
+                m_roundingPoll.stop();
+            }
+        });
+    }
     reload();
 }
 
@@ -88,24 +127,6 @@ void Theme::refreshRounding() {
         return;
     m_roundingProcess.start(m_hyprctl, {"-j", "getoption", "decoration:rounding"});
     m_roundingTimeout.start();
-}
-
-Theme::Palette Theme::readPalette(const QString &path) {
-    Palette palette;
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly))
-        return palette;
-    const QString text = QString::fromUtf8(file.readAll());
-    static const QRegularExpression colorLine(R"re(^\s*([a-z_]+)\s*=\s*["'](#[0-9a-fA-F]{6})["'])re",
-                                              QRegularExpression::MultilineOption);
-    for (auto it = colorLine.globalMatch(text); it.hasNext();) {
-        const auto match = it.next();
-        palette.colors.insert(match.captured(1), QColor(match.captured(2)));
-    }
-    static const QRegularExpression modeLine(R"re(^\s*mode\s*=\s*["']light["'])re",
-                                             QRegularExpression::MultilineOption);
-    palette.light = modeLine.match(text).hasMatch();
-    return palette;
 }
 
 QColor Theme::color(const QString &key) const {
@@ -128,11 +149,7 @@ QColor Theme::lighterBackground() const {
     const double gap = qAbs(luminance(lighter) - luminance(bg));
     if (gap > 0.004)
         return lighter;
-    const QColor fg = foreground();
-    const double mix = 0.08;
-    return QColor::fromRgbF(bg.redF() * (1 - mix) + fg.redF() * mix,
-                            bg.greenF() * (1 - mix) + fg.greenF() * mix,
-                            bg.blueF() * (1 - mix) + fg.blueF() * mix);
+    return mix(bg, foreground(), 0.08);
 }
 
 // Black or white, whichever reads on the accent (WCAG relative luminance).
@@ -144,11 +161,7 @@ QColor Theme::accentForeground() const {
 // secondary color by mixing the foreground toward the background, keeping
 // roughly a 4.5:1 contrast for metadata and labels.
 QColor Theme::secondaryForeground() const {
-    const QColor fg = foreground(), bg = background();
-    const double keep = 0.68;
-    return QColor::fromRgbF(fg.redF() * keep + bg.redF() * (1 - keep),
-                            fg.greenF() * keep + bg.greenF() * (1 - keep),
-                            fg.blueF() * keep + bg.blueF() * (1 - keep));
+    return mix(background(), foreground(), 0.68);
 }
 
 void Theme::reload() {

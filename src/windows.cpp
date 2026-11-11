@@ -2,8 +2,6 @@
 
 #include <QQmlContext>
 #include <QQmlEngine>
-#include <QQmlProperty>
-#include <QQuickItem>
 #include <QQuickWindow>
 
 #include "backend.h"
@@ -16,70 +14,71 @@ Windows::Windows(QQmlEngine *engine, QObject *parent)
     engine->rootContext()->setContextProperty("windows", this);
 }
 
+Windows::Pane Windows::makePane(QQmlComponent &component, QQmlContext *parent) {
+    // A context per pane overrides `backend` and `fileOps`; everything else
+    // comes from the contexts above it, shared.
+    Pane pane;
+    pane.context = new QQmlContext(parent, this);
+    pane.backend = new Backend({}, this);
+    pane.fileOps = new FileOps(this);
+    pane.context->setContextProperty("backend", pane.backend);
+    pane.context->setContextProperty("fileOps", pane.fileOps);
+    pane.item = component.create(pane.context);
+    if (!pane.item) {
+        qWarning().noquote() << component.errorString();
+        release(pane);
+        return {};
+    }
+    connect(pane.backend, &Backend::newWindowRequested, this, [this](const QString &path) { open(path); });
+    return pane;
+}
+
 Backend *Windows::open(const QString &folder, const QString &select) {
-    if (m_component.isError()) {
-        qWarning().noquote() << m_component.errorString();
-        return nullptr;
-    }
-    // A context per window overrides `backend` and `fileOps`; everything
-    // else comes from the engine's root context, shared.
-    auto *context = new QQmlContext(m_engine->rootContext(), this);
-    auto *backend = new Backend({}, this);
-    auto *fileOps = new FileOps(this);
-    context->setContextProperty("backend", backend);
-    context->setContextProperty("fileOps", fileOps);
-
-    auto *window = qobject_cast<QQuickWindow *>(m_component.create(context));
+    Pane main = makePane(m_component, m_engine->rootContext());
+    auto *window = qobject_cast<QQuickWindow *>(main.item);
     if (!window) {
-        qWarning().noquote() << m_component.errorString();
-        delete backend;
-        delete fileOps;
-        delete context;
+        release(main);
         return nullptr;
     }
-    m_windows.prepend({window, backend, fileOps, context, {}});
+    m_windows.prepend({main, {}});
 
-    connect(backend, &Backend::newWindowRequested, this, [this](const QString &path) { open(path); });
     // Whichever window was used last answers "Show in folder".
     connect(window, &QQuickWindow::activeChanged, this, [this, window] {
         if (!window->isActive())
             return;
         for (int i = 0; i < m_windows.size(); ++i)
-            if (m_windows[i].window == window)
+            if (m_windows[i].main.item == window)
                 m_windows.move(i, 0);
     });
     connect(window, &QQuickWindow::closing, this, [this, window] { close(window); });
 
     if (select.isEmpty())
-        backend->navigate(folder);
+        main.backend->navigate(folder);
     else
-        backend->showItem(folder + "/" + select);
-    return backend;
+        main.backend->showItem(folder + "/" + select);
+    return main.backend;
 }
 
 Backend *Windows::latest() const {
-    return m_windows.isEmpty() ? nullptr : m_windows.first().backend;
+    return m_windows.isEmpty() ? nullptr : m_windows.first().main.backend;
 }
 
-void Windows::close(QQuickWindow *window) {
+void Windows::close(QObject *window) {
     for (int i = 0; i < m_windows.size(); ++i) {
-        if (m_windows[i].window != window)
+        if (m_windows[i].main.item != window)
             continue;
         Window w = m_windows.takeAt(i);
+        // The right pane goes before the window holding it. Releasing a
+        // backend also closes its preview, if one is open.
         release(w.split);
-        // The window goes first, then what its QML was bound to. Closing
-        // the backend also closes this window's preview, if one is open.
-        w.window->deleteLater();
-        w.backend->deleteLater();
-        w.fileOps->deleteLater();
-        w.context->deleteLater();
+        release(w.main);
         return;
     }
 }
 
 Windows::Window *Windows::find(QObject *window) {
     for (Window &w : m_windows)
-        if (w.window == window)
+        if (w.main.item == window)
             return &w;
     return nullptr;
 }
@@ -88,36 +87,16 @@ QObject *Windows::openSplit(QObject *window, const QString &folder) {
     Window *w = find(window);
     if (!w)
         return nullptr;
-    if (w->split.item)
-        return w->split.item;
-    auto *host = w->window->findChild<QQuickItem *>("splitHost");
-    if (!host || m_pane.isError()) {
-        qWarning().noquote() << m_pane.errorString();
-        return nullptr;
+    if (!w->split.item) {
+        // Inside the window's context, with its own backend and file work.
+        w->split = makePane(m_pane, w->main.context);
+        if (!w->split.item)
+            return nullptr;
+        // Owned here, not by QML's garbage collector, though QML holds it.
+        QQmlEngine::setObjectOwnership(w->split.item, QQmlEngine::CppOwnership);
+        w->split.backend->navigate(folder);
     }
-    // Inside the window's context, with its own backend and file work.
-    Pane pane;
-    pane.context = new QQmlContext(w->context, this);
-    pane.backend = new Backend({}, this);
-    pane.fileOps = new FileOps(this);
-    pane.context->setContextProperty("backend", pane.backend);
-    pane.context->setContextProperty("fileOps", pane.fileOps);
-    auto *item = qobject_cast<QQuickItem *>(m_pane.create(pane.context));
-    if (!item) {
-        qWarning().noquote() << m_pane.errorString();
-        release(pane);
-        return nullptr;
-    }
-    // Owned here, not by QML's garbage collector, though QML holds it.
-    QQmlEngine::setObjectOwnership(item, QQmlEngine::CppOwnership);
-    item->setParent(host);
-    item->setParentItem(host);
-    QQmlProperty(item, "anchors.fill").write(QVariant::fromValue(host));
-    pane.item = item;
-    connect(pane.backend, &Backend::newWindowRequested, this, [this](const QString &path) { open(path); });
-    pane.backend->navigate(folder);
-    w->split = pane;
-    return item;
+    return w->split.item;
 }
 
 void Windows::closeSplit(QObject *window) {

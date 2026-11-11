@@ -33,6 +33,9 @@ ApplicationWindow {
     // The right pane while the window is split.
     property var rightPane: null
     readonly property bool split: rightPane !== null
+    // Whether keys are going into a text field. The right pane can go before
+    // the window does when it closes, leaving activePane null.
+    readonly property bool typing: !!activePane && activePane.typing
     // The rightmost pane's path bar reaches over the details column.
     readonly property int detailsWidth: details.visible ? details.width : 0
 
@@ -41,8 +44,6 @@ ApplicationWindow {
         property alias viewMode: win.viewMode
     }
 
-    function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
-
     // Ctrl+Alt+N: a second pane on the right, starting where the active
     // one is. Pressed again, it moves the keyboard there.
     function openSplit() {
@@ -50,7 +51,10 @@ ApplicationWindow {
             rightPane = windows.openSplit(win, activePane.paneBackend.path)
             if (!rightPane)
                 return
+            rightPane.parent = splitHost
+            rightPane.anchors.fill = splitHost
             rightPane.closable = true
+            rightPane.viewMode = activePane.viewMode
             rightPane.barExtension = Qt.binding(() => win.detailsWidth)
             rightPane.closeRequested.connect(closeSplit)
         }
@@ -65,16 +69,16 @@ ApplicationWindow {
         leftPane.focusView()
     }
 
-    Shortcut { sequence: "?"; enabled: !win.activePane.typing || win.helpVisible; onActivated: win.helpVisible = !win.helpVisible }
+    Shortcut { sequence: "?"; enabled: !win.typing || win.helpVisible; onActivated: win.helpVisible = !win.helpVisible }
     Shortcut { sequence: "Escape"; enabled: win.helpVisible; onActivated: win.helpVisible = false }
-    Shortcut { sequence: "Q"; enabled: !win.activePane.typing; onActivated: win.close() }
-    Shortcut { sequence: "Ctrl+Alt+N"; enabled: !win.activePane.typing; onActivated: win.openSplit() }
+    Shortcut { sequence: "Q"; enabled: !win.typing; onActivated: win.close() }
+    Shortcut { sequence: "Ctrl+Alt+N"; enabled: !win.typing; onActivated: win.openSplit() }
     Shortcut { sequence: "Ctrl+W"; enabled: win.split; onActivated: win.closeSplit() }
     Shortcut { sequence: "Ctrl+I"; onActivated: win.previewVisible = !win.previewVisible }
     // Tab moves the keyboard: sidebar, left pane, right pane, and around.
     Shortcut {
         sequences: ["Tab", "Backtab"]
-        enabled: !win.activePane.typing
+        enabled: !win.typing
         onActivated: {
             if (sidebar.activeFocus)
                 leftPane.focusView()
@@ -98,7 +102,7 @@ ApplicationWindow {
             width: parent.width
             height: parent.barHeight
             color: theme.background
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: win.tint(theme.foreground, 0.12) }
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Qt.alpha(theme.foreground, 0.12) }
         }
 
         RowLayout {
@@ -113,7 +117,7 @@ ApplicationWindow {
                 Layout.preferredWidth: 236
                 Layout.fillHeight: true
             }
-            Rectangle { Layout.topMargin: parent.parent.barHeight; Layout.fillHeight: true; implicitWidth: 1; color: win.tint(theme.foreground, 0.12) }
+            Rectangle { Layout.topMargin: parent.parent.barHeight; Layout.fillHeight: true; implicitWidth: 1; color: Qt.alpha(theme.foreground, 0.12) }
 
             FolderPane {
                 id: leftPane
@@ -124,13 +128,12 @@ ApplicationWindow {
                 focus: true
             }
 
-            // The right pane of a split; Folio puts it here (see windows.cpp).
-            // Between the panes the divider runs up through the top bar, so
-            // each path reads as belonging to the files below it.
-            Rectangle { visible: win.split; Layout.fillHeight: true; implicitWidth: 1; color: win.tint(theme.foreground, 0.12) }
+            // openSplit() puts the right pane of a split here. Between the
+            // panes the divider runs up through the top bar, so each path
+            // reads as belonging to the files below it.
+            Rectangle { visible: win.split; Layout.fillHeight: true; implicitWidth: 1; color: Qt.alpha(theme.foreground, 0.12) }
             Item {
                 id: splitHost
-                objectName: "splitHost"
                 visible: win.split
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -142,7 +145,7 @@ ApplicationWindow {
                 Layout.topMargin: parent.parent.barHeight
                 Layout.preferredWidth: 300
                 Layout.fillHeight: true
-                item: win.activePane ? win.activePane.current : ({})
+                folderPane: win.activePane
             }
         }
 

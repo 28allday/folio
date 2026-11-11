@@ -12,7 +12,9 @@ Item {
     property alias currentIndex: here.currentIndex
     readonly property int columnWidth: 260
 
-    function select(name, keep) { selecting.select(name, keep) }
+    function select(row, keep) { selecting.select(row, keep) }
+    signal cursorLetGo()
+    function letGo() { selecting.letGo(); cursorLetGo() }
 
     Selecting { id: selecting; view: here }
     function focusView() { here.forceActiveFocus() }
@@ -20,8 +22,6 @@ Item {
 
     // Every column has a menu: on an item there, or on the column's folder.
     signal contextMenu(var item, string folder)
-
-    function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
 
     readonly property var crumbs: backend.crumbs
 
@@ -53,13 +53,13 @@ Item {
     // Keeps the newest columns in view as the trail grows.
     function revealEnd() { flick.contentX = Math.max(0, flick.contentWidth - flick.width) }
 
-    component Separator: Rectangle { width: 1; height: parent ? parent.height : 0; color: view.tint(theme.foreground, 0.1) }
+    component Separator: Rectangle { width: 1; height: parent ? parent.height : 0; color: Qt.alpha(theme.foreground, 0.1) }
 
     Flickable {
         id: flick
         anchors.fill: parent
         clip: true
-        interactive: false
+        acceptedButtons: Qt.NoButton
         contentWidth: row.width
         contentHeight: height
         boundsBehavior: Flickable.StopAtBounds
@@ -85,7 +85,7 @@ Item {
                         width: view.columnWidth
                         height: parent.height
                         clip: true
-                        interactive: false
+                        acceptedButtons: Qt.NoButton
                         boundsBehavior: Flickable.StopAtBounds
                         ScrollBar.vertical: FolioScrollBar { }
                         model: FolderModel {
@@ -127,7 +127,11 @@ Item {
                 clip: true
                 focus: true
                 keyNavigationEnabled: true
-                interactive: false
+                // No cursor of its own to start with: the pane puts it back
+                // where the last view had it, and one on the first item would
+                // select that instead.
+                currentIndex: -1
+                acceptedButtons: Qt.NoButton
                 boundsBehavior: Flickable.StopAtBounds
                 highlightFollowsCurrentItem: false
                 model: backend.folder
@@ -135,23 +139,11 @@ Item {
 
                 TapHandler {
                     acceptedButtons: Qt.RightButton
-                    onTapped: (point) => {
-                        const index = here.indexAt(point.position.x + here.contentX, point.position.y + here.contentY)
-                        selecting.menuAt(index)
-                        view.contextMenu(index >= 0 ? backend.folder.get(index) : null, backend.path)
-                    }
+                    onTapped: (point) => view.contextMenu(selecting.menuAt(point), backend.path)
                 }
 
                 onCurrentIndexChanged: selecting.cursorMoved()
-                Keys.onPressed: (event) => {
-                    if (!(event.modifiers & Qt.ShiftModifier))
-                        return
-                    const step = event.key === Qt.Key_Up ? -1 : event.key === Qt.Key_Down ? 1 : 0
-                    if (step !== 0) {
-                        selecting.extendTo(here.currentIndex + step)
-                        event.accepted = true
-                    }
-                }
+                Keys.onPressed: (event) => selecting.extendBy(event, event.key === Qt.Key_Up ? -1 : event.key === Qt.Key_Down ? 1 : 0)
                 Keys.onRightPressed: if (view.selected.isDir) backend.navigate(view.selected.path)
                 Keys.onLeftPressed: backend.goUp()
 
@@ -181,7 +173,7 @@ Item {
                 height: row.height
                 visible: view.selected.isDir === true
                 clip: true
-                interactive: false
+                acceptedButtons: Qt.NoButton
                 boundsBehavior: Flickable.StopAtBounds
                 ScrollBar.vertical: FolioScrollBar { }
                 TapHandler {
@@ -206,7 +198,7 @@ Item {
                 Text {
                     x: 14 + 20 + 12
                     y: 8
-                    visible: inside.count === 0
+                    visible: inside.count === 0 && !inside.model.loading
                     text: qsTr("Empty")
                     color: theme.secondaryForeground
                 }

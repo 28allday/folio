@@ -8,6 +8,7 @@
 #include <QDirIterator>
 #include <QFileInfo>
 #include <QImageReader>
+#include <QMimeDatabase>
 #include <QProcess>
 #include <QQuickTextureFactory>
 #include <QRunnable>
@@ -16,6 +17,7 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 #include <QUrl>
+#include <atomic>
 
 namespace {
 
@@ -23,14 +25,9 @@ QString fileUri(const QString &path) {
     return QUrl::fromLocalFile(path).toString(QUrl::FullyEncoded);
 }
 
-QString mtimeOf(const QString &path) {
-    return QString::number(QFileInfo(path).lastModified().toSecsSinceEpoch());
-}
-
-// The spec's Exec field: %i input path, %u input URI, %o output, %s size.
-// Qt writes longer PNG text values as compressed zTXt chunks, which some
-// thumbnail readers (Qt's own included) don't return. The thumbnail spec's
-// keys belong in plain tEXt, so re-encode them after Qt writes the image.
+// Qt writes longer PNG text values as compressed zTXt chunks. The thumbnail
+// spec's keys belong in plain tEXt, which is all some thumbnail readers look
+// at, so re-encode them after Qt writes the image.
 QByteArray withPlainText(const QByteArray &png) {
     if (!png.startsWith("\x89PNG\r\n\x1a\n"))
         return png;
@@ -68,6 +65,7 @@ QByteArray withPlainText(const QByteArray &png) {
     return out;
 }
 
+// The spec's Exec field: %i input path, %u input URI, %o output, %s size.
 QStringList expandCommand(const QString &command, const QString &input, const QString &output, int size) {
     QStringList args = QProcess::splitCommand(command);
     for (QString &arg : args) {
@@ -141,6 +139,10 @@ QString Thumbnails::cachePath(const QString &path, int size) const {
     return m_cache + "/" + bucketFor(size) + "/" + cacheKey(path);
 }
 
+QString Thumbnails::failPath(const QString &path) const {
+    return m_cache + "/fail/folio/" + cacheKey(path);
+}
+
 QImage Thumbnails::load(const QString &path, const QString &mime, int size) const {
     const QFileInfo info(path);
     if (!info.isFile())
@@ -150,34 +152,41 @@ QImage Thumbnails::load(const QString &path, const QString &mime, int size) cons
     if (info.absoluteFilePath().startsWith(m_cache + "/"))
         return {};
 
-    const QString cached = cachePath(path, size);
-    const QString mtime = mtimeOf(path);
-    // QImageReader::text() splits keys at ':', so "Thumb::MTime" is only
-    // readable from the decoded image.
-    if (const QImage image(cached); !image.isNull() && image.text("Thumb::MTime") == mtime)
+    const QDateTime modified = info.lastModified();
+    if (const QImage image(cachePath(path, size)); madeFor(image, modified))
         return image;
-    if (failedBefore(path))
+    if (failedBefore(path, modified))
         return {};
 
+    // A folder's peek asks for any picture ("image/*"); named by extension,
+    // as the grid names it, it goes to the same thumbnailer as its tile.
+    const QString type = mime.endsWith("/*")
+        ? QMimeDatabase().mimeTypeForFile(path, QMimeDatabase::MatchExtension).name()
+        : mime;
     const int pixels = bucketPixels(bucketFor(size));
-    QImage image = generate(path, mime, pixels);
+    bool attempted = false;
+    QImage image = generate(path, type, pixels, attempted);
     if (image.isNull()) {
-        rememberFailure(path);
+        // Only a reader or thumbnailer that ran and failed is remembered, so
+        // one installed later still gets its turn.
+        if (attempted)
+            rememberFailure(path, modified);
         return {};
     }
     if (image.width() > pixels || image.height() > pixels)
         image = image.scaled(pixels, pixels, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-    remember(image, path, size);
+    remember(image, path, size, modified);
     return image;
 }
 
-QImage Thumbnails::generate(const QString &path, const QString &mime, int pixels) const {
+QImage Thumbnails::generate(const QString &path, const QString &mime, int pixels, bool &attempted) const {
     // Common photo formats decode fastest in-process; anything Qt can't read
     // (HEIC, JPEG XL) falls through to the installed thumbnailers.
     if (mime.startsWith("image/")) {
         QImageReader reader(path);
         reader.setAutoTransform(true);
         if (reader.canRead()) {
+            attempted = true;
             const QSize full = reader.size();
             if (full.isValid())
                 reader.setScaledSize(full.scaled(pixels, pixels, Qt::KeepAspectRatio));
@@ -189,6 +198,7 @@ QImage Thumbnails::generate(const QString &path, const QString &mime, int pixels
     const QString command = m_thumbnailers.value(mime);
     if (command.isEmpty())
         return {};
+    attempted = true;
     return runThumbnailer(command, path, pixels);
 }
 
@@ -216,21 +226,46 @@ QImage Thumbnails::runThumbnailer(const QString &command, const QString &path, i
     return QImage(output);
 }
 
-void Thumbnails::remember(const QImage &image, const QString &path, int size) const {
-    const QString target = cachePath(path, size);
+void Thumbnails::remember(QImage image, const QString &path, int size, const QDateTime &modified) const {
+    image.setText("Software", "folio");
+    save(std::move(image), cachePath(path, size), path, modified);
+}
+
+void Thumbnails::rememberFailure(const QString &path, const QDateTime &modified) const {
+    QImage marker(1, 1, QImage::Format_ARGB32);
+    marker.fill(Qt::transparent);
+    save(std::move(marker), failPath(path), path, modified);
+}
+
+bool Thumbnails::failedBefore(const QString &path, const QDateTime &modified) const {
+    return madeFor(QImage(failPath(path)), modified);
+}
+
+// Whether a cached thumbnail (or failure marker) was made from the file as it
+// was last modified. The spec's Thumb::MTime is in whole seconds, which a
+// picture saved over within the same second matches; Folio's own also keep
+// the milliseconds. One another app made goes by the seconds alone.
+// QImageReader::text() splits keys at ':', so these are only readable from
+// the decoded image.
+bool Thumbnails::madeFor(const QImage &image, const QDateTime &modified) {
+    const QString exact = image.text("X-Folio::MTime");
+    return !image.isNull() && image.text("Thumb::MTime") == QString::number(modified.toSecsSinceEpoch())
+        && (exact.isEmpty() || exact == QString::number(modified.toMSecsSinceEpoch()));
+}
+
+void Thumbnails::save(QImage image, const QString &target, const QString &path, const QDateTime &modified) const {
     QDir().mkpath(QFileInfo(target).absolutePath());
     QFile::setPermissions(m_cache, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
 
-    QImage tagged = image;
-    tagged.setText("Thumb::URI", fileUri(path));
-    tagged.setText("Thumb::MTime", mtimeOf(path));
-    tagged.setText("Software", "folio");
+    image.setText("Thumb::URI", fileUri(path));
+    image.setText("Thumb::MTime", QString::number(modified.toSecsSinceEpoch()));
+    image.setText("X-Folio::MTime", QString::number(modified.toMSecsSinceEpoch()));
 
     // Written beside the target and renamed, so another app never reads half
     // a thumbnail.
     QByteArray png;
     QBuffer buffer(&png);
-    if (!buffer.open(QIODevice::WriteOnly) || !tagged.save(&buffer, "PNG"))
+    if (!buffer.open(QIODevice::WriteOnly) || !image.save(&buffer, "PNG"))
         return;
     QSaveFile file(target);
     if (file.open(QIODevice::WriteOnly) && file.write(withPlainText(png)) > 0) {
@@ -239,51 +274,33 @@ void Thumbnails::remember(const QImage &image, const QString &path, int size) co
     }
 }
 
-void Thumbnails::rememberFailure(const QString &path) const {
-    const QString target = m_cache + "/fail/folio/" + cacheKey(path);
-    QDir().mkpath(QFileInfo(target).absolutePath());
-    QImage marker(1, 1, QImage::Format_ARGB32);
-    marker.fill(Qt::transparent);
-    marker.setText("Thumb::URI", fileUri(path));
-    marker.setText("Thumb::MTime", mtimeOf(path));
-    QByteArray png;
-    QBuffer buffer(&png);
-    if (!buffer.open(QIODevice::WriteOnly) || !marker.save(&buffer, "PNG"))
-        return;
-    QSaveFile file(target);
-    if (file.open(QIODevice::WriteOnly) && file.write(withPlainText(png)) > 0)
-        file.commit();
-}
-
-bool Thumbnails::failedBefore(const QString &path) const {
-    const QImage marker(m_cache + "/fail/folio/" + cacheKey(path));
-    return !marker.isNull() && marker.text("Thumb::MTime") == mtimeOf(path);
-}
-
 namespace {
 
 class ThumbnailResponse : public QQuickImageResponse, public QRunnable {
 public:
-    ThumbnailResponse(const Thumbnails *thumbnails, const QString &id, const QSize &requested)
-        : m_thumbnails(thumbnails), m_id(id), m_requested(requested) {
+    ThumbnailResponse(const Thumbnails *thumbnails, const QString &id) : m_thumbnails(thumbnails), m_id(id) {
         setAutoDelete(false);
     }
 
     void run() override {
-        // id = <size>/<url-encoded mime>/<url-encoded path>
+        // id = <size>/<modified>/<url-encoded mime>/<url-encoded path>. The
+        // time is only there to tell Qt's own cache apart; load() checks
+        // the file's.
         const QStringList parts = m_id.split('/');
-        if (parts.size() >= 3) {
-            int size = parts.at(0).toInt();
-            if (m_requested.isValid())
-                size = qMax(size, qMax(m_requested.width(), m_requested.height()));
-            const QString mime = QUrl::fromPercentEncoding(parts.at(1).toUtf8());
-            const QString path = QUrl::fromPercentEncoding(parts.mid(2).join('/').toUtf8());
+        // A tile scrolled away before its turn came shouldn't keep the pool
+        // from the ones on screen.
+        if (!m_cancelled && parts.size() >= 4) {
+            const int size = parts.at(0).toInt();
+            const QString mime = QUrl::fromPercentEncoding(parts.at(2).toUtf8());
+            const QString path = QUrl::fromPercentEncoding(parts.mid(3).join('/').toUtf8());
             m_image = m_thumbnails->load(path, mime, qBound(64, size, 1024));
         }
         if (m_image.isNull())
             m_error = QStringLiteral("No thumbnail");
         emit finished();
     }
+
+    void cancel() override { m_cancelled = true; }
 
     QQuickTextureFactory *textureFactory() const override {
         return QQuickTextureFactory::textureFactoryForImage(m_image);
@@ -293,9 +310,9 @@ public:
 private:
     const Thumbnails *m_thumbnails;
     QString m_id;
-    QSize m_requested;
     QImage m_image;
     QString m_error;
+    std::atomic_bool m_cancelled{false};
 };
 
 } // namespace
@@ -306,8 +323,9 @@ ThumbnailProvider::ThumbnailProvider(const Thumbnails *thumbnails) : m_thumbnail
     m_pool.setMaxThreadCount(qBound(2, QThread::idealThreadCount() / 2, 6));
 }
 
-QQuickImageResponse *ThumbnailProvider::requestImageResponse(const QString &id, const QSize &requestedSize) {
-    auto *response = new ThumbnailResponse(m_thumbnails, id, requestedSize);
+// The size comes in the id; no view sets a sourceSize to request one.
+QQuickImageResponse *ThumbnailProvider::requestImageResponse(const QString &id, const QSize &) {
+    auto *response = new ThumbnailResponse(m_thumbnails, id);
     m_pool.start(response);
     return response;
 }

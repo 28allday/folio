@@ -9,7 +9,9 @@ TextField {
     color: theme.brightForeground
     selectionColor: theme.accent
     selectedTextColor: theme.accentForeground
-    placeholderTextColor: theme.secondaryForeground
+    // Material floats its own placeholder up onto the edge as a label, so
+    // that one stays hidden and the hint below takes its place.
+    placeholderTextColor: "transparent"
     leftPadding: 12
     rightPadding: 12
     topPadding: 9
@@ -18,7 +20,18 @@ TextField {
         implicitHeight: 38
         color: theme.darkBackground
         border.width: 1
-        border.color: field.activeFocus ? theme.accent : Qt.rgba(theme.foreground.r, theme.foreground.g, theme.foreground.b, 0.18)
+        border.color: field.activeFocus ? theme.accent : Qt.alpha(theme.foreground, 0.18)
         radius: Math.min(4, theme.radius)
+    }
+
+    Text {
+        x: field.leftPadding
+        width: field.width - field.leftPadding - field.rightPadding
+        anchors.verticalCenter: parent.verticalCenter
+        visible: field.length === 0 && field.preeditText.length === 0
+        text: field.placeholderText
+        color: theme.secondaryForeground
+        font: field.font
+        elide: Text.ElideRight
     }
 }

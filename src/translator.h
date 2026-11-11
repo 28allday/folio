@@ -3,7 +3,6 @@
 #include <QFileSystemWatcher>
 #include <QHash>
 #include <QJsonValue>
-#include <QLocale>
 #include <QTimer>
 #include <QTranslator>
 
@@ -25,10 +24,6 @@ public:
     bool isEmpty() const override { return m_strings.isEmpty(); }
     QString translate(const char *context, const char *sourceText, const char *disambiguation = nullptr,
                       int n = -1) const override;
-
-    static QString readLanguage(const QString &path);
-    static QString pluralCategory(const QString &language, long long count);
-    static QLocale formatLocale(const QString &language);
 
 signals:
     void changed();

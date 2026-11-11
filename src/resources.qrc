@@ -1,34 +1,36 @@
 <RCC>
     <qresource prefix="/">
-        <file alias="Main.qml">Main.qml</file>
-        <file alias="FolderPane.qml">FolderPane.qml</file>
-        <file alias="Glyph.qml">Glyph.qml</file>
-        <file alias="IconButton.qml">IconButton.qml</file>
-        <file alias="FileTile.qml">FileTile.qml</file>
-        <file alias="FileRow.qml">FileRow.qml</file>
-        <file alias="FolderGrid.qml">FolderGrid.qml</file>
-        <file alias="FolderList.qml">FolderList.qml</file>
-        <file alias="FolderColumns.qml">FolderColumns.qml</file>
-        <file alias="Sidebar.qml">Sidebar.qml</file>
-        <file alias="PathBar.qml">PathBar.qml</file>
-        <file alias="PreviewPane.qml">PreviewPane.qml</file>
-        <file alias="HelpOverlay.qml">HelpOverlay.qml</file>
-        <file alias="Selecting.qml">Selecting.qml</file>
-        <file alias="Band.qml">Band.qml</file>
-        <file alias="FolioMenu.qml">FolioMenu.qml</file>
-        <file alias="FolioMenuItem.qml">FolioMenuItem.qml</file>
-        <file alias="MenuLine.qml">MenuLine.qml</file>
-        <file alias="FolioScrollBar.qml">FolioScrollBar.qml</file>
-        <file alias="PlainButton.qml">PlainButton.qml</file>
-        <file alias="PlainField.qml">PlainField.qml</file>
-        <file alias="SortMenu.qml">SortMenu.qml</file>
-        <file alias="FileMenu.qml">FileMenu.qml</file>
-        <file alias="ConfirmDialog.qml">ConfirmDialog.qml</file>
-        <file alias="RenameDialog.qml">RenameDialog.qml</file>
-        <file alias="MountPrompt.qml">MountPrompt.qml</file>
-        <file alias="PreviewWindow.qml">PreviewWindow.qml</file>
-        <file alias="PdfPreview.qml">PdfPreview.qml</file>
-        <file alias="MediaPreview.qml">MediaPreview.qml</file>
-        <file alias="i18n/en.json">i18n/en.json</file>
+        <file>Main.qml</file>
+        <file>FolderPane.qml</file>
+        <file>Glyph.qml</file>
+        <file>IconButton.qml</file>
+        <file>FileTile.qml</file>
+        <file>FileRow.qml</file>
+        <file>FolderGrid.qml</file>
+        <file>FolderList.qml</file>
+        <file>FolderColumns.qml</file>
+        <file>Sidebar.qml</file>
+        <file>PathBar.qml</file>
+        <file>PreviewPane.qml</file>
+        <file>HelpOverlay.qml</file>
+        <file>Selecting.qml</file>
+        <file>Band.qml</file>
+        <file>FolioMenu.qml</file>
+        <file>FolioMenuItem.qml</file>
+        <file>MenuLine.qml</file>
+        <file>FolioScrollBar.qml</file>
+        <file>PlainButton.qml</file>
+        <file>PlainField.qml</file>
+        <file>SortMenu.qml</file>
+        <file>FileMenu.qml</file>
+        <file>FolioDialog.qml</file>
+        <file>ConfirmDialog.qml</file>
+        <file>RenameDialog.qml</file>
+        <file>MountPrompt.qml</file>
+        <file>PreviewWindow.qml</file>
+        <file>PdfPreview.qml</file>
+        <file>MediaPreview.qml</file>
+        <file>Format.js</file>
+        <file>i18n/en.json</file>
     </qresource>
 </RCC>

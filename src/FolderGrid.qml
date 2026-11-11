@@ -5,7 +5,11 @@ import QtQuick.Controls
 GridView {
     id: grid
 
-    function select(name, keep) { selecting.select(name, keep) }
+    function select(row, keep) { selecting.select(row, keep) }
+    // A click on empty space lets go of the cursor; the pane then keeps it
+    // let go of through a re-read or a switch of view.
+    signal cursorLetGo()
+    function letGo() { selecting.letGo(); cursorLetGo() }
     function focusView() { forceActiveFocus() }
     // Where the keyboard's menu (Alt+Return) opens: beside the cursor's item.
     function menuAnchor() { return currentItem }
@@ -13,14 +17,15 @@ GridView {
     Selecting { id: selecting; view: grid }
     onCurrentIndexChanged: selecting.cursorMoved()
     Keys.onPressed: (event) => {
-        if (!(event.modifiers & Qt.ShiftModifier))
-            return
-        const step = event.key === Qt.Key_Left ? -1 : event.key === Qt.Key_Right ? 1
-                   : event.key === Qt.Key_Up ? -columns : event.key === Qt.Key_Down ? columns : 0
-        if (step !== 0) {
-            selecting.extendTo(currentIndex + step)
+        // With no cursor (after a click on empty space), Down starts at the
+        // first item, not a row's width on from before it.
+        if (event.key === Qt.Key_Down && currentIndex < 0 && count > 0) {
+            currentIndex = 0
             event.accepted = true
+            return
         }
+        selecting.extendBy(event, event.key === Qt.Key_Left ? -1 : event.key === Qt.Key_Right ? 1
+                                : event.key === Qt.Key_Up ? -columns : event.key === Qt.Key_Down ? columns : 0)
     }
 
     Band {
@@ -33,19 +38,19 @@ GridView {
     signal contextMenu(var item, string folder)
     TapHandler {
         acceptedButtons: Qt.RightButton
-        onTapped: (point) => {
-            const index = grid.indexAt(point.position.x + grid.contentX, point.position.y + grid.contentY)
-            selecting.menuAt(index)
-            grid.contextMenu(index >= 0 ? backend.folder.get(index) : null, backend.path)
-        }
+        onTapped: (point) => grid.contextMenu(selecting.menuAt(point), backend.path)
     }
 
     clip: true
     focus: true
     keyNavigationEnabled: true
+    // No cursor of its own to start with: the pane puts it back where the
+    // last view had it, and one on the first item would select that instead.
+    currentIndex: -1
     // Pressing and dragging picks up a file (to pin it, or drop it in another
-    // app) rather than flicking; the wheel and touchpad still scroll.
-    interactive: false
+    // app) or draws a band, rather than flicking; the wheel and touchpad
+    // still scroll, which turning the view's interactive off would stop too.
+    acceptedButtons: Qt.NoButton
     boundsBehavior: Flickable.StopAtBounds
     model: backend.folder
     readonly property int columns: Math.max(1, Math.floor(width / 168))

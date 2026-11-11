@@ -1,7 +1,5 @@
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Layouts
-import QtQuick.Controls.Material
 
 // The breadcrumb path from the left edge; view buttons on the right. Back and
 // forward are keys (Alt+← / Alt+→) and the mouse's thumb buttons.
@@ -33,12 +31,14 @@ Rectangle {
 
     // /: search this folder and every folder below it, as you type. The
     // results replace the folder until Escape, or until going elsewhere.
-    readonly property bool searching: backend.folder.query.length > 0 || searchField.activeFocus
+    readonly property bool searching: backend.folder.query.length > 0 || searchFocused
     readonly property bool searchFocused: searchField.activeFocus
     function search() {
         searchField.forceActiveFocus()
         searchField.selectAll()
     }
+    // S and Shift+S, through the sort menu's orders.
+    function stepSort(by) { sortMenu.step(by) }
     function endSearch() {
         searchDelay.stop()
         searchField.text = ""
@@ -60,8 +60,6 @@ Rectangle {
     // path bars of one or two panes read as part of it.
     color: "transparent"
     implicitHeight: 60
-
-    function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
 
     RowLayout {
         anchors.fill: parent
@@ -93,8 +91,8 @@ Rectangle {
             visible: bar.searching && !bar.editing
             font.pixelSize: 14
             rightPadding: scope.implicitWidth + 24
-            // Where it searches, at the end of the field. (A placeholder
-            // would float up as a label.)
+            // Where it searches, at the end of the field. Unlike a
+            // placeholder, it stays while typing.
             Text {
                 id: scope
                 anchors.right: parent.right
@@ -146,7 +144,7 @@ Rectangle {
                         Text {
                             visible: crumb.index > 0
                             text: "/"
-                            color: bar.tint(theme.foreground, 0.35)
+                            color: Qt.alpha(theme.foreground, 0.35)
                             font.pixelSize: 14
                         }
                         Text {
@@ -180,14 +178,8 @@ Rectangle {
         IconButton {
             id: sortButton
             // Shows the order in use, and says it on hover.
-            readonly property string mode: backend.folder.sortMode
-            glyph: mode === "name" ? "sort-name" : mode === "kind" ? "sort-kind"
-                 : mode === "modified" ? "sort-newest" : mode === "oldest" ? "sort-oldest" : "sort-size"
-            text: mode === "name" ? qsTr("Sorted by name (S)")
-                : mode === "kind" ? qsTr("Sorted by kind (S)")
-                : mode === "modified" ? qsTr("Newest first (S)")
-                : mode === "oldest" ? qsTr("Oldest first (S)")
-                : qsTr("Biggest first (S)")
+            glyph: sortMenu.current.glyph
+            text: sortMenu.current.tip
             active: sortMenu.visible
             onClicked: sortMenu.popup(sortButton, 0, sortButton.height + 4)
         }
@@ -212,5 +204,5 @@ Rectangle {
         }
     }
 
-    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: bar.tint(theme.foreground, 0.12) }
+    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Qt.alpha(theme.foreground, 0.12) }
 }

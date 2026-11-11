@@ -42,25 +42,6 @@ QString Previewer::viewerFor(const QString &mime, bool isDir) {
     return "other";
 }
 
-FolderModel::Entry Previewer::entryFor(const QString &path) {
-    const QFileInfo info(path);
-    FolderModel::Entry e;
-    e.name = info.fileName();
-    e.path = info.absoluteFilePath();
-    e.isDir = info.isDir();
-    e.size = e.isDir ? 0 : info.size();
-    e.modified = info.lastModified();
-    // Matched the same way as the folder listing, so the preview and the
-    // grid always agree on what a file is.
-    e.mime = e.isDir ? QStringLiteral("inode/directory")
-                     : QMimeDatabase().mimeTypeForFile(info, QMimeDatabase::MatchExtension).name();
-    e.kind = FolderModel::kindForMime(e.mime);
-    e.extension = e.isDir ? QString() : info.suffix().toUpper();
-    if (e.isDir)
-        FolderModel::summarize(e, false);
-    return e;
-}
-
 QString Previewer::readText(const QString &path, qint64 limit) {
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly))
@@ -88,8 +69,7 @@ void Previewer::show(const QString &path) {
     }
 
     // A file from another folder: show it alone, then fill in its siblings.
-    m_entries = {entryFor(absolute)};
-    m_index = -1;
+    m_entries = {FolderModel::entryFor(QFileInfo(absolute), QMimeDatabase())};
     setIndex(0, false);
 
     const quint64 generation = ++m_generation;
@@ -99,7 +79,7 @@ void Previewer::show(const QString &path) {
     auto *watcher = new QFutureWatcher<QVector<FolderModel::Entry>>(this);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation] {
         watcher->deleteLater();
-        if (generation != m_generation || m_index < 0)
+        if (generation != m_generation)
             return;
         const auto entries = watcher->result();
         const QString current = m_entries.at(m_index).path;
@@ -110,7 +90,7 @@ void Previewer::show(const QString &path) {
                 m_entries = entries;
                 m_entries[i] = shown;
                 m_index = i;
-                emit changed();
+                emit listed();
                 return;
             }
         }
@@ -123,12 +103,12 @@ void Previewer::show(const QString &path) {
 QVariantMap Previewer::item() const {
     if (m_index < 0 || m_index >= m_entries.size())
         return {};
+    // Only the preview fills in a folder's first pictures (in setIndex), so
+    // only its items carry them; the folder model's would always be empty.
     const FolderModel::Entry &e = m_entries.at(m_index);
-    return {
-        {"name", e.name}, {"path", e.path}, {"isDir", e.isDir}, {"size", e.size},
-        {"modified", e.modified}, {"kind", e.kind}, {"mime", e.mime},
-        {"extension", e.extension}, {"itemCount", e.itemCount}, {"peek", e.peek},
-    };
+    QVariantMap map = FolderModel::toMap(e);
+    map.insert("peek", e.peek);
+    return map;
 }
 
 QString Previewer::url() const {
@@ -160,18 +140,39 @@ void Previewer::open() {
 
 void Previewer::setIndex(int index, bool report) {
     m_index = index;
-    FolderModel::Entry &e = m_entries[index];
-    if (e.isDir && e.itemCount < 0)
-        FolderModel::summarize(e, m_showHidden);
+    const FolderModel::Entry e = m_entries.at(index);
     m_viewer = viewerFor(e.mime, e.isDir);
     m_text.clear();
-    if (m_viewer == "text" || m_viewer == "markdown") {
-        m_text = readText(e.path);
-        // A ".txt" that turns out to be binary is shown as a plain file.
-        if (m_text.isEmpty() && e.size > 0)
-            m_viewer = "other";
+
+    // A folder's count and first pictures, and a text's opening part, are
+    // read off the UI thread: a big folder, or any file on a slow mount,
+    // would hold up the window until they were in.
+    const quint64 generation = ++m_reading;
+    const bool count = e.isDir && e.itemCount < 0;
+    const bool text = m_viewer == "text" || m_viewer == "markdown";
+    if (count || text) {
+        auto *watcher = new QFutureWatcher<QPair<FolderModel::Entry, QString>>(this);
+        connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, text] {
+            watcher->deleteLater();
+            if (generation != m_reading)
+                return; // Stepped on to another item while this was read.
+            const auto [entry, read] = watcher->result();
+            m_entries[m_index] = entry;
+            m_text = read;
+            // A ".txt" that turns out to be binary is shown as a plain file.
+            if (text && m_text.isEmpty() && entry.size > 0)
+                m_viewer = "other";
+            emit changed();
+        });
+        const bool showHidden = m_showHidden;
+        watcher->setFuture(QtConcurrent::run([entry = e, showHidden, count, text]() mutable {
+            if (count)
+                FolderModel::summarize(entry, showHidden);
+            return qMakePair(entry, text ? readText(entry.path) : QString());
+        }));
     }
     emit changed();
+    emit listed();
 
     if (report && m_reporting) {
         std::fprintf(stdout, "%s\n", e.path.toUtf8().constData());

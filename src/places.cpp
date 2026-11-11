@@ -1,4 +1,5 @@
 #include "places.h"
+#include "fileops.h"
 #include "foldermodel.h"
 
 #include <QCollator>
@@ -7,12 +8,56 @@
 #include <QSaveFile>
 #include <QUrl>
 #include <QFileInfo>
-#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStandardPaths>
 #include <QStorageInfo>
 #include <algorithm>
+
+namespace {
+
+// Home's own folders, all but the hidden ones (as refreshPlaces lists them),
+// are already under Home.
+bool listedUnderHome(const QString &path, const QString &home) {
+    const QString clean = QDir::cleanPath(home);
+    const QFileInfo info(path);
+    return path == clean || (info.absolutePath() == clean && !info.isHidden());
+}
+
+// Omarchy's own folder reads as the name it goes by.
+QString displayName(const QString &name) {
+    return name == "omarchy" ? QStringLiteral("Omarchy") : name;
+}
+
+// Reads bookmark lines ("file:///path Label") into pinned entries, leaving
+// out folders already listed under Home and missing folders.
+QVariantList parseBookmarks(const QStringList &lines, const QString &home) {
+    QVariantList pinned;
+    QStringList seen;
+    for (const QString &raw : lines) {
+        const QString line = raw.trimmed();
+        if (line.isEmpty())
+            continue;
+        const int space = line.indexOf(' ');
+        const QUrl url(space < 0 ? line : line.left(space));
+        const QString label = space < 0 ? QString() : line.mid(space + 1).trimmed();
+        // Remote bookmarks (sftp://, smb://) stay in the file for GTK, but
+        // only local folders are pinned here for now.
+        if (!url.isLocalFile())
+            continue;
+        const QString path = QDir::cleanPath(url.toLocalFile());
+        // Home's visible folders are already under Home; Omarchy also seeds
+        // a few of those as bookmarks for the file dialogs.
+        if (listedUnderHome(path, home) || seen.contains(path) || !QFileInfo(path).isDir())
+            continue;
+        seen << path;
+        pinned << QVariantMap{{"name", label.isEmpty() ? displayName(QFileInfo(path).fileName()) : label},
+                              {"path", path}, {"icon", "folder"}};
+    }
+    return pinned;
+}
+
+} // namespace
 
 Places::Places(const QString &home, QObject *parent)
     : QObject(parent), m_home(home.isEmpty() ? QDir::homePath() : home), m_realHome(home.isEmpty()) {
@@ -62,9 +107,10 @@ QString Places::userDirectory(int location, const QString &fallback) const {
     return m_home + "/" + fallback;
 }
 
-// The sidebar's Home section is every folder in home, the way they appear in the home
-// folder itself, so whatever someone keeps at the top of their home (Work,
-// omarchy, Dropbox) is one click away without a bookmarks feature.
+// The sidebar's Home section is every folder in home but the hidden ones,
+// the way they appear in the home folder itself, so whatever someone keeps
+// at the top of their home (Work, omarchy, Dropbox) is one click away
+// without pinning it.
 void Places::refreshPlaces() {
     QVariantList places;
     auto add = [&](const QString &name, const QString &path, const QString &icon, const QString &status = {}) {
@@ -96,12 +142,7 @@ void Places::refreshPlaces() {
 
     // Views: lists that aren't a folder of their own.
     m_views = {QVariantMap{{"name", tr("Recents")}, {"path", FolderModel::recentPath()}, {"icon", "recent"}},
-               QVariantMap{{"name", tr("Trash")}, {"path", m_home + "/.local/share/Trash/files"}, {"icon", "trash"}}};
-}
-
-// Omarchy's own folder reads as the name it goes by.
-QString Places::displayName(const QString &name) {
-    return name == "omarchy" ? QStringLiteral("Omarchy") : name;
+               QVariantMap{{"name", tr("Trash")}, {"path", QDir::cleanPath(FileOps::homeTrash() + "/files")}, {"icon", "trash"}}};
 }
 
 QString Places::bookmarksPath() const {
@@ -109,33 +150,6 @@ QString Places::bookmarksPath() const {
     const QString config = m_realHome ? QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
                                       : m_home + "/.config";
     return config + "/gtk-3.0/bookmarks";
-}
-
-QVariantList Places::parseBookmarks(const QByteArray &contents, const QString &home) {
-    QVariantList pinned;
-    QStringList seen;
-    for (const QByteArray &raw : contents.split('\n')) {
-        const QString line = QString::fromUtf8(raw).trimmed();
-        if (line.isEmpty())
-            continue;
-        const int space = line.indexOf(' ');
-        const QUrl url(space < 0 ? line : line.left(space));
-        const QString label = space < 0 ? QString() : line.mid(space + 1).trimmed();
-        // Remote bookmarks (sftp://, smb://) stay in the file for GTK, but
-        // only local folders are pinned here for now.
-        if (!url.isLocalFile())
-            continue;
-        const QString path = QDir::cleanPath(url.toLocalFile());
-        // Folders right in home are already under Home; Omarchy also seeds
-        // a few of those as bookmarks for the file dialogs.
-        if (QFileInfo(path).absolutePath() == QDir::cleanPath(home) || path == QDir::cleanPath(home)
-            || seen.contains(path) || !QFileInfo(path).isDir())
-            continue;
-        seen << path;
-        pinned << QVariantMap{{"name", label.isEmpty() ? displayName(QFileInfo(path).fileName()) : label},
-                              {"path", path}, {"icon", "folder"}};
-    }
-    return pinned;
 }
 
 QStringList Places::readBookmarkLines() const {
@@ -159,8 +173,7 @@ bool Places::writeBookmarkLines(const QStringList &lines) {
 }
 
 void Places::refreshPinned() {
-    QFile file(bookmarksPath());
-    m_pinned = file.open(QIODevice::ReadOnly) ? parseBookmarks(file.readAll(), m_home) : QVariantList();
+    m_pinned = parseBookmarks(readBookmarkLines(), m_home);
 }
 
 bool Places::isPinned(const QString &path) const {
@@ -176,7 +189,7 @@ QString Places::pin(const QString &path) {
     const QFileInfo info(clean);
     if (!info.isDir())
         return tr("Only folders can be pinned.");
-    if (info.absolutePath() == QDir::cleanPath(m_home) || clean == QDir::cleanPath(m_home))
+    if (listedUnderHome(clean, m_home))
         return tr("%1 is already under Home.").arg(displayName(info.fileName()));
     if (isPinned(clean))
         return {};
@@ -279,7 +292,7 @@ QVariantList Places::parseTailscale(const QByteArray &json) {
         if (name.isEmpty() || host.isEmpty() || (os != "linux" && os != "macOS" && os != "windows")
             || !peer.value("Online").toBool())
             continue;
-        peers << QVariantMap{{"name", name}, {"host", host}, {"os", os}};
+        peers << QVariantMap{{"name", name}, {"host", host}};
     }
     std::sort(peers.begin(), peers.end(), [](const QVariant &a, const QVariant &b) {
         return QString::localeAwareCompare(a.toMap().value("name").toString(), b.toMap().value("name").toString()) < 0;

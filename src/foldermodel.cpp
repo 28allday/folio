@@ -3,6 +3,7 @@
 #include <QCache>
 #include <QCollator>
 #include <QDir>
+#include <QDirIterator>
 #include <QXmlStreamReader>
 #include <QUrl>
 #include <QStandardPaths>
@@ -10,7 +11,6 @@
 #include <QFileInfo>
 #include <QFutureWatcher>
 #include <QMimeDatabase>
-#include <QPointer>
 #include <QtConcurrent>
 #include <algorithm>
 #include <sys/stat.h>
@@ -32,6 +32,12 @@ FolderModel::FolderModel(QObject *parent) : QAbstractListModel(parent) {
     m_staleClear.setSingleShot(true);
     m_staleClear.setInterval(150);
     connect(&m_staleClear, &QTimer::timeout, this, &FolderModel::clearEntries);
+}
+
+// Generations start at 1, so 0 stops any search or folder count still
+// running for this model.
+FolderModel::~FolderModel() {
+    *m_latest = 0;
 }
 
 // Recent listings, shared by every model (the window's folder and each
@@ -57,21 +63,26 @@ void FolderModel::remember() {
 bool FolderModel::sameListing(const QVector<Entry> &a, const QVector<Entry> &b) {
     if (a.size() != b.size())
         return false;
+    // By path, not name: a folder copied with cp -a or rsync lists the same
+    // names, sizes and times as the one it came from.
     for (int i = 0; i < a.size(); ++i)
-        if (a[i].name != b[i].name || a[i].size != b[i].size || a[i].modified != b[i].modified
+        if (a[i].path != b[i].path || a[i].size != b[i].size || a[i].modified != b[i].modified
             || a[i].isDir != b[i].isDir)
             return false;
     return true;
 }
 
-void FolderModel::clearEntries() {
-    m_staleClear.stop();
-    if (m_entries.isEmpty())
-        return;
+void FolderModel::setEntries(const QVector<Entry> &entries) {
     beginResetModel();
-    m_entries.clear();
+    m_entries = entries;
     endResetModel();
     emit countChanged();
+}
+
+void FolderModel::clearEntries() {
+    m_staleClear.stop();
+    if (!m_entries.isEmpty())
+        setEntries({});
 }
 
 int FolderModel::rowCount(const QModelIndex &parent) const {
@@ -83,7 +94,6 @@ QVariant FolderModel::data(const QModelIndex &index, int role) const {
         return {};
     const Entry &e = m_entries.at(index.row());
     switch (role) {
-    case Qt::DisplayRole:
     case NameRole: return e.name;
     case PathRole: return e.path;
     case IsDirRole: return e.isDir;
@@ -93,8 +103,7 @@ QVariant FolderModel::data(const QModelIndex &index, int role) const {
     case MimeRole: return e.mime;
     case ExtensionRole: return e.extension;
     case ItemCountRole: return e.itemCount;
-    case PeekRole: return e.peek;
-    case SelectedRole: return m_selected.contains(e.name);
+    case SelectedRole: return m_selected.contains(e.path);
     }
     return {};
 }
@@ -103,13 +112,8 @@ QHash<int, QByteArray> FolderModel::roleNames() const {
     return {
         {NameRole, "name"}, {PathRole, "path"}, {IsDirRole, "isDir"}, {SizeRole, "size"},
         {ModifiedRole, "modified"}, {KindRole, "kind"}, {MimeRole, "mime"},
-        {ExtensionRole, "extension"}, {ItemCountRole, "itemCount"}, {PeekRole, "peek"},
-        {SelectedRole, "selected"},
+        {ExtensionRole, "extension"}, {ItemCountRole, "itemCount"}, {SelectedRole, "selected"},
     };
-}
-
-int FolderModel::folderCount() const {
-    return std::count_if(m_entries.begin(), m_entries.end(), [](const Entry &e) { return e.isDir; });
 }
 
 void FolderModel::setShowHidden(bool show) {
@@ -133,18 +137,11 @@ void FolderModel::setQuery(const QString &query) {
         return;
     m_query = query;
     emit queryChanged();
-    if (!m_selected.isEmpty()) {
-        m_selected.clear();
-        emit selectionChanged();
-    }
+    setSelected({});
     // Back to the folder: its remembered listing shows at once.
     if (m_query.isEmpty()) {
-        if (const auto *cached = recentListings().object(cacheKey())) {
-            beginResetModel();
-            m_entries = *cached;
-            endResetModel();
-            emit countChanged();
-        }
+        if (const auto *cached = recentListings().object(cacheKey()))
+            setEntries(*cached);
     }
     reload();
 }
@@ -164,10 +161,7 @@ void FolderModel::setPath(const QString &path) {
         m_query.clear();
         emit queryChanged();
     }
-    if (!m_selected.isEmpty()) {
-        m_selected.clear();
-        emit selectionChanged();
-    }
+    setSelected({});
 
     // The old folder stays up while the new one is read, which locally takes
     // a few milliseconds: swapping straight from one to the other avoids an
@@ -175,15 +169,16 @@ void FolderModel::setPath(const QString &path) {
     // after a moment, so the old folder never lingers under the new path.
     // An empty path is a column with nothing to show yet.
     if (m_path.isEmpty()) {
+        // What's still being read is for the folder left behind.
+        ++m_generation;
+        *m_latest = m_generation;
+        setLoading(false);
         clearEntries();
         return;
     }
     if (const auto *cached = recentListings().object(cacheKey())) {
         m_staleClear.stop();
-        beginResetModel();
-        m_entries = *cached;
-        endResetModel();
-        emit countChanged();
+        setEntries(*cached);
         setError({});
         emit loaded();
     } else {
@@ -210,12 +205,20 @@ QString FolderModel::kindForMime(const QString &mime) {
     return "other";
 }
 
+// Everything in a folder (sockets and broken links too), the hidden only
+// when they're shown.
+static QDir::Filters entryFilters(bool showHidden) {
+    QDir::Filters filters = QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System;
+    if (showHidden)
+        filters |= QDir::Hidden;
+    return filters;
+}
+
 QVector<FolderModel::Entry> FolderModel::list(const QString &path, bool showHidden, const QString &sort,
-                                              QString *error) {
+                                              QString *error, const std::function<bool()> &stop) {
     if (path == recentPath()) {
         // Recents are always most recently used first; that's what they're for.
-        Q_UNUSED(sort);
-        return listRecent(recentFile(), showHidden);
+        return listRecent(recentFile(), showHidden, 200, stop);
     }
     QVector<Entry> entries;
     QDir dir(path);
@@ -228,18 +231,15 @@ QVector<FolderModel::Entry> FolderModel::list(const QString &path, bool showHidd
         return entries;
     }
 
-    QDir::Filters filters = QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System;
-    if (showHidden)
-        filters |= QDir::Hidden;
-
     // Extension-only matching: reading every file's header would make large
     // folders and network mounts crawl.
     QMimeDatabase mimes;
-    const auto infos = dir.entryInfoList(filters, QDir::NoSort);
-    entries.reserve(infos.size());
-    for (const QFileInfo &info : infos)
-        entries.push_back(entryFor(info, mimes));
-
+    QDirIterator it(path, entryFilters(showHidden));
+    while (it.hasNext()) {
+        if (stop && stop())
+            return {};
+        entries.push_back(entryFor(it.nextFileInfo(), mimes));
+    }
     sortEntries(entries, sort);
     return entries;
 }
@@ -265,9 +265,7 @@ QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QStri
     struct stat top;
     if (::stat(QFile::encodeName(root).constData(), &top) != 0)
         return entries;
-    QDir::Filters filters = QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System;
-    if (showHidden)
-        filters |= QDir::Hidden;
+    const QDir::Filters filters = entryFilters(showHidden);
 
     // Breadth first, so what's near comes before what's deep when there are
     // more matches than the limit.
@@ -277,9 +275,11 @@ QVector<FolderModel::Entry> FolderModel::search(const QString &root, const QStri
     while (!folders.isEmpty() && entries.size() < limit) {
         if (stop && stop())
             return {};
-        const QString folder = folders.takeFirst();
-        const auto infos = QDir(folder).entryInfoList(filters, QDir::NoSort);
-        for (const QFileInfo &info : infos) {
+        QDirIterator it(folders.takeFirst(), filters);
+        while (it.hasNext()) {
+            if (stop && stop())
+                return {};
+            const QFileInfo info = it.nextFileInfo();
             if (info.fileName().contains(query, Qt::CaseInsensitive) && entries.size() < limit) {
                 Entry e = entryFor(info, mimes);
                 e.name = base.relativeFilePath(e.path);
@@ -332,14 +332,15 @@ void FolderModel::sortEntries(QVector<Entry> &entries, const QString &sort) {
 // Recents are GTK's recently used files (~/.local/share/recently-used.xbel),
 // which every GTK and many other apps add to: the files still there, the
 // most recently used first.
-QVector<FolderModel::Entry> FolderModel::listRecent(const QString &xbel, bool showHidden, int limit) {
+QVector<FolderModel::Entry> FolderModel::listRecent(const QString &xbel, bool showHidden, int limit,
+                                                    const std::function<bool()> &stop) {
     struct Used { QString path; QDateTime when; };
     QVector<Used> used;
     QFile file(xbel);
     if (file.open(QIODevice::ReadOnly)) {
         QXmlStreamReader xml(&file);
-        while (xml.readNextStartElement() || !xml.atEnd()) {
-            if (xml.isStartElement() && xml.name() == QLatin1String("bookmark")) {
+        while (!xml.atEnd()) {
+            if (xml.readNext() == QXmlStreamReader::StartElement && xml.name() == QLatin1String("bookmark")) {
                 const auto attrs = xml.attributes();
                 const QUrl url(attrs.value("href").toString());
                 QDateTime when = QDateTime::fromString(attrs.value("visited").toString(), Qt::ISODate);
@@ -349,8 +350,6 @@ QVector<FolderModel::Entry> FolderModel::listRecent(const QString &xbel, bool sh
                 if (url.isLocalFile())
                     used.push_back({url.toLocalFile(), when});
             }
-            if (xml.hasError())
-                break;
         }
     }
     std::stable_sort(used.begin(), used.end(), [](const Used &a, const Used &b) { return a.when > b.when; });
@@ -359,6 +358,9 @@ QVector<FolderModel::Entry> FolderModel::listRecent(const QString &xbel, bool sh
     QStringList seen;
     QMimeDatabase mimes;
     for (const Used &u : used) {
+        // Each check can wait on a slow drive, so leaving Recents stops it.
+        if (stop && stop())
+            break;
         const QFileInfo info(u.path);
         if (seen.contains(u.path) || !info.exists() || (!showHidden && info.fileName().startsWith('.')))
             continue;
@@ -375,11 +377,8 @@ QString FolderModel::recentFile() {
 }
 
 void FolderModel::summarize(Entry &entry, bool showHidden) {
-    QDir::Filters filters = QDir::AllEntries | QDir::NoDotAndDotDot | QDir::System;
-    if (showHidden)
-        filters |= QDir::Hidden;
     QDir dir(entry.path);
-    const QStringList names = dir.entryList(filters, QDir::Name);
+    const QStringList names = dir.entryList(entryFilters(showHidden), QDir::Name);
     entry.itemCount = names.size();
     entry.peek.clear();
 
@@ -390,6 +389,13 @@ void FolderModel::summarize(Entry &entry, bool showHidden) {
         if (entry.peek.size() == 2)
             break;
     }
+}
+
+int FolderModel::itemCount(const QString &folder, bool showHidden) {
+    int count = 0;
+    for (QDirIterator it(folder, entryFilters(showHidden)); it.hasNext(); it.next())
+        ++count;
+    return count;
 }
 
 void FolderModel::reload() {
@@ -412,19 +418,15 @@ void FolderModel::reload() {
         m_staleClear.stop();
         const auto [entries, error] = watcher->result();
         // Unchanged (the usual case after showing a remembered listing):
-        // leave the items, and their folder summaries, alone.
+        // leave the items alone, and only fill in folder counts still missing.
         const bool same = error == m_error && !m_entries.isEmpty() && sameListing(m_entries, entries);
-        if (!same) {
-            beginResetModel();
-            m_entries = entries;
-            endResetModel();
-            emit countChanged();
-        }
+        if (!same)
+            setEntries(entries);
         if (!m_selected.isEmpty()) {
             QSet<QString> still;
             for (const Entry &e : m_entries)
-                if (m_selected.contains(e.name))
-                    still.insert(e.name);
+                if (m_selected.contains(e.path))
+                    still.insert(e.path);
             if (still != m_selected) {
                 m_selected = still;
                 emit selectionChanged();
@@ -435,22 +437,24 @@ void FolderModel::reload() {
         emit loaded();
         if (error.isEmpty())
             remember();
-        if (!same)
-            summarizeFolders(generation);
+        countFolders(generation);
     });
     watcher->setFuture(QtConcurrent::run([path, showHidden, sort, query, latest, generation] {
         QString error;
+        const auto overtaken = [&] { return *latest != generation; };
         auto entries = query.isEmpty() || path == recentPath()
-            ? list(path, showHidden, sort, &error)
-            : search(path, query, showHidden, sort, [&] { return *latest != generation; });
+            ? list(path, showHidden, sort, &error, overtaken)
+            : search(path, query, showHidden, sort, overtaken);
         return qMakePair(entries, error);
     }));
 }
 
-void FolderModel::summarizeFolders(quint64 generation) {
+void FolderModel::countFolders(quint64 generation) {
+    // Only the folders not counted yet: a listing just read, or one whose
+    // counting was overtaken by a re-read (and so remembered without them).
     QVector<QPair<int, Entry>> folders;
     for (int row = 0; row < m_entries.size(); ++row)
-        if (m_entries[row].isDir)
+        if (m_entries[row].isDir && m_entries[row].itemCount < 0)
             folders.push_back({row, m_entries[row]});
     if (folders.isEmpty())
         return;
@@ -461,19 +465,31 @@ void FolderModel::summarizeFolders(quint64 generation) {
         watcher->deleteLater();
         if (generation != m_generation)
             return;
+        bool updated = false;
         for (const auto &[row, summary] : watcher->result()) {
             if (row >= m_entries.size() || m_entries[row].path != summary.path)
                 continue;
             m_entries[row].itemCount = summary.itemCount;
-            m_entries[row].peek = summary.peek;
             const QModelIndex at = index(row);
-            emit dataChanged(at, at, {ItemCountRole, PeekRole});
+            emit dataChanged(at, at, {ItemCountRole});
+            updated = true;
         }
+        // QML re-reads its get() snapshots (the current item, which the
+        // details pane shows) on countChanged, and the counts they show
+        // just arrived.
+        if (updated)
+            emit countChanged();
         remember();
     });
-    watcher->setFuture(QtConcurrent::run([folders, showHidden]() mutable {
-        for (auto &folder : folders)
-            summarize(folder.second, showHidden);
+    const auto latest = m_latest;
+    watcher->setFuture(QtConcurrent::run([folders, showHidden, latest, generation]() mutable {
+        // Overtaken (another folder, or a re-read), the counts would be
+        // thrown away, so it stops instead of listing every subfolder.
+        for (auto &folder : folders) {
+            if (*latest != generation)
+                break;
+            folder.second.itemCount = itemCount(folder.second.path, showHidden);
+        }
         return folders;
     }));
 }
@@ -482,35 +498,40 @@ QVariantMap FolderModel::get(int row) const {
     if (row < 0 || row >= m_entries.size())
         return {};
     const Entry &e = m_entries.at(row);
+    QVariantMap map = toMap(e);
+    map.insert("selected", m_selected.contains(e.path));
+    return map;
+}
+
+QVariantMap FolderModel::toMap(const Entry &entry) {
     return {
-        {"name", e.name}, {"path", e.path}, {"isDir", e.isDir}, {"size", e.size},
-        {"modified", e.modified}, {"kind", e.kind}, {"mime", e.mime},
-        {"extension", e.extension}, {"itemCount", e.itemCount}, {"peek", e.peek},
-        {"selected", m_selected.contains(e.name)},
+        {"name", entry.name}, {"path", entry.path}, {"isDir", entry.isDir}, {"size", entry.size},
+        {"modified", entry.modified}, {"kind", entry.kind}, {"mime", entry.mime},
+        {"extension", entry.extension}, {"itemCount", entry.itemCount},
     };
 }
 
-void FolderModel::setSelected(const QSet<QString> &names) {
-    if (names == m_selected)
+void FolderModel::setSelected(const QSet<QString> &paths) {
+    if (paths == m_selected)
         return;
-    m_selected = names;
+    m_selected = paths;
     if (!m_entries.isEmpty())
         emit dataChanged(index(0), index(m_entries.size() - 1), {SelectedRole});
     emit selectionChanged();
 }
 
 void FolderModel::selectOnly(int row) {
-    setSelected(row >= 0 && row < m_entries.size() ? QSet<QString>{m_entries[row].name} : QSet<QString>{});
+    setSelected(row >= 0 && row < m_entries.size() ? QSet<QString>{m_entries[row].path} : QSet<QString>{});
 }
 
 void FolderModel::toggleSelected(int row) {
     if (row < 0 || row >= m_entries.size())
         return;
-    QSet<QString> names = m_selected;
-    const QString name = m_entries[row].name;
-    if (!names.remove(name))
-        names.insert(name);
-    setSelected(names);
+    QSet<QString> paths = m_selected;
+    const QString path = m_entries[row].path;
+    if (!paths.remove(path))
+        paths.insert(path);
+    setSelected(paths);
 }
 
 void FolderModel::selectRange(int from, int to, bool add) {
@@ -518,25 +539,25 @@ void FolderModel::selectRange(int from, int to, bool add) {
         return;
     from = qBound(0, from, int(m_entries.size()) - 1);
     to = qBound(0, to, int(m_entries.size()) - 1);
-    QSet<QString> names = add ? m_selected : QSet<QString>{};
+    QSet<QString> paths = add ? m_selected : QSet<QString>{};
     for (int row = qMin(from, to); row <= qMax(from, to); ++row)
-        names.insert(m_entries[row].name);
-    setSelected(names);
+        paths.insert(m_entries[row].path);
+    setSelected(paths);
 }
 
 void FolderModel::selectRows(const QList<int> &rows) {
-    QSet<QString> names;
+    QSet<QString> paths;
     for (int row : rows)
         if (row >= 0 && row < m_entries.size())
-            names.insert(m_entries[row].name);
-    setSelected(names);
+            paths.insert(m_entries[row].path);
+    setSelected(paths);
 }
 
 void FolderModel::selectAll() {
-    QSet<QString> names;
+    QSet<QString> paths;
     for (const Entry &e : m_entries)
-        names.insert(e.name);
-    setSelected(names);
+        paths.insert(e.path);
+    setSelected(paths);
 }
 
 void FolderModel::clearSelection() {
@@ -544,14 +565,14 @@ void FolderModel::clearSelection() {
 }
 
 bool FolderModel::isSelected(int row) const {
-    return row >= 0 && row < m_entries.size() && m_selected.contains(m_entries[row].name);
+    return row >= 0 && row < m_entries.size() && m_selected.contains(m_entries[row].path);
 }
 
 QStringList FolderModel::selectedPaths() const {
     // In the folder's order, not the order they were picked in.
     QStringList paths;
     for (const Entry &e : m_entries)
-        if (m_selected.contains(e.name))
+        if (m_selected.contains(e.path))
             paths << e.path;
     return paths;
 }
@@ -559,6 +580,13 @@ QStringList FolderModel::selectedPaths() const {
 int FolderModel::indexOf(const QString &name) const {
     for (int row = 0; row < m_entries.size(); ++row)
         if (m_entries[row].name == name)
+            return row;
+    return -1;
+}
+
+int FolderModel::indexOfPath(const QString &path) const {
+    for (int row = 0; row < m_entries.size(); ++row)
+        if (m_entries[row].path == path)
             return row;
     return -1;
 }

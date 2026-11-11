@@ -1,14 +1,16 @@
 #include "backend.h"
+#include "fileops.h"
+#include "previewer.h"
 
 #include <QDesktopServices>
 #include <QCoreApplication>
 #include <QDir>
-#include <QFile>
 #include <QFileInfo>
+#include <QFutureWatcher>
 #include <QImageReader>
 #include <QMimeDatabase>
-#include <QStandardPaths>
 #include <QUrl>
+#include <QtConcurrent>
 #include <unistd.h>
 
 Backend::Backend(const QString &home, QObject *parent)
@@ -19,16 +21,16 @@ Backend::Backend(const QString &home, QObject *parent)
         m_notice.clear();
         emit noticeChanged();
     });
-    connect(&m_mounter, &Mounter::mounted, this, [this](const QString &, const QString &root) {
+    connect(&m_mounter, &Mounter::mounted, this, [this](const QString &root) {
         setBusy({});
         // Land in the matching home folder when the other machine has one,
         // which on a tailnet of one person's machines it usually does.
         const QString remoteHome = root + QDir::homePath();
         navigate(QFileInfo(remoteHome).isDir() ? remoteHome : root);
     });
-    connect(&m_mounter, &Mounter::failed, this, [this](const QString &, const QString &error) {
+    connect(&m_mounter, &Mounter::failed, this, [this](const QString &error) {
         setBusy({});
-        // An empty error is the user saying no to a question: nothing to report.
+        // An empty error is the user cancelling the sign-in: nothing to report.
         if (!error.isEmpty())
             setMessage(tr("Couldn't open %1 over SFTP: %2").arg(m_mountHost, error));
     });
@@ -45,8 +47,9 @@ Backend::Backend(const QString &home, QObject *parent)
     connect(&m_preview, &QProcess::stateChanged, this, &Backend::previewingChanged);
     connect(&m_preview, &QProcess::finished, this, [this](int, QProcess::ExitStatus status) {
         // A decoder that crashed took down the preview, not Folio; say so
-        // rather than letting the window just vanish.
-        if (status == QProcess::CrashExit)
+        // rather than letting the window just vanish. Closing it from here
+        // ends it with SIGTERM, which QProcess also reports as a crash.
+        if (status == QProcess::CrashExit && !m_closingPreview)
             setMessage(tr("The preview closed unexpectedly on %1.").arg(QFileInfo(m_previewed).fileName()));
     });
 }
@@ -104,7 +107,7 @@ void Backend::navigate(const QString &path) {
     go(path, true);
 }
 
-void Backend::go(const QString &path, bool record) {
+bool Backend::go(const QString &path, bool record) {
     const QString clean = path == FolderModel::recentPath() ? path : QDir::cleanPath(path);
     // The trash folder only exists once something has been trashed; the
     // spec lets anyone create it, so Trash always opens.
@@ -112,17 +115,18 @@ void Backend::go(const QString &path, bool record) {
         QDir().mkpath(clean);
     if (clean != FolderModel::recentPath() && !QFileInfo(clean).isDir()) {
         setMessage(tr("%1 isn't a folder.").arg(clean));
-        return;
+        return false;
     }
     if (record) {
         if (m_index >= 0 && m_history.value(m_index) == clean)
-            return;
+            return true;
         m_history = m_history.mid(0, m_index + 1);
         m_history << clean;
         m_index = m_history.size() - 1;
     }
     m_folder.setPath(clean);
     emit pathChanged();
+    return true;
 }
 
 void Backend::open(const QString &path) {
@@ -150,19 +154,26 @@ void Backend::goUp() {
     navigate(parent);
 }
 
+// A folder in the history that's gone (deleted, or on a machine that went
+// away) is said in the window, and the history stays on the folder shown.
 void Backend::back() {
     if (!canBack())
         return;
+    const QString pending = m_pendingSelection;
     m_pendingSelection = QFileInfo(path()).fileName();
     --m_index;
-    go(m_history.at(m_index), false);
+    if (!go(m_history.at(m_index), false)) {
+        ++m_index;
+        m_pendingSelection = pending;
+    }
 }
 
 void Backend::forward() {
     if (!canForward())
         return;
     ++m_index;
-    go(m_history.at(m_index), false);
+    if (!go(m_history.at(m_index), false))
+        --m_index;
 }
 
 void Backend::openPeer(const QString &host) {
@@ -179,10 +190,7 @@ void Backend::openPeer(const QString &host) {
     // any other folder.
     m_mountHost = host;
     setBusy(tr("Connecting to %1…").arg(host));
-    // Tailnet machines are reached over WireGuard to a peer Tailscale has
-    // already authenticated, so the SSH "first time seeing this host" check
-    // adds nothing but a prompt; it's accepted for them, and only them.
-    m_mounter.mount("sftp://" + host + "/", true);
+    m_mounter.mount("sftp://" + host + "/");
 }
 
 void Backend::showNotice(const QString &notice) {
@@ -201,27 +209,55 @@ QString Backend::takeSelection() {
     return name;
 }
 
-QVariantMap Backend::details(const QString &path, const QString &kind, const QString &mime) const {
-    QVariantMap map;
-    // The system's own name for the type ("JPEG image"), already translated.
-    map.insert("type", QMimeDatabase().mimeTypeForName(mime).comment());
-    if (kind == "image") {
-        QImageReader reader(path);
-        reader.setAutoTransform(true);
-        const QSize size = reader.size();
-        if (size.isValid())
-            map.insert("dimensions", QString("%1 × %2").arg(size.width()).arg(size.height()));
-    } else if (kind == "text") {
-        // Enough of the top of the file to recognize it, never the whole
-        // thing: a log can be gigabytes.
-        QFile file(path);
-        if (file.open(QIODevice::ReadOnly)) {
-            const QByteArray head = file.read(6000);
-            if (!head.contains('\0'))
-                map.insert("text", QString::fromUtf8(head).section('\n', 0, 40));
-        }
+void Backend::describe(const QVariantMap &item, bool inTrash) {
+    const QString path = item.value("path").toString();
+    const QString kind = item.value("kind").toString();
+    const QString mime = item.value("mime").toString();
+    const quint64 generation = ++m_describing;
+    // The system's own name for the type ("JPEG image"), already translated,
+    // needs nothing from the file. The same item again (its folder re-read)
+    // keeps what it shows until the new reading is in, rather than flickering.
+    QVariantMap details{{"type", QMimeDatabase().mimeTypeForName(mime).comment()}};
+    if (const QString described = path + '\n' + mime; described != m_described) {
+        m_described = described;
+        m_details = details;
+        emit detailsChanged();
     }
-    return map;
+    if (kind != "image" && kind != "text" && !inTrash)
+        return;
+
+    // Reading the file waits on its disk, which for a slow mount would hold
+    // up moving through files, so it happens off the UI thread.
+    auto *watcher = new QFutureWatcher<QVariantMap>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, generation, details]() mutable {
+        watcher->deleteLater();
+        if (generation != m_describing)
+            return; // The selection moved on while this was read.
+        details.insert(watcher->result());
+        m_details = details;
+        emit detailsChanged();
+    });
+    watcher->setFuture(QtConcurrent::run([path, kind, inTrash] {
+        QVariantMap read;
+        // A trashed item's note: finding it looks over every mounted drive,
+        // and one that's hung would hold up the window.
+        if (inTrash) {
+            read.insert("origin", FileOps::originalPath(path));
+            read.insert("deleted", FileOps::deletedAt(path));
+        }
+        if (kind == "image") {
+            QImageReader reader(path);
+            reader.setAutoTransform(true);
+            const QSize size = reader.size();
+            if (size.isValid())
+                read.insert("dimensions", QString("%1 × %2").arg(size.width()).arg(size.height()));
+        } else if (kind == "text") {
+            // Enough of the top of the file to recognize it, never the whole
+            // thing: a log can be gigabytes.
+            read.insert("text", Previewer::readText(path, 6000).section('\n', 0, 40));
+        }
+        return read;
+    }));
 }
 
 Backend::~Backend() {
@@ -233,7 +269,7 @@ Backend::~Backend() {
 }
 
 QString Backend::trashPath() const {
-    return QDir::cleanPath(m_home + "/.local/share/Trash/files");
+    return QDir::cleanPath(FileOps::homeTrash() + "/files");
 }
 
 QString Backend::typedPath() const {
@@ -253,9 +289,10 @@ QString Backend::expandTyped(const QString &text, const QString &home, const QSt
         return home;
     if (t.startsWith("~/"))
         return home + t.mid(1);
-    // A relative path is taken from the folder being shown.
-    if (!t.startsWith('/') && QFileInfo(current).isDir())
-        return QDir(current).filePath(t);
+    // A relative path is taken from the folder being shown, or from home in
+    // Recents, which isn't a folder.
+    if (!t.startsWith('/'))
+        return QDir(QFileInfo(current).isDir() ? current : home).filePath(t);
     return t;
 }
 
@@ -307,6 +344,7 @@ void Backend::newWindow() {
 
 void Backend::togglePreview(const QString &path) {
     if (previewing()) {
+        m_closingPreview = true;
         m_preview.terminate();
         return;
     }
@@ -318,6 +356,7 @@ void Backend::togglePreview(const QString &path) {
     args << path;
     m_previewed = path;
     m_preview.setProcessChannelMode(QProcess::ForwardedErrorChannel);
+    m_closingPreview = false;
     m_preview.start(QCoreApplication::applicationFilePath(), args);
 }
 

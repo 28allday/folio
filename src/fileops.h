@@ -5,8 +5,10 @@
 #include <QStringList>
 #include <QUrl>
 #include <QVariantList>
+#include <functional>
 
 class QMimeData;
+class QProcess;
 
 // What can be done to files: the clipboard (copy, cut, paste, and yanking
 // paths as text), trash, rename, new folder, and opening with another app.
@@ -35,8 +37,14 @@ public:
     // copied from another drive. Dropping something where it already is
     // does nothing.
     Q_INVOKABLE void dropInto(const QList<QUrl> &urls, const QString &folder);
-    // Whether these can be dropped on `folder` (not onto themselves).
+    // Whether these can be dropped on `folder`: not onto themselves, and
+    // not into the trash, which only Delete fills.
     Q_INVOKABLE bool canDrop(const QList<QUrl> &urls, const QString &folder) const;
+    // Files as a text/uri-list, for dragging them somewhere, and back from
+    // dropped URLs to the paths of the local ones. QUrl escapes what a
+    // path may hold but a URI can't (a "#" or "?" in a name).
+    Q_INVOKABLE QString uriList(const QStringList &paths) const;
+    Q_INVOKABLE QStringList localPaths(const QList<QUrl> &urls) const;
 
     // A copy beside the original, named "(copy)".
     Q_INVOKABLE void duplicate(const QString &path);
@@ -57,9 +65,9 @@ public:
     // has a note in Trash/info saying where it came from.
     Q_INVOKABLE bool inTrash(const QString &path) const;
     // Where a trashed item came from, or empty if its note is missing.
-    Q_INVOKABLE QString originalPath(const QString &path) const;
+    Q_INVOKABLE static QString originalPath(const QString &trashedPath);
     // When it was trashed, from its note.
-    Q_INVOKABLE QDateTime deletedAt(const QString &path) const;
+    Q_INVOKABLE static QDateTime deletedAt(const QString &trashedPath);
     // Puts items back where they came from (recreating the folder if it's
     // gone, and never overwriting what's there now).
     Q_INVOKABLE void restore(const QStringList &paths);
@@ -69,8 +77,12 @@ public:
     Q_INVOKABLE int trashCount() const;
     // Empty string on success, or why not.
     Q_INVOKABLE QString rename(const QString &path, const QString &name);
-    // Makes "New Folder" (or "New Folder 2"...) and returns its name.
-    Q_INVOKABLE QString newFolder(const QString &folder);
+    // Where a name's extension begins, for renaming and "(copy)" names:
+    // ".pdf" in "Report v1.2.pdf", ".tar.gz" kept whole. -1 for folders and
+    // dotfiles, which have none.
+    Q_INVOKABLE static int extensionStart(const QString &name, bool isDir);
+    // Makes "New Folder" (or "New Folder 2"...); done() names it.
+    Q_INVOKABLE void newFolder(const QString &folder);
 
     // The apps that can open a file, from the desktop's MIME database:
     // {id, name, isDefault}, the default first.
@@ -85,23 +97,31 @@ public:
     // A name in `folder` that isn't taken: the name itself, or
     // "name (copy).ext", "name (copy 2).ext"...
     static QString freeName(const QString &folder, const QString &name);
-    static bool copyRecursively(const QString &from, const QString &to, QString *error);
-    // The archive name for compressing these: "name.zip" for one item,
-    // "Archive.zip" for several; never one that exists.
-    static QString archiveName(const QStringList &paths);
-    static bool sameDrive(const QString &a, const QString &b);
+    // Copies `from` to `to`, a folder with all it holds. Moving, each file
+    // is removed once it's copied and each folder once it's empty; what
+    // can't be removed is left where it is.
+    static bool copyRecursively(const QString &from, const QString &to, QString *error, bool move = false);
+    // The archive name for compressing these into `folder`: "name.zip" for
+    // one item, "Archive.zip" for several; never one that exists.
+    static QString archiveName(const QStringList &paths, const QString &folder);
+    // Whether the item at `path` is on the drive `folder` is on.
+    static bool sameDrive(const QString &path, const QString &folder);
+    // The home trash, where g_file_trash puts things: $XDG_DATA_HOME/Trash.
+    static QString homeTrash();
     // The trash folders: the home one, then each mounted drive's own.
     static QStringList trashDirs();
-    // For an item in <trash>/files: its note, and the path it came from.
+    // For an item directly in a trash's files folder: its note. Empty for
+    // anything else, such as what's inside a trashed folder, which has none.
     static QString infoFileFor(const QString &trashedPath);
-    static QString readOriginalPath(const QString &trashedPath);
-    static QDateTime readDeletionDate(const QString &trashedPath);
     // Restores one item; returns where it went, or empty with `error` set.
     static QString restoreOne(const QString &trashedPath, QString *error);
     static bool deleteTrashed(const QString &trashedPath);
     static int emptyTrashDir(const QString &trashDir);
+    // How transfer() takes the paths: copied, moved, or as a drop takes
+    // them, each moved from the folder's drive and copied from any other.
+    enum Mode { Copy, Move, Drop };
     // Copies or moves each path into `folder`; returns the new names.
-    static QStringList transfer(const QStringList &paths, const QString &folder, bool move, QString *error);
+    static QStringList transfer(const QStringList &paths, const QString &folder, Mode mode, QString *error);
 
 signals:
     void busyChanged();
@@ -113,7 +133,24 @@ signals:
 
 private:
     void setBusy(const QString &busy);
-    void transferInBackground(const QStringList &paths, const QString &folder, bool move, bool releaseClipboard);
+    // One piece of work runs at a time: whether nothing else is running,
+    // saying why when something is, so what's refused doesn't just do
+    // nothing.
+    bool idle();
+    // Runs `work` off the UI thread while showing `busy`, then hands what
+    // it returns to `done`, back on this one.
+    template <typename Work, typename Done>
+    void inBackground(const QString &busy, Work work, Done done);
+    // Copies or moves off the UI thread, showing `busy` (or how many are
+    // moving or copying) meanwhile.
+    void transferInBackground(const QStringList &paths, const QString &folder, Mode mode, bool releaseClipboard,
+                              const QString &busy = {});
+    // Runs a helper program (bsdtar, dropbox-cli, tailscale) while showing
+    // `busy`, one piece of work at a time like the rest. `missing` says
+    // what to install when it isn't there; `finished` gets its exit code,
+    // or -1 if it crashed.
+    void runTool(const QString &program, const QStringList &args, const QString &busy, const QString &missing,
+                 const std::function<void(QProcess *, int)> &finished);
 
     QString m_busy;
 };

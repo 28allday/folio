@@ -12,8 +12,6 @@ Rectangle {
     // the status bar below it.
     clip: true
 
-    function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
-
     // Keyboard: Tab moves here from the files and back. ↑ ↓ move between
     // rows, ⏎ (or →) opens one and hands the keyboard back to the files.
     signal finished()
@@ -25,12 +23,7 @@ Rectangle {
     // included), so the pin box shows.
     property int dropHovers: 0
     readonly property bool dragging: drop.containsDrag || dropHovers > 0 || pinDrop.containsDrag
-    readonly property var rows: [].concat(
-        places.places.map(p => ({ path: p.path })),
-        places.pinned.map(p => ({ path: p.path })),
-        places.views.map(p => ({ path: p.path })),
-        places.devices.map(p => ({ path: p.path })),
-        places.peers.map(p => ({ host: p.host })))
+    readonly property var rows: [].concat(places.places, places.pinned, places.views, places.devices, places.peers)
     readonly property int pinnedAt: places.places.length
     readonly property int viewsAt: pinnedAt + places.pinned.length
     readonly property int devicesAt: viewsAt + places.views.length
@@ -40,7 +33,7 @@ Rectangle {
         // Start on the row for where we are, or the top.
         let at = 0
         for (let i = 0; i < rows.length; ++i)
-            if (rows[i].path !== undefined && rows[i].path === activePath)
+            if (rows[i].path === activePath)
                 at = i
         cursor = at
         forceActiveFocus()
@@ -76,7 +69,7 @@ Rectangle {
         const here = sidebar.target.path
         for (const list of [places.places, places.pinned, places.views, places.devices]) {
             for (const p of list) {
-                if ((here === p.path || here.startsWith(p.path === "/" ? "/" : p.path + "/")) && p.path.length > best.length && p.path !== "/")
+                if (p.path !== "/" && (here === p.path || here.startsWith(p.path + "/")) && p.path.length > best.length)
                     best = p.path
             }
         }
@@ -91,6 +84,7 @@ Rectangle {
     }
 
     component SectionLabel: Text {
+        Layout.topMargin: 21
         Layout.leftMargin: 14
         Layout.bottomMargin: 6
         color: theme.secondaryForeground
@@ -109,24 +103,21 @@ Rectangle {
         property string dropPath
         property bool dropTrashes: false
         readonly property bool dropHover: rowDrop.containsDrag
-        property bool dim: false
         property string status
-        property color statusColor: theme.green
+        property color statusColor
 
         Layout.fillWidth: true
         implicitHeight: 34
+        leftPadding: 14
+        rightPadding: 14
         hoverEnabled: true
         focusPolicy: Qt.NoFocus
         Accessible.name: text
 
-        // Inline components don't see the file's ids, so this keeps its own.
-        function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
-
-
         background: Rectangle {
             radius: Math.min(4, theme.radius)
-            color: row.active || row.dropHover ? row.tint(theme.accent, 0.16)
-                 : row.hovered && row.enabled ? row.tint(theme.foreground, 0.06) : "transparent"
+            color: row.active || row.dropHover ? Qt.alpha(theme.accent, 0.16)
+                 : row.hovered && row.enabled ? Qt.alpha(theme.foreground, 0.06) : "transparent"
             border.width: row.dropHover ? 2 : row.keyed ? 1 : 0
             border.color: theme.accent
         }
@@ -139,7 +130,7 @@ Rectangle {
             onEntered: (drag) => { drag.accepted = row.dropTrashes ? drag.hasUrls : fileOps.canDrop(drag.urls, row.dropPath) }
             onDropped: (drop) => {
                 if (row.dropTrashes) {
-                    fileOps.trash(drop.urls.map(u => decodeURIComponent(u.toString().replace(/^file:\/\//, ""))))
+                    fileOps.trash(fileOps.localPaths(drop.urls))
                 } else {
                     fileOps.dropInto(drop.urls, row.dropPath)
                 }
@@ -148,16 +139,14 @@ Rectangle {
         }
         contentItem: RowLayout {
             spacing: 14
-            Item { implicitWidth: 0 }
-            Glyph { name: row.glyph; color: row.active ? theme.brightForeground : row.dim ? theme.secondaryForeground : theme.foreground }
+            Glyph { name: row.glyph; color: row.active ? theme.brightForeground : theme.foreground }
             Text {
                 Layout.fillWidth: true
                 text: row.text
                 elide: Text.ElideRight
-                color: row.active ? theme.brightForeground : row.dim ? theme.secondaryForeground : theme.foreground
+                color: row.active ? theme.brightForeground : theme.foreground
             }
             Text { visible: row.status.length > 0; text: row.status; color: row.statusColor; font.pixelSize: 11 }
-            Item { implicitWidth: 0 }
         }
     }
 
@@ -185,6 +174,7 @@ Rectangle {
 
             // The section's label is home itself: click it to go there.
             SectionLabel {
+                Layout.topMargin: 0
                 text: qsTr("Home")
                 color: sidebar.target.path === places.home ? theme.accent
                      : homeHover.hovered ? theme.foreground : theme.secondaryForeground
@@ -205,7 +195,7 @@ Rectangle {
                     glyph: modelData.icon
                     active: sidebar.activePath === modelData.path
                     status: sidebar.statusText(modelData.status)
-                    statusColor: modelData.status === "stopped" ? theme.red : modelData.status === "syncing" ? theme.yellow : theme.green
+                    statusColor: modelData.status === "stopped" ? theme.red : theme.yellow
                     onClicked: sidebar.target.navigate(modelData.path)
                 }
             }
@@ -213,7 +203,6 @@ Rectangle {
             // Pinned folders from anywhere, kept in GTK's bookmarks. While a
             // folder is dragged over the sidebar, the section shows (even
             // empty) as the place to drop it.
-            Item { implicitHeight: 20; visible: places.pinned.length > 0 || sidebar.dragging }
             SectionLabel { text: qsTr("Pinned"); visible: places.pinned.length > 0 || sidebar.dragging }
             Repeater {
                 model: places.pinned
@@ -226,7 +215,7 @@ Rectangle {
                     keyed: sidebar.activeFocus && sidebar.cursor === sidebar.pinnedAt + index
                     onKeyedChanged: if (keyed) sidebar.reveal(this)
                     text: modelData.name
-                    glyph: "folder"
+                    glyph: modelData.icon
                     active: sidebar.activePath === modelData.path
                     onClicked: sidebar.target.navigate(modelData.path)
                     IconButton {
@@ -245,7 +234,7 @@ Rectangle {
                 Layout.fillWidth: true
                 implicitHeight: 34
                 visible: sidebar.dragging
-                color: sidebar.tint(theme.accent, pinDrop.containsDrag ? 0.22 : 0.08)
+                color: Qt.alpha(theme.accent, pinDrop.containsDrag ? 0.22 : 0.08)
                 border.width: pinDrop.containsDrag ? 2 : 1
                 border.color: theme.accent
                 radius: Math.min(4, theme.radius)
@@ -260,8 +249,7 @@ Rectangle {
                     anchors.fill: parent
                     keys: ["text/uri-list"]
                     onDropped: (drop) => {
-                        for (const url of drop.urls) {
-                            const path = decodeURIComponent(url.toString().replace(/^file:\/\//, ""))
+                        for (const path of fileOps.localPaths(drop.urls)) {
                             const problem = places.pin(path)
                             if (problem.length > 0)
                                 sidebar.target.showMessage(problem)
@@ -272,7 +260,6 @@ Rectangle {
             }
 
             // Views: lists that aren't a folder of their own.
-            Item { implicitHeight: 20 }
             SectionLabel { text: qsTr("Views") }
             Repeater {
                 model: places.views
@@ -290,7 +277,6 @@ Rectangle {
                 }
             }
 
-            Item { implicitHeight: 20; visible: places.devices.length > 0 }
             SectionLabel { text: qsTr("Devices"); visible: places.devices.length > 0 }
             Repeater {
                 model: places.devices
@@ -302,13 +288,12 @@ Rectangle {
                     keyed: sidebar.activeFocus && sidebar.cursor === sidebar.devicesAt + index
                     onKeyedChanged: if (keyed) sidebar.reveal(this)
                     text: modelData.name
-                    glyph: "drive"
+                    glyph: modelData.icon
                     active: sidebar.activePath === modelData.path
                     onClicked: sidebar.target.navigate(modelData.path)
                 }
             }
 
-            Item { implicitHeight: 20; visible: places.peers.length > 0 }
             SectionLabel { text: qsTr("Tailnet"); visible: places.peers.length > 0 }
             Repeater {
                 model: places.peers

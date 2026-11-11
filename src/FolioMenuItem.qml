@@ -8,7 +8,9 @@ MenuItem {
     id: entry
 
     property string keys
-    // Hidden entries take no room.
+    // Hidden entries take no room, and the arrow keys pass over them: Menu
+    // skips only entries that are disabled or out of the tab chain, so
+    // Return would otherwise run one nobody can see.
     property bool shown: true
 
     // Hover is off by default here; with it, the pointer highlights an
@@ -16,6 +18,7 @@ MenuItem {
     hoverEnabled: true
     visible: shown
     height: shown ? implicitHeight : 0
+    activeFocusOnTab: shown
     implicitHeight: 32
     leftPadding: 14
     rightPadding: 14
@@ -25,7 +28,7 @@ MenuItem {
         x: 4
         width: parent.width - 8
         radius: Math.min(4, theme.radius)
-        color: entry.highlighted && entry.enabled ? Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.18) : "transparent"
+        color: entry.highlighted && entry.enabled ? Qt.alpha(theme.accent, 0.18) : "transparent"
     }
 
     contentItem: Item {
@@ -59,7 +62,7 @@ MenuItem {
     indicator: Glyph {
         x: entry.width - width - 14
         anchors.verticalCenter: parent.verticalCenter
-        visible: entry.checkable && entry.checked
+        visible: entry.checked
         name: "check"
         size: 14
         color: theme.accent

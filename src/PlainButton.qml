@@ -9,15 +9,14 @@ AbstractButton {
 
     implicitWidth: Math.max(88, label.implicitWidth + 32)
     implicitHeight: 36
-    focusPolicy: Qt.StrongFocus
     hoverEnabled: true
     Accessible.name: text
 
     background: Rectangle {
         radius: Math.min(4, theme.radius)
         color: button.primary ? (button.hovered ? Qt.lighter(theme.accent, 1.08) : theme.accent)
-             : button.hovered ? Qt.rgba(theme.foreground.r, theme.foreground.g, theme.foreground.b, 0.10)
-             : Qt.rgba(theme.foreground.r, theme.foreground.g, theme.foreground.b, 0.05)
+             : button.hovered ? Qt.alpha(theme.foreground, 0.10)
+             : Qt.alpha(theme.foreground, 0.05)
         border.width: button.visualFocus ? 1 : 0
         border.color: theme.accent
     }

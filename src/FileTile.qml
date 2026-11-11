@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Shapes
 import QtQuick.Effects
+import "Format.js" as Format
 
 // One item in the grid: a preview on top, its name below. Folders are a
 // quiet card; files show a real thumbnail when one
@@ -19,40 +20,15 @@ Item {
     required property var size
     required property var modified
     required property bool selected
-    required property var peek
 
     property bool current: false
 
     signal clicked(int modifiers)
     signal activated()
 
-    function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
-
     // Pictures and drawings round their corners with the theme: square on
     // Omarchy's default, softly rounded on themes that round windows.
     readonly property real iconRadius: Math.min(10, theme.radius)
-
-    // When it changed: the time for today, the date before that.
-    function when(date) {
-        if (!date)
-            return ""
-        const locale = Qt.locale(translator.language)
-        const now = new Date()
-        const today = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate()
-        return today ? date.toLocaleTimeString(locale, Locale.ShortFormat) : date.toLocaleDateString(locale, Locale.ShortFormat)
-    }
-
-    function formatSize(bytes) {
-        const units = [qsTr("B"), qsTr("KB"), qsTr("MB"), qsTr("GB"), qsTr("TB")]
-        let i = 0
-        let value = bytes
-        while (value >= 1000 && i < units.length - 1) { value /= 1000; ++i }
-        return value.toLocaleString(Qt.locale(), "f", i === 0 ? 0 : 1) + " " + units[i]
-    }
-
-    function thumbUrl(file, type, size) {
-        return "image://thumb/" + size + "/" + encodeURIComponent(type) + "/" + encodeURIComponent(file)
-    }
 
     // The badge and stand-in color for each kind, from the theme's palette.
     readonly property color kindColor: kind === "pdf" ? theme.red
@@ -111,10 +87,9 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width - 28
         text: {
-            translator.language
-            const size = tile.isDir ? (tile.itemCount === 0 ? qsTr("Empty") : tile.itemCount > 0 ? qsTr("%n items", "", tile.itemCount) : "")
-                                    : tile.formatSize(tile.size)
-            const date = tile.when(tile.modified)
+            translator.language // Re-read when the language (and so the default locale) changes.
+            const size = tile.isDir ? Format.count(tile.itemCount) : Format.size(tile.size)
+            const date = Format.when(tile.modified)
             return [size, date].filter(part => part.length > 0).join(" · ")
         }
         color: theme.secondaryForeground
@@ -132,15 +107,20 @@ Item {
 
     // Dragging hands the file to whatever it lands on as a URI list: the
     // sidebar pins a folder, other apps get the file.
-    Drag.active: drag.active
     Drag.dragType: Drag.Automatic
     Drag.supportedActions: Qt.CopyAction | Qt.LinkAction
-    // Dragging a selected item takes the whole selection along.
-    Drag.mimeData: ({ "text/uri-list": (tile.selected && backend.folder.selectedCount > 1 ? backend.folder.selectedPaths() : [tile.path])
-                                         .map(p => "file://" + encodeURI(p)).join("\r\n") })
     Drag.hotSpot.x: tile.width / 2
     Drag.hotSpot.y: 40
-    DragHandler { id: drag; target: null }
+    DragHandler {
+        target: null
+        // Dragging a selected item takes the whole selection along. The list
+        // is built as the drag starts, not again on every change of selection.
+        onActiveChanged: {
+            if (active)
+                tile.Drag.mimeData = { "text/uri-list": fileOps.uriList(tile.selected && backend.folder.selectedCount > 1 ? backend.folder.selectedPaths() : [tile.path]) }
+            tile.Drag.active = active
+        }
+    }
 
     TapHandler {
         id: tap
@@ -162,33 +142,24 @@ Item {
              + "V" + (88.5 - r) + "Q123.5 88.5 " + (123.5 - r) + " 88.5H" + (4.5 + r)
              + "Q4.5 88.5 4.5 " + (88.5 - r) + "Z"
     }
-    component FolderShape: Shape {
-        id: shape
-        property color fill: theme.lighterBackground
-        property color stroke: "transparent"
-        property real strokeWidth: 1
-        width: 128
-        height: 92
-        preferredRendererType: Shape.CurveRenderer
-        ShapePath {
-            fillColor: shape.fill
-            strokeColor: shape.stroke
-            strokeWidth: shape.strokeWidth
-            joinStyle: tile.iconRadius > 0 ? ShapePath.RoundJoin : ShapePath.MiterJoin
-            PathSvg { path: tile.folderPath(tile.iconRadius) }
-        }
-    }
 
     // Folders are a plain card, nothing on it; the name below says the rest.
     Component {
         id: folderArt
 
-        FolderShape {
-            fill: tile.current || folderDrop.containsDrag ? Qt.tint(theme.lighterBackground, tile.tint(theme.accent, 0.3))
-                : hover.hovered ? Qt.tint(theme.lighterBackground, tile.tint(theme.foreground, 0.06))
-                : theme.lighterBackground
-            stroke: tile.current || folderDrop.containsDrag ? theme.accent : "transparent"
-            strokeWidth: folderDrop.containsDrag ? 2.5 : 1.5
+        Shape {
+            width: 128
+            height: 92
+            preferredRendererType: Shape.CurveRenderer
+            ShapePath {
+                fillColor: tile.current || folderDrop.containsDrag ? Qt.tint(theme.lighterBackground, Qt.alpha(theme.accent, 0.3))
+                    : hover.hovered ? Qt.tint(theme.lighterBackground, Qt.alpha(theme.foreground, 0.06))
+                    : theme.lighterBackground
+                strokeColor: tile.current || folderDrop.containsDrag ? theme.accent : "transparent"
+                strokeWidth: folderDrop.containsDrag ? 2.5 : 1.5
+                joinStyle: tile.iconRadius > 0 ? ShapePath.RoundJoin : ShapePath.MiterJoin
+                PathSvg { path: tile.folderPath(tile.iconRadius) }
+            }
         }
     }
 
@@ -209,7 +180,7 @@ Item {
                 y: (parent.height - height) / 2
                 asynchronous: true
                 fillMode: parent.crop ? Image.PreserveAspectCrop : Image.Stretch
-                source: tile.kind === "text" ? "" : tile.thumbUrl(tile.path, tile.mime, 256)
+                source: tile.kind === "text" ? "" : Format.thumb(tile.path, tile.mime, 256, tile.modified)
                 visible: status === Image.Ready
                 layer.enabled: tile.iconRadius > 0 && status === Image.Ready
                 layer.effect: MultiEffect {
@@ -234,7 +205,7 @@ Item {
                 anchors.centerIn: parent
                 width: 30; height: 30
                 radius: Math.min(4, theme.radius)
-                color: tile.tint(theme.darkBackground, 0.75)
+                color: Qt.alpha(theme.darkBackground, 0.75)
                 Glyph { anchors.centerIn: parent; name: "play"; size: 16; color: theme.brightForeground }
             }
 
@@ -264,7 +235,7 @@ Item {
                 height: parent.shown.height + 6
                 color: "transparent"
                 border.width: tile.current ? 2 : 1
-                border.color: tile.current ? theme.accent : tile.tint(theme.foreground, 0.2)
+                border.color: tile.current ? theme.accent : Qt.alpha(theme.foreground, 0.2)
                 radius: tile.iconRadius > 0 ? tile.iconRadius + 3 : 0
             }
         }
@@ -280,7 +251,7 @@ Item {
                 width: 66; height: 92
                 color: theme.lighterBackground
                 border.width: 1
-                border.color: tile.tint(theme.foreground, 0.16)
+                border.color: Qt.alpha(theme.foreground, 0.16)
                 radius: tile.iconRadius
                 Column {
                     x: 9; y: 11
@@ -288,7 +259,7 @@ Item {
                     Rectangle { width: 34; height: 4; color: tile.kindColor }
                     Repeater {
                         model: [48, 48, 40, 48, 30]
-                        Rectangle { required property int modelData; width: modelData; height: 2; color: tile.tint(theme.foreground, 0.3) }
+                        Rectangle { required property int modelData; width: modelData; height: 2; color: Qt.alpha(theme.foreground, 0.3) }
                     }
                 }
             }

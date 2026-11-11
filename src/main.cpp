@@ -12,9 +12,8 @@
 #include <QUrl>
 #include <cstdio>
 
-#include "backend.h"
 #include "filemanager1.h"
-#include "fileops.h"
+#include "foldermodel.h"
 #include "places.h"
 #include "previewer.h"
 #include "theme.h"
@@ -46,7 +45,6 @@ static void setUp(QGuiApplication &app) {
     app.setApplicationName("folio");
     // Settings (the chosen view) go to ~/.config/folio/folio.conf.
     app.setOrganizationName("folio");
-    app.setApplicationVersion("0.1.1");
     app.setWindowIcon(QIcon::fromTheme("folio"));
     QFont font("monospace");
     font.setStyleHint(QFont::Monospace);
@@ -55,9 +53,9 @@ static void setUp(QGuiApplication &app) {
     QQuickStyle::setStyle("Material");
 }
 
-// `folio preview [--hidden] [--sort name|modified] [--follow] FILE`: the large
-// look at one file, stepping through its folder. Its own process, so a file
-// that crashes a decoder only closes this window.
+// `folio preview [--hidden] [--sort name|kind|modified|oldest|size] [--follow] FILE`:
+// the large look at one file, stepping through its folder. Its own process,
+// so a file that crashes a decoder only closes this window.
 static int preview(QGuiApplication &app) {
     QStringList args = app.arguments().mid(2);
     bool showHidden = false;
@@ -76,7 +74,7 @@ static int preview(QGuiApplication &app) {
             path = QUrl(arg).isLocalFile() ? QUrl(arg).toLocalFile() : arg;
     }
     if (path.isEmpty() || !QFileInfo::exists(path)) {
-        fprintf(stderr, "usage: folio preview [--hidden] [--sort name|modified] FILE\n");
+        fprintf(stderr, "usage: folio preview [--hidden] [--sort name|kind|modified|oldest|size] [--follow] FILE\n");
         return 1;
     }
 
@@ -132,7 +130,6 @@ int main(int argc, char *argv[]) {
     engine.addImageProvider("thumb", new ThumbnailProvider(&thumbnails));
     // Creatable too: the column view lists each folder on the way here.
     qmlRegisterType<FolderModel>("Folio", 1, 0, "FolderModel");
-    qmlRegisterUncreatableType<Mounter>("Folio", 1, 0, "Mounter", "Owned by the backend");
     engine.rootContext()->setContextProperty("translator", &translator);
     engine.rootContext()->setContextProperty("theme", &theme);
     engine.rootContext()->setContextProperty("places", &places);
@@ -140,7 +137,7 @@ int main(int argc, char *argv[]) {
     Windows windows(&engine);
     if (!windows.open(start, select))
         return 1;
-    FileManager1::registerOn(&windows, &windows);
+    FileManager1::registerOn(&windows);
 
     return app.exec();
 }

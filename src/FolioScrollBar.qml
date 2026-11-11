@@ -10,8 +10,10 @@ ScrollBar {
         implicitWidth: 4
         implicitHeight: 4
         radius: Math.min(2, theme.radius)
-        color: Qt.rgba(theme.foreground.r, theme.foreground.g, theme.foreground.b, bar.pressed ? 0.5 : 0.28)
+        color: Qt.alpha(theme.foreground, bar.pressed ? 0.5 : 0.28)
         visible: bar.size < 1 && (bar.active || bar.hovered)
     }
     background: null
+    // Material fades the bar in and out of its active state; drop that.
+    transitions: []
 }

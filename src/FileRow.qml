@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Effects
+import "Format.js" as Format
 
 // One item as a row, for the list and column views: a small picture or
 // glyph, the name, and in the list the size and date beside it.
@@ -13,7 +14,6 @@ Item {
     required property bool isDir
     required property string kind
     required property string mime
-    required property string extension
     required property var size
     required property var modified
     required property int itemCount
@@ -30,33 +30,11 @@ Item {
 
     implicitHeight: 32
 
-    // Shared with the list's header so the columns line up. The name
-    // always gets room: in a narrow window the date goes first, then the
-    // size. (The icon says what kind a file is; there's no column for it.)
-    readonly property int sizeWidth: 96
-    readonly property int dateWidth: 96
+    // The name always gets room: in a narrow window the date goes first,
+    // then the size. (The icon says what kind a file is; there's no column
+    // for it.)
     readonly property bool showDate: detailed && width >= 480
     readonly property bool showSize: detailed && width >= 380
-
-    function tint(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
-
-    // When it changed: the time for today, the date before that.
-    function when(date) {
-        if (!date)
-            return ""
-        const locale = Qt.locale(translator.language)
-        const now = new Date()
-        const today = date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth() && date.getDate() === now.getDate()
-        return today ? date.toLocaleTimeString(locale, Locale.ShortFormat) : date.toLocaleDateString(locale, Locale.ShortFormat)
-    }
-
-    function formatSize(bytes) {
-        const units = [qsTr("B"), qsTr("KB"), qsTr("MB"), qsTr("GB"), qsTr("TB")]
-        let i = 0
-        let value = bytes
-        while (value >= 1000 && i < units.length - 1) { value /= 1000; ++i }
-        return value.toLocaleString(Qt.locale(), "f", i === 0 ? 0 : 1) + " " + units[i]
-    }
 
     readonly property string glyph: row.isDir ? "folder"
                                   : row.kind === "image" ? "pictures"
@@ -82,9 +60,9 @@ Item {
         radius: Math.min(4, theme.radius)
         border.width: folderDrop.containsDrag ? 2 : 0
         border.color: theme.accent
-        color: row.current || folderDrop.containsDrag ? row.tint(theme.accent, 0.18)
-             : row.trail ? row.tint(theme.foreground, 0.08)
-             : hover.hovered ? row.tint(theme.foreground, 0.05)
+        color: row.current || folderDrop.containsDrag ? Qt.alpha(theme.accent, 0.18)
+             : row.trail ? Qt.alpha(theme.foreground, 0.08)
+             : hover.hovered ? Qt.alpha(theme.foreground, 0.05)
              : "transparent"
     }
 
@@ -109,8 +87,7 @@ Item {
                 }
                 asynchronous: true
                 fillMode: Image.PreserveAspectCrop
-                source: row.kind === "image" || row.kind === "video"
-                    ? "image://thumb/128/" + encodeURIComponent(row.mime) + "/" + encodeURIComponent(row.path) : ""
+                source: row.kind === "image" || row.kind === "video" ? Format.thumb(row.path, row.mime, 128, row.modified) : ""
                 visible: status === Image.Ready
             }
             Rectangle {
@@ -138,17 +115,20 @@ Item {
         }
         Text {
             visible: row.showSize
-            Layout.preferredWidth: row.sizeWidth
+            Layout.preferredWidth: 96
             horizontalAlignment: Text.AlignRight
-            text: row.isDir ? (row.itemCount === 0 ? qsTr("Empty") : row.itemCount > 0 ? qsTr("%n items", "", row.itemCount) : "") : row.formatSize(row.size)
+            text: row.isDir ? Format.count(row.itemCount) : Format.size(row.size)
             color: theme.secondaryForeground
             font.pixelSize: 12
         }
         Text {
             visible: row.showDate
-            Layout.preferredWidth: row.dateWidth
+            Layout.preferredWidth: 96
             Layout.leftMargin: 12
-            text: row.when(row.modified)
+            text: {
+                translator.language // Re-read when the language (and so the default locale) changes.
+                return Format.when(row.modified)
+            }
             color: theme.secondaryForeground
             font.pixelSize: 12
             elide: Text.ElideRight
@@ -172,11 +152,16 @@ Item {
     }
 
     // Like the tiles: dragged, a row is a file for the sidebar or another app.
-    Drag.active: drag.active
     Drag.dragType: Drag.Automatic
     Drag.supportedActions: Qt.CopyAction | Qt.LinkAction
-    // Dragging a selected item takes the whole selection along.
-    Drag.mimeData: ({ "text/uri-list": (row.selected && backend.folder.selectedCount > 1 ? backend.folder.selectedPaths() : [row.path])
-                                         .map(p => "file://" + encodeURI(p)).join("\r\n") })
-    DragHandler { id: drag; target: null }
+    DragHandler {
+        target: null
+        // Dragging a selected item takes the whole selection along. The list
+        // is built as the drag starts, not again on every change of selection.
+        onActiveChanged: {
+            if (active)
+                row.Drag.mimeData = { "text/uri-list": fileOps.uriList(row.selected && backend.folder.selectedCount > 1 ? backend.folder.selectedPaths() : [row.path]) }
+            row.Drag.active = active
+        }
+    }
 }
