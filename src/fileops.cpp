@@ -436,14 +436,21 @@ bool FileOps::inTrash(const QString &path) const {
 }
 
 QString FileOps::infoFileFor(const QString &trashedPath) {
+    // Only what's directly in a trash's files folder was trashed on its own,
+    // with a note. What's inside a trashed folder came along with it and has
+    // none; looking one level up would find a file in a trashed folder that
+    // happens to be called "info".
     const QFileInfo item(trashedPath);
-    const QString trashDir = QFileInfo(item.absolutePath()).absolutePath();
-    return trashDir + "/info/" + item.fileName() + ".trashinfo";
+    const QString folder = QDir::cleanPath(item.absolutePath());
+    for (const QString &dir : trashDirs())
+        if (folder == QDir::cleanPath(dir + "/files"))
+            return dir + "/info/" + item.fileName() + ".trashinfo";
+    return {};
 }
 
 QString FileOps::originalPath(const QString &trashedPath) {
     QFile info(infoFileFor(trashedPath));
-    if (!info.open(QIODevice::ReadOnly))
+    if (info.fileName().isEmpty() || !info.open(QIODevice::ReadOnly))
         return {};
     for (const QByteArray &line : info.readAll().split('\n')) {
         if (!line.startsWith("Path="))
@@ -462,7 +469,7 @@ QString FileOps::originalPath(const QString &trashedPath) {
 
 QDateTime FileOps::deletedAt(const QString &trashedPath) {
     QFile info(infoFileFor(trashedPath));
-    if (!info.open(QIODevice::ReadOnly))
+    if (info.fileName().isEmpty() || !info.open(QIODevice::ReadOnly))
         return {};
     for (const QByteArray &line : info.readAll().split('\n'))
         if (line.startsWith("DeletionDate="))
@@ -497,7 +504,8 @@ bool FileOps::deleteTrashed(const QString &trashedPath) {
     const QFileInfo item(trashedPath);
     const bool removed = item.isDir() && !item.isSymLink() ? QDir(trashedPath).removeRecursively()
                                                            : QFile::remove(trashedPath);
-    QFile::remove(infoFileFor(trashedPath));
+    if (const QString note = infoFileFor(trashedPath); !note.isEmpty())
+        QFile::remove(note);
     return removed;
 }
 

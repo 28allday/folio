@@ -715,6 +715,7 @@ private slots:
     void trashRestoresAndEmpties()
     {
         QTemporaryDir home;
+        const auto restore = dataHomeAt(home.path());
         const QString trash = home.filePath("Trash");
         QDir().mkpath(trash + "/files");
         QDir().mkpath(trash + "/info");
@@ -749,6 +750,29 @@ private slots:
         QCOMPARE(FileOps::emptyTrashDir(trash), 2);
         QVERIFY(QDir(trash + "/files").isEmpty());
         QVERIFY(QDir(trash + "/info").isEmpty());
+    }
+
+    void trashFindsNotesOnlyForWhatWasTrashed()
+    {
+        // Only what's directly in Trash/files has a note in Trash/info.
+        // Something inside a trashed folder came along with it and has none;
+        // the same name in Trash/files/info is a file in a trashed folder
+        // called "info".
+        QTemporaryDir data;
+        const auto restore = dataHomeAt(data.path());
+        const QString trash = data.filePath("Trash");
+        QDir().mkpath(trash + "/files/photos");
+        QDir().mkpath(trash + "/files/info");
+        write(trash + "/files/photos/a", "a");
+        write(trash + "/files/info/a.trashinfo", "[Trash Info]\nPath=" + data.filePath("elsewhere/a").toUtf8() + "\n");
+
+        QCOMPARE(FileOps::originalPath(trash + "/files/photos/a"), QString());
+        QString error;
+        QCOMPARE(FileOps::restoreOne(trash + "/files/photos/a", &error), QString());
+        QCOMPARE(error, QString("a has no record of where it came from."));
+        QVERIFY(QFile::exists(trash + "/files/photos/a"));
+        QVERIFY(FileOps::deleteTrashed(trash + "/files/photos/a"));
+        QVERIFY(QFile::exists(trash + "/files/info/a.trashinfo"));
     }
 
     void trashTakesNothingButDeletes()
