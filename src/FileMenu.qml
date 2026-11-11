@@ -176,13 +176,15 @@ FolioMenu {
         onTriggered: fileOps.newFolder(fileMenu.folder)
     }
     MenuLine { shown: fileMenu.forFiles }
+    // Archives are extracted, not compressed again.
+    readonly property bool archives: !trashView && forItem && forFiles && fileOps.canExtract(paths)
     FolioMenuItem {
-        shown: !fileMenu.trashView && fileMenu.forItem && fileMenu.forFiles
+        shown: !fileMenu.trashView && fileMenu.forItem && fileMenu.forFiles && !fileMenu.archives
         text: qsTr("Compress")
         onTriggered: fileOps.compress(fileMenu.paths)
     }
     FolioMenuItem {
-        shown: !fileMenu.trashView && fileMenu.forItem && fileMenu.forFiles && fileOps.canExtract(fileMenu.paths)
+        shown: fileMenu.archives
         text: qsTr("Extract")
         onTriggered: fileOps.extract(fileMenu.paths)
     }
