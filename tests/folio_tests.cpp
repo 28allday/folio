@@ -307,6 +307,19 @@ private slots:
         QVERIFY(QFile::exists(to.filePath("album/inner/a.jpg")));
     }
 
+    void fileOpsCopyLinksAsWritten()
+    {
+        // A link relative to its folder points into the copy, not back at
+        // the original.
+        QTemporaryDir from, to;
+        QDir(from.path()).mkdir("project");
+        write(from.filePath("project/data.txt"), "data");
+        QVERIFY(QFile::link("data.txt", from.filePath("project/link")));
+        QString error;
+        QCOMPARE(FileOps::transfer({from.filePath("project")}, to.path(), false, &error), QStringList({"project"}));
+        QCOMPARE(QFileInfo(to.filePath("project/link")).readSymLink(), QString("data.txt"));
+    }
+
     void fileOpsClipboardFormats()
     {
         std::unique_ptr<QMimeData> data(FileOps::mimeDataFor({"/tmp/a b.txt", "/tmp/c.txt"}, true));

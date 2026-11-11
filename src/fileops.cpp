@@ -113,8 +113,9 @@ QString FileOps::freeName(const QString &folder, const QString &name) {
 bool FileOps::copyRecursively(const QString &from, const QString &to, QString *error) {
     const QFileInfo info(from);
     if (info.isSymLink()) {
-        // Links are copied as links, not followed.
-        if (!QFile::link(info.symLinkTarget(), to)) {
+        // Links are copied as links, not followed, and as written: one
+        // relative to its folder points into the copy, not at the original.
+        if (!QFile::link(info.readSymLink(), to)) {
             *error = QObject::tr("Couldn't copy the link %1.").arg(info.fileName());
             return false;
         }
