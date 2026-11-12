@@ -968,10 +968,12 @@ private slots:
         QVERIFY(save.step(here, {}, "nowhere/x.png").isEmpty());
         QVERIFY(save.step("recent:", {}, "x.png").isEmpty());
         QVERIFY(save.step("recent:", {}, "~x.png").isEmpty());
-        // A name typed with a stray space is the name without it; a file
-        // that really has the space in its name is that file.
+        // Spaces at the ends of a name are part of it, for a new file and
+        // for one that's there.
         write(dir.filePath(" spaced.png"), "x");
-        QCOMPARE(paths(save.step(here, {}, "new.png ")), QStringList({dir.filePath("new.png")}));
+        QCOMPARE(paths(save.step(here, {}, "new.png ")), QStringList({dir.filePath("new.png ")}));
+        QCOMPARE(paths(save.step(here, {}, " album/x.png")), QStringList());
+        QCOMPARE(paths(save.step(other, {}, dir.filePath("album/ x.png"))), QStringList({dir.filePath("album/ x.png")}));
         QCOMPARE(paths(save.step(here, {}, " spaced.png")), QStringList({dir.filePath(" spaced.png")}));
         QCOMPARE(save.step(here, {}, " spaced.png").value("replaces").toStringList(), QStringList({" spaced.png"}));
         QCOMPARE(paths(save.step(other, {}, dir.filePath(" spaced.png"))), QStringList({dir.filePath(" spaced.png")}));
@@ -3581,6 +3583,8 @@ private slots:
         QCOMPARE(Backend::expandTyped("Work/folio", h, h), h + "/Work/folio");
         QCOMPARE(Backend::expandTyped("/etc", h, h), QString("/etc"));
         QCOMPARE(Backend::expandTyped("Work", h, "recent:"), h + "/Work");
+        QCOMPARE(Backend::expandTyped(" Work ", h, h), h + "/Work");
+        QCOMPARE(Backend::expandTyped(" Work ", h, h, true), h + "/ Work ");
         QCOMPARE(Backend::complete("~/Doc", h, h), QString("~/Documents/"));
         QCOMPARE(Backend::complete("~/Work/fo", h, h), QString("~/Work/fo"));   // folio or forge
         QCOMPARE(Backend::complete("~/Work/fol", h, h), QString("~/Work/folio/"));

@@ -494,8 +494,8 @@ QString Backend::typedPath() const {
     return FolderModel::isView(p) || p == "/" ? p : p + "/";
 }
 
-QString Backend::expandTyped(const QString &text, const QString &home, const QString &current) {
-    QString t = text.trimmed();
+QString Backend::expandTyped(const QString &text, const QString &home, const QString &current, bool exact) {
+    QString t = exact ? text : text.trimmed();
     if (t.startsWith("file://"))
         t = QUrl(t).toLocalFile();
     if (t == "~")

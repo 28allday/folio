@@ -111,7 +111,9 @@ public:
     void showFolder(const QString &path);
     void showItem(const QString &path);
 
-    static QString expandTyped(const QString &text, const QString &home, const QString &current);
+    // `exact` keeps spaces at the ends of what was typed: a file's name can
+    // have them.
+    static QString expandTyped(const QString &text, const QString &home, const QString &current, bool exact = false);
     static QString complete(const QString &text, const QString &home, const QString &current);
     static QString mountLabel(const QString &mountFolder);
     // A server address (sftp://, smb://, ftp://, dav://, davs://) as GIO

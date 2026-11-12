@@ -114,20 +114,15 @@ QVariantMap Chooser::step(const QString &folder, const QStringList &picked, cons
     const bool real = QFileInfo(folder).isDir();
 
     if (mode() == "save") {
-        const QString name = typed.trimmed();
-        if (name.isEmpty() || (!real && QDir::isRelativePath(name) && name != "~" && !name.startsWith("~/")))
+        // The name as it's typed, spaces at its ends and all: they're part
+        // of a file's name, and a file opened in the window puts its own
+        // name here.
+        const QString &name = typed;
+        if (name.trimmed().isEmpty() || (!real && QDir::isRelativePath(name) && name != "~" && !name.startsWith("~/")))
             return {};
-        // A file that's there under exactly what the field holds, spaces at
-        // its ends and all (a file opened in the window puts its name
-        // there), is that file, not the one its name trims to.
-        if (typed != name && (real || typed.startsWith('/'))) {
-            const QFileInfo exact(typed.startsWith('/') ? typed : QDir(folder).filePath(typed));
-            if (exact.isFile())
-                return answer({exact.absoluteFilePath()});
-        }
         // A name, or a path as the path bar takes one: a folder typed is
         // somewhere to go, and anything else is the file to save.
-        const QFileInfo target(QDir::cleanPath(Backend::expandTyped(name, QDir::homePath(), folder)));
+        const QFileInfo target(QDir::cleanPath(Backend::expandTyped(name, QDir::homePath(), folder, true)));
         if (target.isDir())
             return {{"enter", target.absoluteFilePath()}};
         // A name ending in a slash says folder, and there's none.
