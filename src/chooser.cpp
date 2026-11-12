@@ -336,8 +336,6 @@ void ChooserPortal::ask(const QDBusMessage &message, const QDBusConnection &conn
         return;
     }
 
-    // Kept until the request has been read: the bytes of a path inside the
-    // options are only good while what they were unpacked from is.
     // Held while the request is read: what's still packed inside the options
     // is read out of it.
     const QDBusArgument packed = arguments.at(4).value<QDBusArgument>();

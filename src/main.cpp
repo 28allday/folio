@@ -117,6 +117,10 @@ static int preview(QGuiApplication &app) {
 }
 
 int main(int argc, char *argv[]) {
+    // The portal waits for the chooser as it starts, so a theme plugin that
+    // asks the portal for its settings would stall both for 25 seconds.
+    if (argc > 1 && qstrcmp(argv[1], "chooser") == 0)
+        qputenv("QT_QPA_PLATFORMTHEME", "generic");
     QGuiApplication app(argc, argv);
     setUp(app);
     if (app.arguments().value(1) == "preview")
