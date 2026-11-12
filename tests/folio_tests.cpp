@@ -812,6 +812,9 @@ private slots:
         // filter of types doesn't hide it.
         QVERIFY(names({"text/plain"}).contains("LICENSE"));
         QVERIFY(!names({"image/*"}).contains("LICENSE"));
+        // Looked into once, and still found by a type further down the list.
+        QVERIFY(names({"image/png", "application/pdf", "text/plain"}).contains("LICENSE"));
+        QVERIFY(!names({"image/png", "application/pdf"}).contains("LICENSE"));
 
         // A search names what it finds by its path from the folder searched;
         // a pattern is still for the name. And only what fits counts toward

@@ -165,10 +165,13 @@ bool FolderModel::fits(const Entry &entry, const QStringList &filter) {
         return true;
     // A type is told by the name, as everywhere in Folio; a file whose name
     // says nothing is looked into, or a filter of types would hide it.
+    // Once, however many types the filter names.
     QString mime = entry.mime;
+    bool looked = false;
     const auto type = [&] {
-        if (mime == "application/octet-stream")
+        if (!looked && mime == "application/octet-stream")
             mime = QMimeDatabase().mimeTypeForFile(entry.path).name();
+        looked = true;
         return mime;
     };
     // A search names what it finds by its path from the folder searched; a
@@ -533,12 +536,15 @@ void FolderModel::reload() {
     watcher->setFuture(QtConcurrent::run([path, showHidden, sort, query, items, filter, latest, generation, locale] {
         QString error;
         const auto overtaken = [&] { return *latest != generation; };
+        const bool listed = query.isEmpty() || path == recentPath();
         auto entries = isPluginView(path) ? listItems(items, query)
-                     : query.isEmpty() || path == recentPath() ? list(path, showHidden, sort, &error, overtaken, locale)
+                     : listed ? list(path, showHidden, sort, &error, overtaken, locale)
                      : search(path, query, showHidden, sort, overtaken, 1000, locale, filter);
-        // A plugin's items aren't files, and stay whatever is asked for.
-        if (!filter.isEmpty() && !isPluginView(path))
-            entries.removeIf([&](const Entry &entry) { return !fits(entry, filter); });
+        // A plugin's items aren't files, and stay whatever is asked for; a
+        // search has left out what doesn't fit already. Looking into a file
+        // takes time, so it stops once this listing is no longer wanted.
+        if (!filter.isEmpty() && listed && !isPluginView(path))
+            entries.removeIf([&](const Entry &entry) { return overtaken() || !fits(entry, filter); });
         return qMakePair(entries, error);
     }));
 }
